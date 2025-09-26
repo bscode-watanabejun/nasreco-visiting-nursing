@@ -118,6 +118,7 @@ export function Navbar({
               <DropdownMenuItem 
                 onClick={onLogout} 
                 className="text-destructive py-2"
+                data-testid="button-logout"
               >
                 <LogOut className="mr-2 h-4 w-4 flex-shrink-0" />
                 <span>ログアウト</span>

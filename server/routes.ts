@@ -39,16 +39,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { username, password } = req.body;
       
+      console.log("Login attempt for user:", username);
+      
       if (!username || !password) {
         return res.status(400).json({ error: "ユーザー名とパスワードが必要です" });
       }
 
-      const user = await storage.getUserByUsername(username);
+      let user = await storage.getUserByUsername(username);
+      if (!user) {
+        // Try to find user by email if username search fails
+        user = await storage.getUserByEmail(username);
+      }
+      console.log("User lookup result:", user ? "Found" : "Not found");
       if (!user) {
         return res.status(401).json({ error: "認証に失敗しました" });
       }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
+      console.log("Password validation:", { isValidPassword });
       if (!isValidPassword) {
         return res.status(401).json({ error: "認証に失敗しました" });
       }

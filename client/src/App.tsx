@@ -49,9 +49,29 @@ function MainLayout() {
   const [currentFacility, setCurrentFacility] = useState('東京本院');
 
   const handleLogin = async (email: string, password: string) => {
-    console.log('ログイン試行:', { email, password });
-    // TODO: Implement real authentication
-    setIsAuthenticated(true);
+    try {
+      console.log('ログイン試行 for user:', email);
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: email, password }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setIsAuthenticated(true);
+        console.log('ログイン成功:', data);
+      } else {
+        const errorData = await response.json();
+        console.error('ログイン失敗:', errorData);
+        // ここでエラーメッセージを表示する機能を追加することも可能
+      }
+    } catch (error) {
+      console.error('ログインエラー:', error);
+    }
   };
 
   const handleForgotPassword = () => {
@@ -62,6 +82,26 @@ function MainLayout() {
   const handleFacilityChange = (facility: string) => {
     setCurrentFacility(facility);
     console.log('施設変更:', facility);
+  };
+
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        setIsAuthenticated(false);
+        console.log('ログアウト成功');
+      } else {
+        console.error('ログアウトに失敗しました');
+      }
+    } catch (error) {
+      console.error('ログアウトエラー:', error);
+    }
   };
 
   if (!isAuthenticated) {
@@ -93,6 +133,7 @@ function MainLayout() {
               currentFacility={currentFacility}
               onFacilityChange={handleFacilityChange}
               userName="田中 花子"
+              onLogout={handleLogout}
             />
           </header>
           <main className="flex-1 overflow-auto">
