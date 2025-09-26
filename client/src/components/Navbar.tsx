@@ -12,18 +12,18 @@ import { Badge } from "@/components/ui/badge"
 import { Bell, Settings, LogOut, Building2, ChevronDown } from "lucide-react"
 
 interface NavbarProps {
-  facilityName?: string
+  currentFacility?: string
   userName?: string
   userRole?: string
-  onFacilitySwitch?: () => void
+  onFacilityChange?: (facility: string) => void
   onLogout?: () => void
 }
 
 export function Navbar({ 
-  facilityName = "さくら訪問看護ステーション", 
+  currentFacility = "さくら訪問看護ステーション", 
   userName = "田中 花子", 
   userRole = "管理者",
-  onFacilitySwitch = () => console.log('Facility switch clicked'),
+  onFacilityChange = () => console.log('Facility change clicked'),
   onLogout = () => console.log('Logout clicked')
 }: NavbarProps) {
   const [notificationCount] = useState(3)
@@ -47,12 +47,12 @@ export function Navbar({
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={onFacilitySwitch}
+            onClick={() => onFacilityChange && onFacilityChange(currentFacility || "")}
             className="gap-2"
             data-testid="button-facility-switch"
           >
             <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">{facilityName}</span>
+            <span className="hidden sm:inline">{currentFacility}</span>
             <span className="sm:hidden">施設</span>
             <ChevronDown className="h-3 w-3" />
           </Button>
