@@ -5,9 +5,10 @@ import {
   type Visit, type InsertVisit,
   type NursingRecord, type InsertNursingRecord,
   type Medication, type InsertMedication,
+  type PaginationOptions, type PaginatedResult,
   users, facilities, patients, visits, nursingRecords, medications
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./db";
 
 // Storage interface for all visiting nursing system operations
@@ -62,6 +63,18 @@ export interface IStorage {
   createMedication(medication: InsertMedication): Promise<Medication>;
   updateMedication(id: string, medication: Partial<InsertMedication>): Promise<Medication | undefined>;
   deleteMedication(id: string): Promise<boolean>;
+
+  // ========== Paginated List Methods ==========
+  getUsersByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<User>>;
+  getPatientsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Patient>>;
+  getVisitsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
+  getVisitsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
+  getVisitsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
+  getNursingRecordsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>>;
+  getNursingRecordsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>>;
+  getNursingRecordsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>>;
+  getMedicationsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>>;
+  getMedicationsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>>;
 }
 
 // PostgreSQL implementation using Drizzle ORM
@@ -301,6 +314,228 @@ export class PostgreSQLStorage implements IStorage {
   async deleteMedication(id: string): Promise<boolean> {
     const result = await db.delete(medications).where(eq(medications.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // ========== Paginated List Methods Implementation ==========
+  
+  private createPaginatedResult<T>(
+    data: T[], 
+    total: number, 
+    page: number, 
+    limit: number
+  ): PaginatedResult<T> {
+    const totalPages = Math.ceil(total / limit);
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      }
+    };
+  }
+
+  async getUsersByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<User>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(users)
+        .where(eq(users.facilityId, facilityId))
+        .orderBy(desc(users.createdAt))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(users)
+        .where(eq(users.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getPatientsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Patient>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(patients)
+        .where(eq(patients.facilityId, facilityId))
+        .orderBy(desc(patients.createdAt))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(patients)
+        .where(eq(patients.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getVisitsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(visits)
+        .where(eq(visits.facilityId, facilityId))
+        .orderBy(desc(visits.scheduledDate))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(visits)
+        .where(eq(visits.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getVisitsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(visits)
+        .where(and(
+          eq(visits.patientId, patientId),
+          eq(visits.facilityId, facilityId)
+        ))
+        .orderBy(desc(visits.scheduledDate))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(visits)
+        .where(and(
+          eq(visits.patientId, patientId),
+          eq(visits.facilityId, facilityId)
+        ))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getVisitsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(visits)
+        .where(and(
+          eq(visits.nurseId, nurseId),
+          eq(visits.facilityId, facilityId)
+        ))
+        .orderBy(desc(visits.scheduledDate))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(visits)
+        .where(and(
+          eq(visits.nurseId, nurseId),
+          eq(visits.facilityId, facilityId)
+        ))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getNursingRecordsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(nursingRecords)
+        .where(eq(nursingRecords.facilityId, facilityId))
+        .orderBy(desc(nursingRecords.recordDate))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(nursingRecords)
+        .where(eq(nursingRecords.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getNursingRecordsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.patientId, patientId),
+          eq(nursingRecords.facilityId, facilityId)
+        ))
+        .orderBy(desc(nursingRecords.recordDate))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.patientId, patientId),
+          eq(nursingRecords.facilityId, facilityId)
+        ))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getNursingRecordsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.nurseId, nurseId),
+          eq(nursingRecords.facilityId, facilityId)
+        ))
+        .orderBy(desc(nursingRecords.recordDate))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.nurseId, nurseId),
+          eq(nursingRecords.facilityId, facilityId)
+        ))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getMedicationsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(medications)
+        .where(eq(medications.facilityId, facilityId))
+        .orderBy(desc(medications.createdAt))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(medications)
+        .where(eq(medications.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getMedicationsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>> {
+    const offset = (options.page - 1) * options.limit;
+    
+    const [data, totalResult] = await Promise.all([
+      db.select().from(medications)
+        .where(and(
+          eq(medications.patientId, patientId),
+          eq(medications.facilityId, facilityId)
+        ))
+        .orderBy(desc(medications.createdAt))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(medications)
+        .where(and(
+          eq(medications.patientId, patientId),
+          eq(medications.facilityId, facilityId)
+        ))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
   }
 }
 

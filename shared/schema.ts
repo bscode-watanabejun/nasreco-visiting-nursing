@@ -221,3 +221,21 @@ export type UpdatePatient = z.infer<typeof updatePatientSchema>;
 export type UpdateVisit = z.infer<typeof updateVisitSchema>;
 export type UpdateNursingRecord = z.infer<typeof updateNursingRecordSchema>;
 export type UpdateMedication = z.infer<typeof updateMedicationSchema>;
+
+// Pagination Types
+export interface PaginationOptions {
+  page: number;
+  limit: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}

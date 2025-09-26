@@ -165,10 +165,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get users in facility
   app.get("/api/users", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const users = await storage.getUsersByFacility(req.user.facilityId);
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+      
+      if (page < 1 || limit < 1) {
+        return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
+      }
+
+      const result = await storage.getUsersByFacilityPaginated(req.user.facilityId, { page, limit });
+      
       // Remove passwords from response
-      const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-      res.json(usersWithoutPasswords);
+      const usersWithoutPasswords = result.data.map(({ password, ...user }) => user);
+      
+      res.json({
+        data: usersWithoutPasswords,
+        pagination: result.pagination
+      });
       
     } catch (error) {
       console.error("Get users error:", error);
@@ -270,8 +283,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get patients in facility
   app.get("/api/patients", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const patients = await storage.getPatientsByFacility(req.user.facilityId);
-      res.json(patients);
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+      
+      if (page < 1 || limit < 1) {
+        return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
+      }
+
+      const result = await storage.getPatientsByFacilityPaginated(req.user.facilityId, { page, limit });
+      res.json(result);
       
     } catch (error) {
       console.error("Get patients error:", error);
@@ -357,16 +378,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { patientId, nurseId } = req.query;
       
-      let visits;
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+      
+      if (page < 1 || limit < 1) {
+        return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
+      }
+
+      let result;
       if (patientId) {
-        visits = await storage.getVisitsByPatient(patientId as string);
+        result = await storage.getVisitsByPatientPaginated(patientId as string, req.user.facilityId, { page, limit });
       } else if (nurseId) {
-        visits = await storage.getVisitsByNurse(nurseId as string);
+        result = await storage.getVisitsByNursePaginated(nurseId as string, req.user.facilityId, { page, limit });
       } else {
-        visits = await storage.getVisitsByFacility(req.user.facilityId);
+        result = await storage.getVisitsByFacilityPaginated(req.user.facilityId, { page, limit });
       }
       
-      res.json(visits);
+      res.json(result);
       
     } catch (error) {
       console.error("Get visits error:", error);
@@ -461,16 +490,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { patientId, nurseId } = req.query;
       
-      let records;
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+      
+      if (page < 1 || limit < 1) {
+        return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
+      }
+
+      let result;
       if (patientId) {
-        records = await storage.getNursingRecordsByPatient(patientId as string);
+        result = await storage.getNursingRecordsByPatientPaginated(patientId as string, req.user.facilityId, { page, limit });
       } else if (nurseId) {
-        records = await storage.getNursingRecordsByNurse(nurseId as string);
+        result = await storage.getNursingRecordsByNursePaginated(nurseId as string, req.user.facilityId, { page, limit });
       } else {
-        records = await storage.getNursingRecordsByFacility(req.user.facilityId);
+        result = await storage.getNursingRecordsByFacilityPaginated(req.user.facilityId, { page, limit });
       }
       
-      res.json(records);
+      res.json(result);
       
     } catch (error) {
       console.error("Get nursing records error:", error);
@@ -561,14 +598,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { patientId } = req.query;
       
-      let medications;
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+      
+      if (page < 1 || limit < 1) {
+        return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
+      }
+
+      let result;
       if (patientId) {
-        medications = await storage.getMedicationsByPatient(patientId as string);
+        result = await storage.getMedicationsByPatientPaginated(patientId as string, req.user.facilityId, { page, limit });
       } else {
-        medications = await storage.getMedicationsByFacility(req.user.facilityId);
+        result = await storage.getMedicationsByFacilityPaginated(req.user.facilityId, { page, limit });
       }
       
-      res.json(medications);
+      res.json(result);
       
     } catch (error) {
       console.error("Get medications error:", error);
