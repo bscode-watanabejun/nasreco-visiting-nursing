@@ -155,21 +155,27 @@ export function PatientManagement() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">利用者管理</h1>
-          <p className="text-muted-foreground">患者情報の管理と編集</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">
+            利用者管理
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground">患者情報の管理と編集</p>
         </div>
-        <Button onClick={handleAddPatient} data-testid="button-add-patient">
+        <Button 
+          onClick={handleAddPatient} 
+          className="w-full sm:w-auto flex-shrink-0"
+          data-testid="button-add-patient"
+        >
           <Plus className="mr-2 h-4 w-4" />
           新規患者登録
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">アクティブ患者</CardTitle>
@@ -217,8 +223,8 @@ export function PatientManagement() {
           <CardDescription>登録済みの全患者情報</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="患者名または病名で検索..."
@@ -228,35 +234,39 @@ export function PatientManagement() {
                 data-testid="input-patient-search"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 sm:flex gap-2">
               <Button 
                 variant={statusFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
+                size="default"
                 onClick={() => setStatusFilter('all')}
+                className="text-sm"
                 data-testid="filter-all"
               >
                 全て
               </Button>
               <Button 
                 variant={statusFilter === 'active' ? 'default' : 'outline'}
-                size="sm"
+                size="default"
                 onClick={() => setStatusFilter('active')}
+                className="text-sm"
                 data-testid="filter-active"
               >
                 アクティブ
               </Button>
               <Button 
                 variant={statusFilter === 'critical' ? 'default' : 'outline'}
-                size="sm"
+                size="default"
                 onClick={() => setStatusFilter('critical')}
+                className="text-sm"
                 data-testid="filter-critical"
               >
                 重要
               </Button>
               <Button 
                 variant={statusFilter === 'inactive' ? 'default' : 'outline'}
-                size="sm"
+                size="default"
                 onClick={() => setStatusFilter('inactive')}
+                className="text-sm"
                 data-testid="filter-inactive"
               >
                 非アクティブ
@@ -265,10 +275,81 @@ export function PatientManagement() {
           </div>
           
           {/* Patient List */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {filteredPatients.map((patient) => (
-              <div key={patient.id} className="border rounded-lg p-4 hover-elevate">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div key={patient.id} className="border rounded-lg p-3 sm:p-4 hover-elevate">
+                {/* Mobile layout (stacked) */}
+                <div className="sm:hidden space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-10 w-10 flex-shrink-0">
+                      <AvatarFallback className="text-sm">{patient.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className="font-semibold text-base truncate">{patient.name}</h3>
+                        <Badge className={`${getStatusColor(patient.status)} text-xs flex-shrink-0`}>
+                          {getStatusText(patient.status)}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-1">
+                          <User className="h-3 w-3 flex-shrink-0" />
+                          <span>{patient.age}歳・{patient.gender === 'male' ? '男性' : '女性'}</span>
+                        </div>
+                        <div className="flex items-start gap-1">
+                          <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                          <span className="line-clamp-1">{patient.address}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-3 w-3 flex-shrink-0" />
+                          <span>{patient.phone}</span>
+                        </div>
+                        <p className="line-clamp-1">病名: {patient.condition}</p>
+                        <p className="line-clamp-1">担当: {patient.assignedNurse}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground px-1">
+                    <p>前回: {new Date(patient.lastVisit).toLocaleDateString('ja-JP')}</p>
+                    <p>次回: {new Date(patient.nextVisit).toLocaleDateString('ja-JP')}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button 
+                      size="default" 
+                      variant="outline" 
+                      onClick={() => handleEditPatient(patient)}
+                      className="text-xs px-2"
+                      data-testid={`button-edit-${patient.id}`}
+                    >
+                      <Edit className="mr-1 h-3 w-3" />
+                      編集
+                    </Button>
+                    <Button 
+                      size="default" 
+                      variant="outline" 
+                      onClick={() => handleViewRecords(patient)}
+                      className="text-xs px-2"
+                      data-testid={`button-records-${patient.id}`}
+                    >
+                      <FileText className="mr-1 h-3 w-3" />
+                      記録
+                    </Button>
+                    <Button 
+                      size="default" 
+                      variant="outline" 
+                      onClick={() => handleViewSchedule(patient)}
+                      className="text-xs px-2"
+                      data-testid={`button-schedule-${patient.id}`}
+                    >
+                      <Calendar className="mr-1 h-3 w-3" />
+                      <span className="hidden xs:inline">スケジュール</span>
+                      <span className="xs:hidden">予定</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Desktop layout (horizontal) */}
+                <div className="hidden sm:flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
                     <Avatar className="h-12 w-12">
                       <AvatarFallback>{patient.name.charAt(0)}</AvatarFallback>
@@ -299,7 +380,7 @@ export function PatientManagement() {
                     </div>
                   </div>
                   
-                  <div className="flex flex-col md:items-end gap-2">
+                  <div className="flex flex-col md:items-end gap-2 flex-shrink-0">
                     <div className="text-sm text-muted-foreground">
                       <p>前回訪問: {new Date(patient.lastVisit).toLocaleDateString('ja-JP')}</p>
                       <p>次回予定: {new Date(patient.nextVisit).toLocaleDateString('ja-JP')}</p>
