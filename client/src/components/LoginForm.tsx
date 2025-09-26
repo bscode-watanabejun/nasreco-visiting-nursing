@@ -62,31 +62,31 @@ export function LoginForm({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-xl">N</span>
+    <div className="flex min-h-screen items-center justify-center bg-background px-3 sm:px-4">
+      <Card className="w-full max-w-sm sm:max-w-md">
+        <CardHeader className="space-y-1 text-center pb-4 sm:pb-6">
+          <div className="flex justify-center mb-3 sm:mb-4">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-lg sm:text-xl">N</span>
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">NASRECO 訪問看護</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-xl sm:text-2xl font-bold">NASRECO 訪問看護</CardTitle>
+          <CardDescription className="text-sm">
             アカウントにログインしてください
           </CardDescription>
         </CardHeader>
         
         <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 px-4 sm:px-6">
             {error && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="text-sm">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="text-sm">{error}</AlertDescription>
               </Alert>
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email">メールアドレス</Label>
+              <Label htmlFor="email" className="text-sm font-medium">メールアドレス</Label>
               <Input
                 id="email"
                 type="email"
@@ -94,7 +94,7 @@ export function LoginForm({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 data-testid="input-email"
-                className={emailError ? "border-destructive" : ""}
+                className={emailError ? "border-destructive h-10 sm:h-9" : "h-10 sm:h-9"}
               />
               {emailError && (
                 <p className="text-sm text-destructive">{emailError}</p>
@@ -102,13 +102,13 @@ export function LoginForm({
             </div>
             
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">パスワード</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="password" className="text-sm font-medium">パスワード</Label>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="px-0 font-normal text-primary"
+                  className="px-0 font-normal text-primary text-xs sm:text-sm underline hover:no-underline"
                   onClick={onForgotPassword}
                   data-testid="link-forgot-password"
                 >
@@ -123,13 +123,13 @@ export function LoginForm({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   data-testid="input-password"
-                  className={passwordError ? "border-destructive pr-10" : "pr-10"}
+                  className={passwordError ? "border-destructive pr-10 h-10 sm:h-9" : "pr-10 h-10 sm:h-9"}
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 inset-y-0 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
                   data-testid="button-toggle-password"
                 >
@@ -146,17 +146,17 @@ export function LoginForm({
             </div>
           </CardContent>
           
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter className="flex flex-col space-y-3 sm:space-y-4 px-4 sm:px-6 pb-4 sm:pb-6">
             <Button 
               type="submit" 
-              className="w-full" 
+              className="w-full text-sm sm:text-base" 
               disabled={loading}
               data-testid="button-login"
             >
               {loading ? 'ログイン中...' : 'ログイン'}
             </Button>
             
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-xs sm:text-sm text-muted-foreground leading-relaxed">
               アカウントをお持ちでない方は管理者にお問い合わせください
             </p>
           </CardFooter>
