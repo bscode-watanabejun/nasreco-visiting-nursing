@@ -68,6 +68,15 @@ const getStatusColor = (status: string) => {
   }
 }
 
+const getCardStatusColor = (status: string) => {
+  switch (status) {
+    case 'completed': return 'bg-green-50 border-green-200 hover:bg-green-100'
+    case 'in-progress': return 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+    case 'scheduled': return 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+    default: return 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+  }
+}
+
 const getStatusText = (status: string) => {
   switch (status) {
     case 'completed': return '完了'
@@ -182,7 +191,7 @@ export function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               {visits.map((visit) => (
-                <div key={visit.id} className="flex items-center justify-between p-4 border rounded-lg hover-elevate">
+                <div key={visit.id} className={`flex items-center justify-between p-4 rounded-lg transition-colors ${getCardStatusColor(visit.status)}`}>
                   <div className="flex items-center gap-4">
                     <div className="text-center min-w-[4rem]">
                       <div className="font-semibold">{visit.time}</div>
