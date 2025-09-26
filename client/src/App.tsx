@@ -13,7 +13,7 @@ import { NursingRecords } from "@/components/NursingRecords";
 import { UserManagement } from "@/components/UserManagement";
 import { LoginForm } from "@/components/LoginForm";
 import { Navbar } from "@/components/Navbar";
-import { Sidebar } from "@/components/Sidebar";
+import { AppSidebar } from "@/components/Sidebar";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -85,7 +85,7 @@ function MainLayout() {
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
-        <Sidebar />
+        <AppSidebar />
         <div className="flex flex-col flex-1">
           <header className="flex items-center justify-between p-2 border-b bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
