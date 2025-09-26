@@ -134,6 +134,26 @@ export function PatientManagement() {
   const criticalPatients = patients.filter(p => p.status === 'critical').length
   const inactivePatients = patients.filter(p => p.status === 'inactive').length
 
+  const handleAddPatient = () => {
+    console.log('新規患者登録クリック')
+    alert('新規患者登録画面を開きます')
+  }
+
+  const handleEditPatient = (patient: Patient) => {
+    console.log('患者編集クリック:', patient.name)
+    alert(`${patient.name}さんの編集画面を開きます`)
+  }
+
+  const handleViewRecords = (patient: Patient) => {
+    console.log('看護記録クリック:', patient.name)
+    alert(`${patient.name}さんの看護記録を表示します`)
+  }
+
+  const handleViewSchedule = (patient: Patient) => {
+    console.log('スケジュールクリック:', patient.name)
+    alert(`${patient.name}さんのスケジュールを表示します`)
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -142,7 +162,7 @@ export function PatientManagement() {
           <h1 className="text-3xl font-bold tracking-tight">利用者管理</h1>
           <p className="text-muted-foreground">患者情報の管理と編集</p>
         </div>
-        <Button data-testid="button-add-patient">
+        <Button onClick={handleAddPatient} data-testid="button-add-patient">
           <Plus className="mr-2 h-4 w-4" />
           新規患者登録
         </Button>
@@ -285,15 +305,30 @@ export function PatientManagement() {
                       <p>次回予定: {new Date(patient.nextVisit).toLocaleDateString('ja-JP')}</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" data-testid={`button-edit-${patient.id}`}>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => handleEditPatient(patient)}
+                        data-testid={`button-edit-${patient.id}`}
+                      >
                         <Edit className="mr-1 h-3 w-3" />
                         編集
                       </Button>
-                      <Button size="sm" variant="outline" data-testid={`button-records-${patient.id}`}>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => handleViewRecords(patient)}
+                        data-testid={`button-records-${patient.id}`}
+                      >
                         <FileText className="mr-1 h-3 w-3" />
                         記録
                       </Button>
-                      <Button size="sm" variant="outline" data-testid={`button-schedule-${patient.id}`}>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => handleViewSchedule(patient)}
+                        data-testid={`button-schedule-${patient.id}`}
+                      >
                         <Calendar className="mr-1 h-3 w-3" />
                         スケジュール
                       </Button>
