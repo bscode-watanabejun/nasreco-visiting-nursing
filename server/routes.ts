@@ -57,13 +57,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "アカウントが無効化されています" });
       }
 
-      // Set session
-      req.session.userId = user.id;
-      req.session.facilityId = user.facilityId;
+      // Regenerate session ID to prevent session fixation attacks
+      req.session.regenerate((err) => {
+        if (err) {
+          console.error("Session regeneration error:", err);
+          return res.status(500).json({ error: "認証に失敗しました" });
+        }
 
-      // Return user info (without password)
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+        // Set session after regeneration
+        req.session.userId = user.id;
+        req.session.facilityId = user.facilityId;
+
+        // Return user info (without password)
+        const { password: _, ...userWithoutPassword } = user;
+        res.json({ user: userWithoutPassword });
+      });
       
     } catch (error) {
       console.error("Login error:", error);

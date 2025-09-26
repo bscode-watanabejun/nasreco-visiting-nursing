@@ -1,15 +1,41 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import ConnectPgSimple from "connect-pg-simple";
+import { Client } from "pg";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// Trust proxy in production (for HTTPS cookies behind reverse proxy)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session configuration
+// Validate required environment variables
+if (!process.env.SESSION_SECRET) {
+  console.error("SESSION_SECRET environment variable is required for security");
+  process.exit(1);
+}
+
+if (!process.env.DATABASE_URL) {
+  console.error("DATABASE_URL environment variable is required");
+  process.exit(1);
+}
+
+// Create PostgreSQL session store
+const PgSession = ConnectPgSimple(session);
+
+// Session configuration with PostgreSQL store
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dev-secret-key-change-in-production',
+  store: new PgSession({
+    conString: process.env.DATABASE_URL,
+    tableName: 'session', // Session table name
+    createTableIfMissing: true,
+  }),
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -19,6 +45,50 @@ app.use(session({
     sameSite: 'lax'
   }
 }));
+
+// Modern CSRF protection middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  // Skip CSRF check for safe methods and API preflight
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    return next();
+  }
+
+  // Only apply CSRF protection to API endpoints
+  if (!req.path.startsWith('/api')) {
+    return next();
+  }
+
+  const origin = req.get('Origin') || req.get('Referer');
+  const host = req.get('Host');
+  
+  if (!origin) {
+    return res.status(403).json({ error: 'CSRF: Missing Origin header' });
+  }
+  
+  // Parse origin/referer to get hostname
+  let originHost: string;
+  try {
+    const originUrl = new URL(origin);
+    originHost = originUrl.host;
+  } catch (e) {
+    return res.status(403).json({ error: 'CSRF: Invalid Origin header' });
+  }
+  
+  // Compare origin with host (accounting for port differences in development)
+  if (originHost !== host) {
+    // In development, allow localhost variations
+    if (process.env.NODE_ENV === 'development') {
+      const isLocalhost = (h: string) => h.startsWith('localhost:') || h.startsWith('127.0.0.1:');
+      if (!(isLocalhost(originHost) && isLocalhost(host))) {
+        return res.status(403).json({ error: 'CSRF: Origin mismatch' });
+      }
+    } else {
+      return res.status(403).json({ error: 'CSRF: Origin mismatch' });
+    }
+  }
+
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
