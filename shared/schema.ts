@@ -161,6 +161,40 @@ export const insertMedicationSchema = createInsertSchema(medications).omit({
   updatedAt: true,
 });
 
+// ========== Update Schemas ==========
+// User self-update schema (limited fields for security)
+export const updateUserSelfSchema = insertUserSchema.pick({
+  fullName: true,
+  phone: true,
+  licenseNumber: true,
+}).partial().extend({
+  password: z.string().min(8, "パスワードは8文字以上で入力してください").optional(),
+});
+
+// Admin user update schema (excludes sensitive fields)
+export const updateUserAdminSchema = insertUserSchema.omit({
+  facilityId: true, // Cannot change facility
+}).partial().extend({
+  password: z.string().min(8, "パスワードは8文字以上で入力してください").optional(),
+});
+
+// General update schemas for other entities
+export const updatePatientSchema = insertPatientSchema.omit({
+  facilityId: true,
+}).partial();
+
+export const updateVisitSchema = insertVisitSchema.omit({
+  facilityId: true,
+}).partial();
+
+export const updateNursingRecordSchema = insertNursingRecordSchema.omit({
+  facilityId: true,
+}).partial();
+
+export const updateMedicationSchema = insertMedicationSchema.omit({
+  facilityId: true,
+}).partial();
+
 // ========== Type Exports ==========
 export type InsertFacility = z.infer<typeof insertFacilitySchema>;
 export type Facility = typeof facilities.$inferSelect;
@@ -179,3 +213,11 @@ export type NursingRecord = typeof nursingRecords.$inferSelect;
 
 export type InsertMedication = z.infer<typeof insertMedicationSchema>;
 export type Medication = typeof medications.$inferSelect;
+
+// Update Types
+export type UpdateUserSelf = z.infer<typeof updateUserSelfSchema>;
+export type UpdateUserAdmin = z.infer<typeof updateUserAdminSchema>;
+export type UpdatePatient = z.infer<typeof updatePatientSchema>;
+export type UpdateVisit = z.infer<typeof updateVisitSchema>;
+export type UpdateNursingRecord = z.infer<typeof updateNursingRecordSchema>;
+export type UpdateMedication = z.infer<typeof updateMedicationSchema>;

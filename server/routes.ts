@@ -8,8 +8,15 @@ import {
   insertVisitSchema, 
   insertNursingRecordSchema, 
   insertMedicationSchema,
-  insertFacilitySchema 
+  insertFacilitySchema,
+  updateUserSelfSchema,
+  updateUserAdminSchema,
+  updatePatientSchema,
+  updateVisitSchema,
+  updateNursingRecordSchema,
+  updateMedicationSchema
 } from "@shared/schema";
+import { z } from "zod";
 
 // Extend Express session data
 declare module "express-session" {
@@ -195,19 +202,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       
-      // Users can only update themselves unless they're admin/manager
-      if (req.user.id !== id && !['admin', 'manager'].includes(req.user.role)) {
+      // First, get the target user to check facility membership
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+      
+      // Check multi-tenant access: target user must be in same facility
+      if (targetUser.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+      
+      // Determine update permissions and validate data
+      let validatedData;
+      
+      if (req.user.id === id) {
+        // Self-update: limited fields only
+        validatedData = updateUserSelfSchema.parse(req.body);
+      } else if (['admin', 'manager'].includes(req.user.role)) {
+        // Admin/Manager updating other users in same facility
+        validatedData = updateUserAdminSchema.parse(req.body);
+        
+        // Additional restriction: only admins can change roles
+        if (validatedData.role && req.user.role !== 'admin') {
+          return res.status(403).json({ error: "役職の変更は管理者のみ可能です" });
+        }
+      } else {
+        // Regular users cannot update other users
         return res.status(403).json({ error: "権限がありません" });
       }
       
-      const userData = req.body;
-      
       // Hash password if provided
-      if (userData.password) {
-        userData.password = await bcrypt.hash(userData.password, 10);
+      if (validatedData.password) {
+        validatedData.password = await bcrypt.hash(validatedData.password, 10);
       }
       
-      const user = await storage.updateUser(id, userData);
+      const user = await storage.updateUser(id, validatedData);
       if (!user) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
@@ -216,6 +246,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(userWithoutPassword);
       
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "入力データが正しくありません",
+          details: error.errors 
+        });
+      }
       console.error("Update user error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
@@ -284,7 +320,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "患者が見つかりません" });
       }
       
-      const patient = await storage.updatePatient(id, req.body);
+      // Validate update data with Zod schema
+      const validatedData = updatePatientSchema.parse(req.body);
+      
+      const patient = await storage.updatePatient(id, validatedData);
       if (!patient) {
         return res.status(404).json({ error: "患者が見つかりません" });
       }
@@ -292,6 +331,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(patient);
       
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "入力データが正しくありません",
+          details: error.errors 
+        });
+      }
       console.error("Update patient error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
@@ -353,6 +398,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update visit
+  app.put("/api/visits/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if visit belongs to user's facility
+      const existingVisit = await storage.getVisit(id);
+      if (!existingVisit || existingVisit.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "訪問予定が見つかりません" });
+      }
+      
+      // Validate update data with Zod schema
+      const validatedData = updateVisitSchema.parse(req.body);
+      
+      const visit = await storage.updateVisit(id, validatedData);
+      if (!visit) {
+        return res.status(404).json({ error: "訪問予定が見つかりません" });
+      }
+      
+      res.json(visit);
+      
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "入力データが正しくありません",
+          details: error.errors 
+        });
+      }
+      console.error("Update visit error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Nursing Records Routes ==========
   
   // Get nursing records
@@ -398,6 +476,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update nursing record
+  app.put("/api/nursing-records/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if nursing record belongs to user's facility
+      const existingRecord = await storage.getNursingRecord(id);
+      if (!existingRecord || existingRecord.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+      
+      // Validate update data with Zod schema
+      const validatedData = updateNursingRecordSchema.parse(req.body);
+      
+      const record = await storage.updateNursingRecord(id, validatedData);
+      if (!record) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+      
+      res.json(record);
+      
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "入力データが正しくありません",
+          details: error.errors 
+        });
+      }
+      console.error("Update nursing record error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Medications Routes ==========
   
   // Get medications
@@ -437,6 +548,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
     } catch (error) {
       console.error("Create medication error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update medication
+  app.put("/api/medications/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if medication belongs to user's facility
+      const existingMedication = await storage.getMedication(id);
+      if (!existingMedication || existingMedication.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "薬歴が見つかりません" });
+      }
+      
+      // Validate update data with Zod schema
+      const validatedData = updateMedicationSchema.parse(req.body);
+      
+      const medication = await storage.updateMedication(id, validatedData);
+      if (!medication) {
+        return res.status(404).json({ error: "薬歴が見つかりません" });
+      }
+      
+      res.json(medication);
+      
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "入力データが正しくありません",
+          details: error.errors 
+        });
+      }
+      console.error("Update medication error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
