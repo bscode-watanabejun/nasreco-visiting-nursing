@@ -26,7 +26,7 @@ interface SidebarProps {
 const navigationItems = [
   {
     title: "ダッシュボード",
-    href: "/dashboard",
+    href: "/",
     icon: Home,
     badge: null,
   },
@@ -82,11 +82,11 @@ export function Sidebar({
   const [location] = useLocation()
 
   const getHref = (path: string) => {
-    return `/${facilitySlug}${path}`
+    return path
   }
 
   const isActive = (href: string) => {
-    return location === getHref(href)
+    return location === href
   }
 
   return (
