@@ -212,6 +212,12 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    /* モバイル誤操作防止: スワイプリフレッシュ無効化 */
+    overscroll-behavior-y: none;
+    /* iOS Safari でのスムーズスクロール */
+    -webkit-overflow-scrolling: touch;
+    /* ピンチズーム無効化、縦スクロールのみ許可 */
+    touch-action: pan-y;
   }
 }
 
