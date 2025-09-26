@@ -30,35 +30,47 @@ export function Navbar({
 
   return (
     <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-      <div className="flex h-16 items-center justify-between px-4 lg:px-6">
+      <div className="flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4 lg:px-6">
         {/* Logo and App Name */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">N</span>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded bg-primary flex items-center justify-center flex-shrink-0">
+              <span className="text-primary-foreground font-bold text-xs sm:text-sm">N</span>
             </div>
-            <span className="font-bold text-lg">NASRECO 訪問看護</span>
+            <div className="min-w-0">
+              <span className="font-bold text-sm sm:text-lg truncate block">
+                <span className="sm:hidden">NASRECO</span>
+                <span className="hidden sm:inline">NASRECO 訪問看護</span>
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Facility Selector and User Menu */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1 sm:gap-2 lg:gap-4 flex-shrink-0">
           {/* Facility Selector */}
           <Button 
             variant="outline" 
-            size="sm" 
+            size="default" 
             onClick={() => onFacilityChange && onFacilityChange(currentFacility || "")}
             className="gap-2"
             data-testid="button-facility-switch"
           >
-            <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">{currentFacility}</span>
-            <span className="sm:hidden">施設</span>
-            <ChevronDown className="h-3 w-3" />
+            <Building2 className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden md:inline text-sm max-w-24 lg:max-w-none truncate">
+              {currentFacility}
+            </span>
+            <span className="md:hidden text-sm">施設</span>
+            <ChevronDown className="h-3 w-3 flex-shrink-0" />
           </Button>
 
           {/* Notifications */}
-          <Button variant="ghost" size="icon" data-testid="button-notifications">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            aria-label="通知"
+            data-testid="button-notifications"
+          >
             <div className="relative">
               <Bell className="h-4 w-4" />
               {notificationCount > 0 && (
@@ -75,26 +87,40 @@ export function Navbar({
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="gap-2" data-testid="button-user-menu">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback>{userName.charAt(0)}</AvatarFallback>
+              <Button 
+                variant="ghost" 
+                size="default"
+                className="gap-2" 
+                data-testid="button-user-menu"
+              >
+                <Avatar className="h-7 w-7 flex-shrink-0">
+                  <AvatarFallback className="text-sm">
+                    {userName.charAt(0)}
+                  </AvatarFallback>
                 </Avatar>
-                <div className="hidden lg:flex flex-col items-start">
-                  <span className="text-sm font-medium">{userName}</span>
-                  <span className="text-xs text-muted-foreground">{userRole}</span>
+                <div className="hidden lg:flex flex-col items-start min-w-0">
+                  <span className="text-sm font-medium truncate max-w-20 xl:max-w-none">
+                    {userName}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate max-w-20 xl:max-w-none">
+                    {userRole}
+                  </span>
                 </div>
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="h-3 w-3 flex-shrink-0" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                設定
+            <DropdownMenuContent align="end" className="w-48 sm:w-56">
+              <DropdownMenuItem className="py-2">
+                <Settings className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span>設定</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onLogout} className="text-destructive">
-                <LogOut className="mr-2 h-4 w-4" />
-                ログアウト
+              <DropdownMenuItem 
+                onClick={onLogout} 
+                className="text-destructive py-2"
+              >
+                <LogOut className="mr-2 h-4 w-4 flex-shrink-0" />
+                <span>ログアウト</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
