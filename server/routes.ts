@@ -412,6 +412,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate update data with Zod schema
       const validatedData = updateVisitSchema.parse(req.body);
       
+      // Cross-tenant reference validation: ensure patientId and nurseId belong to same facility
+      if (validatedData.patientId) {
+        const patient = await storage.getPatient(validatedData.patientId);
+        if (!patient || patient.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された患者が見つかりません" });
+        }
+      }
+      
+      if (validatedData.nurseId) {
+        const nurse = await storage.getUser(validatedData.nurseId);
+        if (!nurse || nurse.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された看護師が見つかりません" });
+        }
+      }
+      
       const visit = await storage.updateVisit(id, validatedData);
       if (!visit) {
         return res.status(404).json({ error: "訪問予定が見つかりません" });
@@ -490,6 +505,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate update data with Zod schema
       const validatedData = updateNursingRecordSchema.parse(req.body);
       
+      // Cross-tenant reference validation
+      if (validatedData.patientId) {
+        const patient = await storage.getPatient(validatedData.patientId);
+        if (!patient || patient.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された患者が見つかりません" });
+        }
+      }
+      
+      if (validatedData.nurseId) {
+        const nurse = await storage.getUser(validatedData.nurseId);
+        if (!nurse || nurse.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された看護師が見つかりません" });
+        }
+      }
+      
+      if (validatedData.visitId) {
+        const visit = await storage.getVisit(validatedData.visitId);
+        if (!visit || visit.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された訪問予定が見つかりません" });
+        }
+      }
+      
       const record = await storage.updateNursingRecord(id, validatedData);
       if (!record) {
         return res.status(404).json({ error: "看護記録が見つかりません" });
@@ -565,6 +602,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Validate update data with Zod schema
       const validatedData = updateMedicationSchema.parse(req.body);
+      
+      // Cross-tenant reference validation
+      if (validatedData.patientId) {
+        const patient = await storage.getPatient(validatedData.patientId);
+        if (!patient || patient.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された患者が見つかりません" });
+        }
+      }
+      
+      if (validatedData.nurseId) {
+        const nurse = await storage.getUser(validatedData.nurseId);
+        if (!nurse || nurse.facilityId !== req.user.facilityId) {
+          return res.status(400).json({ error: "指定された看護師が見つかりません" });
+        }
+      }
       
       const medication = await storage.updateMedication(id, validatedData);
       if (!medication) {
