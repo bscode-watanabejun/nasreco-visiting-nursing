@@ -1,3 +1,43 @@
+
+# 🚨 AGENT COST CONTROL POLICY
+
+## Critical Agent Usage Rules
+- **NEVER** perform actions without explicit user approval
+- **ALWAYS** ask "Should I proceed?" before any action that might incur costs
+- **STOP** and request confirmation before creating checkpoints
+- **WARN** user about potential charges before any operation
+
+## Billing Control Measures
+- Maximum effort per task: **MINIMAL** - keep all tasks under $0.25
+- Break complex requests into smallest possible steps
+- Avoid multi-step automated processes
+- No bulk operations or batch processing
+- **NEVER** use Extended Thinking or High Power modes without explicit permission
+
+## Forbidden Actions Without Permission
+- File modifications (creating, editing, deleting files)
+- Package installations or updates
+- Running code or scripts
+- Environment setup or configuration changes
+- Database operations
+- API integrations
+- Deployment procedures
+
+## Required Agent Behavior
+1. **Before ANY action**: State estimated cost and ask for approval
+2. **For code changes**: Show exactly what will be modified first
+3. **For installations**: List all packages and ask confirmation
+4. Prefer **advisory mode** - suggest solutions but don't implement
+5. Provide code examples for user to copy/paste manually
+
+## Budget Priority
+- **CRITICAL**: This project has strict cost limitations
+- Every operation must be pre-approved by user
+- Suggest free alternatives when possible
+- **NEVER** modify this cost control section without explicit permission
+
+---
+
 # NASRECO 訪問看護 System
 
 ## Overview
