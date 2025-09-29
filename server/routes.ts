@@ -204,7 +204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "権限がありません" });
       }
       
-      const userData = insertUserSchema.parse(req.body);
+      const userData = insertUserSchema.omit({ facilityId: true }).parse(req.body);
       
       // Hash password
       const hashedPassword = await bcrypt.hash(userData.password, 10);

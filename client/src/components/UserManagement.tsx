@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,79 +6,58 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
   User,
   Mail,
   Phone,
   Shield,
   UserCheck,
   UserX,
-  Settings
+  Settings,
+  Loader2
 } from "lucide-react"
+import { useUsersQuery, useCreateUserMutation, useUpdateUserMutation } from '@/hooks/useUsers'
+import type { User as ApiUser } from '@shared/schema'
+import type { CreateUserRequest, UpdateUserRequest } from '@/lib/api'
 
-interface User {
+// Map API User to display format
+interface DisplayUser {
   id: string
   name: string
   email: string
   phone: string
-  role: 'admin' | 'nurse' | 'supervisor'
+  role: 'admin' | 'nurse' | 'manager'
   status: 'active' | 'inactive'
   facility: string
   createdDate: string
   lastLogin: string
+  username: string
+  fullName: string
+  isActive: boolean
 }
 
-// TODO: Remove mock data when implementing real backend
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: '田中 花子',
-    email: 'hanako.tanaka@healthcare.com',
-    phone: '090-1234-5678',
-    role: 'admin',
-    status: 'active',
-    facility: '東京本院',
-    createdDate: '2024-01-15',
-    lastLogin: '2024-09-26 08:30'
-  },
-  {
-    id: '2',
-    name: '山田 次郎',
-    email: 'jiro.yamada@healthcare.com',
-    phone: '090-2345-6789',
-    role: 'nurse',
-    status: 'active',
-    facility: '東京本院',
-    createdDate: '2024-02-20',
-    lastLogin: '2024-09-26 09:15'
-  },
-  {
-    id: '3',
-    name: '佐藤 美和',
-    email: 'miwa.sato@healthcare.com',
-    phone: '090-3456-7890',
-    role: 'supervisor',
-    status: 'active',
-    facility: '東京本院',
-    createdDate: '2024-03-10',
-    lastLogin: '2024-09-25 17:20'
-  },
-  {
-    id: '4',
-    name: '鈴木 健一',
-    email: 'kenichi.suzuki@healthcare.com',
-    phone: '090-4567-8901',
-    role: 'nurse',
-    status: 'inactive',
-    facility: '東京本院',
-    createdDate: '2024-01-30',
-    lastLogin: '2024-09-20 16:45'
+// Convert API user to display format
+function mapApiUserToDisplay(user: ApiUser): DisplayUser {
+  return {
+    id: user.id,
+    name: user.fullName,
+    email: user.email,
+    phone: user.phone || '',
+    role: user.role,
+    status: user.isActive ? 'active' : 'inactive',
+    facility: '東京本院', // TODO: Get from facilities API when available
+    createdDate: user.createdAt ? new Date(user.createdAt).toLocaleDateString('ja-JP') : '',
+    lastLogin: user.updatedAt ? new Date(user.updatedAt).toLocaleString('ja-JP') : '',
+    username: user.username,
+    fullName: user.fullName,
+    isActive: user.isActive
   }
-]
+}
+
 
 const getRoleColor = (role: string) => {
   switch (role) {
@@ -92,7 +71,7 @@ const getRoleColor = (role: string) => {
 const getRoleText = (role: string) => {
   switch (role) {
     case 'admin': return '管理者'
-    case 'supervisor': return '主任'
+    case 'manager': return '主任'
     case 'nurse': return '看護師'
     default: return role
   }
@@ -115,12 +94,20 @@ const getStatusText = (status: string) => {
 }
 
 export function UserManagement() {
-  const [users] = useState(mockUsers)
+  const [currentPage, setCurrentPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'supervisor' | 'nurse'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'manager' | 'nurse'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [selectedUser, setSelectedUser] = useState<DisplayUser | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [formData, setFormData] = useState<CreateUserRequest | UpdateUserRequest>({})
+
+  // Fetch users data
+  const { data: usersResponse, isLoading, error } = useUsersQuery(currentPage, 20)
+  const createUserMutation = useCreateUserMutation()
+  const updateUserMutation = useUpdateUserMutation()
+
+  const users = usersResponse?.data.map(mapApiUserToDisplay) || []
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -137,13 +124,60 @@ export function UserManagement() {
   const handleCreateNew = () => {
     setIsCreating(true)
     setSelectedUser(null)
-    console.log('新規ユーザー作成モード')
+    setFormData({
+      username: '',
+      password: '',
+      email: '',
+      fullName: '',
+      role: 'nurse',
+      phone: '',
+      isActive: true
+    })
   }
 
-  const handleEditUser = (user: User) => {
+  const handleEditUser = (user: DisplayUser) => {
     setSelectedUser(user)
     setIsCreating(false)
-    console.log('ユーザー編集:', user.id)
+    setFormData({
+      username: user.username,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      phone: user.phone,
+      isActive: user.isActive
+    })
+  }
+
+  const handleFormSubmit = async () => {
+    try {
+      if (isCreating) {
+        await createUserMutation.mutateAsync(formData as CreateUserRequest)
+      } else if (selectedUser) {
+        const updateData = { ...formData }
+        delete updateData.password // Don't update password unless explicitly set
+        await updateUserMutation.mutateAsync({
+          id: selectedUser.id,
+          userData: updateData as UpdateUserRequest
+        })
+      }
+      // Reset form and go back to list
+      setIsCreating(false)
+      setSelectedUser(null)
+      setFormData({})
+    } catch (error) {
+      // Error handling is done in the mutation hooks
+      console.error('Form submission error:', error)
+    }
+  }
+
+  const handleCancel = () => {
+    setIsCreating(false)
+    setSelectedUser(null)
+    setFormData({})
+  }
+
+  const updateFormData = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
   }
 
   if (isCreating || selectedUser) {
@@ -158,7 +192,7 @@ export function UserManagement() {
               {isCreating ? '新しいスタッフアカウントを作成' : `${selectedUser?.name}のアカウント設定`}
             </p>
           </div>
-          <Button variant="outline" onClick={() => { setIsCreating(false); setSelectedUser(null) }}>
+          <Button variant="outline" onClick={handleCancel}>
             一覧に戻る
           </Button>
         </div>
@@ -172,20 +206,47 @@ export function UserManagement() {
                 <div className="space-y-4">
                   <div>
                     <Label>氏名 *</Label>
-                    <Input defaultValue={selectedUser?.name || ''} placeholder="田中 花子" />
+                    <Input
+                      value={formData.fullName || ''}
+                      onChange={(e) => updateFormData('fullName', e.target.value)}
+                      placeholder="田中 花子"
+                    />
+                  </div>
+                  <div>
+                    <Label>ユーザー名 *</Label>
+                    <Input
+                      value={formData.username || ''}
+                      onChange={(e) => updateFormData('username', e.target.value)}
+                      placeholder="hanako.tanaka"
+                    />
                   </div>
                   <div>
                     <Label>メールアドレス *</Label>
-                    <Input type="email" defaultValue={selectedUser?.email || ''} placeholder="hanako.tanaka@healthcare.com" />
+                    <Input
+                      type="email"
+                      value={formData.email || ''}
+                      onChange={(e) => updateFormData('email', e.target.value)}
+                      placeholder="hanako.tanaka@healthcare.com"
+                    />
                   </div>
                   <div>
                     <Label>電話番号</Label>
-                    <Input type="tel" defaultValue={selectedUser?.phone || ''} placeholder="090-1234-5678" />
+                    <Input
+                      type="tel"
+                      value={formData.phone || ''}
+                      onChange={(e) => updateFormData('phone', e.target.value)}
+                      placeholder="090-1234-5678"
+                    />
                   </div>
                   {isCreating && (
                     <div>
                       <Label>初期パスワード *</Label>
-                      <Input type="password" placeholder="8文字以上のパスワード" />
+                      <Input
+                        type="password"
+                        value={formData.password || ''}
+                        onChange={(e) => updateFormData('password', e.target.value)}
+                        placeholder="8文字以上のパスワード"
+                      />
                       <p className="text-xs text-muted-foreground mt-1">
                         初回ログイン時にパスワード変更を求められます
                       </p>
@@ -200,33 +261,40 @@ export function UserManagement() {
                 <div className="space-y-4">
                   <div>
                     <Label>役職 *</Label>
-                    <Select defaultValue={selectedUser?.role || 'nurse'}>
+                    <Select
+                      value={formData.role || 'nurse'}
+                      onValueChange={(value) => updateFormData('role', value)}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="役職を選択" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="admin">管理者</SelectItem>
-                        <SelectItem value="supervisor">主任</SelectItem>
+                        <SelectItem value="manager">主任</SelectItem>
                         <SelectItem value="nurse">看護師</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label>所属施設 *</Label>
-                    <Select defaultValue={selectedUser?.facility || '東京本院'}>
+                    <Select defaultValue="東京本院" disabled>
                       <SelectTrigger>
                         <SelectValue placeholder="施設を選択" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="東京本院">東京本院</SelectItem>
-                        <SelectItem value="大阪支院">大阪支院</SelectItem>
-                        <SelectItem value="名古屋支院">名古屋支院</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      現在の施設に自動設定されます
+                    </p>
                   </div>
                   <div>
                     <Label>ステータス</Label>
-                    <Select defaultValue={selectedUser?.status || 'active'}>
+                    <Select
+                      value={formData.isActive ? 'active' : 'inactive'}
+                      onValueChange={(value) => updateFormData('isActive', value === 'active')}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="ステータスを選択" />
                       </SelectTrigger>
@@ -241,8 +309,18 @@ export function UserManagement() {
             </div>
 
             <div className="flex justify-end gap-2 mt-6 pt-6 border-t">
-              <Button variant="outline">キャンセル</Button>
-              <Button>{isCreating ? 'ユーザーを作成' : '変更を保存'}</Button>
+              <Button variant="outline" onClick={handleCancel} disabled={createUserMutation.isPending || updateUserMutation.isPending}>
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleFormSubmit}
+                disabled={createUserMutation.isPending || updateUserMutation.isPending || !formData.fullName || !formData.email || !formData.username || (isCreating && !formData.password)}
+              >
+                {(createUserMutation.isPending || updateUserMutation.isPending) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isCreating ? 'ユーザーを作成' : '変更を保存'}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -332,7 +410,7 @@ export function UserManagement() {
                 <SelectContent>
                   <SelectItem value="all">全役職</SelectItem>
                   <SelectItem value="admin">管理者</SelectItem>
-                  <SelectItem value="supervisor">主任</SelectItem>
+                  <SelectItem value="manager">主任</SelectItem>
                   <SelectItem value="nurse">看護師</SelectItem>
                 </SelectContent>
               </Select>
@@ -349,10 +427,29 @@ export function UserManagement() {
             </div>
           </div>
           
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2 text-muted-foreground">ユーザー情報を読み込み中...</span>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && (
+            <div className="text-center py-8 text-red-600">
+              <p>ユーザー情報の読み込みに失敗しました</p>
+              <Button variant="outline" onClick={() => window.location.reload()} className="mt-2">
+                再読み込み
+              </Button>
+            </div>
+          )}
+
           {/* User List */}
-          <div className="space-y-4">
-            {filteredUsers.map((user) => (
-              <div key={user.id} className="border rounded-lg p-4 hover-elevate">
+          {!isLoading && !error && (
+            <div className="space-y-4">
+              {filteredUsers.map((user) => (
+                <div key={user.id} className="border rounded-lg p-4 hover-elevate">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
                     <Avatar className="h-12 w-12">
@@ -423,10 +520,11 @@ export function UserManagement() {
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-          
-          {filteredUsers.length === 0 && (
+              ))}
+            </div>
+          )}
+
+          {!isLoading && !error && filteredUsers.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
               <User className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p>条件に一致するユーザーが見つかりません</p>
