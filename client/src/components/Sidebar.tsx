@@ -24,6 +24,7 @@ import {
   BarChart3
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
+import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
 
 // Base navigation items for facilities
 const facilityNavigationItems = [
@@ -120,8 +121,11 @@ const headquartersNavigationItems = [
 export function AppSidebar() {
   const [location] = useLocation()
   const isHeadquarters = useIsHeadquarters()
+  const isUserBasedHeadquarters = useUserBasedHeadquarters()
 
-  const navigationItems = isHeadquarters ? headquartersNavigationItems : facilityNavigationItems
+  // Use user-based headquarters detection as the primary indicator
+  const shouldShowHeadquartersMenu = isUserBasedHeadquarters || isHeadquarters
+  const navigationItems = shouldShowHeadquartersMenu ? headquartersNavigationItems : facilityNavigationItems
 
   const isActive = (href: string) => {
     return location === href
@@ -132,11 +136,11 @@ export function AppSidebar() {
       <SidebarHeader>
         <div className="flex items-center gap-2 px-4 py-2">
           <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">{isHeadquarters ? 'HQ' : 'N'}</span>
+            <span className="text-primary-foreground font-bold text-sm">{shouldShowHeadquartersMenu ? 'HQ' : 'N'}</span>
           </div>
           <div className="flex flex-col">
             <span className="font-bold text-lg">NASRECO</span>
-            {isHeadquarters && (
+            {shouldShowHeadquartersMenu && (
               <span className="text-xs text-muted-foreground">本社システム</span>
             )}
           </div>
@@ -145,7 +149,7 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>
-            {isHeadquarters ? '本社メニュー' : 'メインメニュー'}
+            {shouldShowHeadquartersMenu ? '本社メニュー' : 'メインメニュー'}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>

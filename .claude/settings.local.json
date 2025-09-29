@@ -3,7 +3,15 @@
     "allow": [
       "Bash(psql:*)",
       "Bash(npx tsx:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npm run check:*)",
+      "Bash(git log:*)",
+      "Bash(printf '\\n')",
+      "Bash(npx drizzle-kit push:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(DATABASE_URL=$DATABASE_URL npx drizzle-kit push)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

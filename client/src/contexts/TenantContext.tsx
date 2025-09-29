@@ -49,6 +49,19 @@ const extractSubdomain = (): string | null => {
     return urlParams.get('subdomain') || sessionStorage.getItem('dev_subdomain');
   }
 
+  // Replit environment - handle dynamic subdomains
+  if (hostname.includes('replit.dev')) {
+    // For Replit, check URL params first
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedSubdomain = urlParams.get('subdomain');
+    if (requestedSubdomain) {
+      return requestedSubdomain;
+    }
+
+    // If no subdomain specified, return null (will be handled by user role-based detection)
+    return null;
+  }
+
   // Production environment
   const parts = hostname.split('.');
   return parts.length >= 3 ? parts[0] : null;
@@ -88,6 +101,33 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const subdomain = extractSubdomain();
 
       if (!subdomain) {
+        // No subdomain - for Replit environment, default to headquarters for corporate admin users
+        // This will be refined based on user role
+        if (window.location.hostname.includes('replit.dev')) {
+          const mockCompany: Company = {
+            id: '1',
+            name: 'NASRECO株式会社',
+            domain: window.location.hostname,
+          };
+
+          const mockFacility: Facility = {
+            id: 'hq-1',
+            companyId: '1',
+            name: '本社',
+            slug: 'headquarters',
+            isHeadquarters: true,
+          };
+
+          setTenantInfo({
+            company: mockCompany,
+            facility: mockFacility,
+            subdomain: 'headquarters',
+            isHeadquarters: true,
+            isLoading: false,
+          });
+          return;
+        }
+
         // No subdomain - might be main domain
         setTenantInfo({
           company: null,

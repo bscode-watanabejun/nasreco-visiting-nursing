@@ -1,11 +1,13 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useState, useEffect } from "react";
 import { TenantProvider, useTenant, useIsHeadquarters } from "@/contexts/TenantContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters";
 
 // Import all main components
 import { Dashboard } from "@/components/Dashboard";
@@ -51,7 +53,24 @@ function MainLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { facility, company, isLoading: tenantLoading } = useTenant();
   const isHeadquarters = useIsHeadquarters();
+  const isUserBasedHeadquarters = useUserBasedHeadquarters();
   const [currentFacility, setCurrentFacility] = useState(facility?.name || '東京本院');
+  const queryClient = useQueryClient();
+
+  // Get current user information
+  const { data: currentUser, isLoading: userLoading, error: userError } = useCurrentUser();
+
+  // Use user-based headquarters detection as the primary indicator
+  const shouldShowHeadquartersFeatures = isUserBasedHeadquarters || isHeadquarters;
+
+  // Set authentication state based on user data
+  useEffect(() => {
+    if (currentUser) {
+      setIsAuthenticated(true);
+    } else if (userError && !userLoading) {
+      setIsAuthenticated(false);
+    }
+  }, [currentUser, userError, userLoading]);
 
   // Update current facility when tenant info changes
   useEffect(() => {
@@ -59,6 +78,23 @@ function MainLayout() {
       setCurrentFacility(facility.name);
     }
   }, [facility]);
+
+  // Get user role display string
+  const getUserRoleDisplay = (user: any) => {
+    if (user?.role === 'corporate_admin' && user?.accessLevel === 'corporate') {
+      return '企業管理者';
+    }
+    switch (user?.role) {
+      case 'admin':
+        return '管理者';
+      case 'nurse':
+        return '看護師';
+      case 'manager':
+        return 'マネージャー';
+      default:
+        return '一般ユーザー';
+    }
+  };
 
   const handleLogin = async (email: string, password: string) => {
     try {
@@ -74,7 +110,8 @@ function MainLayout() {
       
       if (response.ok) {
         const data = await response.json();
-        setIsAuthenticated(true);
+        // Invalidate user query to refetch user data after login
+        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
         console.log('ログイン成功:', data);
       } else {
         const errorData = await response.json();
@@ -106,6 +143,9 @@ function MainLayout() {
       });
       
       if (response.ok) {
+        // Clear user query cache and reset authentication
+        queryClient.setQueryData(["currentUser"], null);
+        queryClient.removeQueries({ queryKey: ["currentUser"] });
         setIsAuthenticated(false);
         console.log('ログアウト成功');
       } else {
@@ -116,8 +156,8 @@ function MainLayout() {
     }
   };
 
-  // Show loading while tenant info is being loaded
-  if (tenantLoading) {
+  // Show loading while tenant info or user info is being loaded
+  if (tenantLoading || (userLoading && !userError)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -157,8 +197,8 @@ function MainLayout() {
               <Navbar
                 currentFacility={currentFacility}
                 onFacilityChange={handleFacilityChange}
-                userName="田中 花子"
-                userRole={isHeadquarters ? '企業管理者' : '管理者'}
+                userName={currentUser?.fullName || 'ユーザー'}
+                userRole={getUserRoleDisplay(currentUser)}
                 onLogout={handleLogout}
               />
             </div>
@@ -166,7 +206,7 @@ function MainLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               {/* Headquarters-specific routes */}
-              {isHeadquarters ? (
+              {shouldShowHeadquartersFeatures ? (
                 <>
                   <Route path="/" component={HeadquartersDashboard} />
                   <Route path="/dashboard" component={HeadquartersDashboard} />
