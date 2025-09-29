@@ -1,4 +1,4 @@
-import type { User, InsertUser } from '@shared/schema';
+import type { User, InsertUser, Company, Facility, InsertCompany, InsertFacility } from '@shared/schema';
 
 export interface PaginatedResponse<T> {
   data: T[];
@@ -30,6 +30,23 @@ export interface UpdateUserRequest {
   licenseNumber?: string;
   phone?: string;
   isActive?: boolean;
+}
+
+export interface CreateCompanyRequest {
+  name: string;
+  domain: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface CreateFacilityRequest {
+  name: string;
+  slug: string;
+  isHeadquarters?: boolean;
+  address?: string;
+  phone?: string;
+  email?: string;
 }
 
 class ApiError extends Error {
@@ -84,6 +101,59 @@ export const userApi = {
     return fetchApi<void>(`/users/${id}`, {
       method: 'DELETE',
     });
+  },
+};
+
+// Company API functions (Corporate Admin only)
+export const companyApi = {
+  // Get all companies
+  async getCompanies(): Promise<Company[]> {
+    return fetchApi<Company[]>('/companies');
+  },
+
+  // Create new company
+  async createCompany(companyData: CreateCompanyRequest): Promise<Company> {
+    return fetchApi<Company>('/companies', {
+      method: 'POST',
+      body: JSON.stringify(companyData),
+    });
+  },
+};
+
+// Facility API functions
+export const facilityApi = {
+  // Get facilities (hierarchical access)
+  async getFacilities(): Promise<Facility[]> {
+    return fetchApi<Facility[]>('/facilities');
+  },
+
+  // Create new facility (Corporate Admin only)
+  async createFacility(facilityData: CreateFacilityRequest): Promise<Facility> {
+    return fetchApi<Facility>('/facilities', {
+      method: 'POST',
+      body: JSON.stringify(facilityData),
+    });
+  },
+
+  // Update facility
+  async updateFacility(id: string, facilityData: Partial<CreateFacilityRequest>): Promise<Facility> {
+    return fetchApi<Facility>(`/facilities/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(facilityData),
+    });
+  },
+};
+
+// Tenant/Subdomain utility functions
+export const tenantApi = {
+  // Get current tenant info (for the current subdomain)
+  async getCurrentTenant(): Promise<{ company: Company; facility: Facility }> {
+    return fetchApi<{ company: Company; facility: Facility }>('/tenant/current');
+  },
+
+  // Validate subdomain
+  async validateSubdomain(subdomain: string): Promise<{ valid: boolean; facility?: Facility }> {
+    return fetchApi<{ valid: boolean; facility?: Facility }>(`/tenant/validate/${subdomain}`);
   },
 };
 

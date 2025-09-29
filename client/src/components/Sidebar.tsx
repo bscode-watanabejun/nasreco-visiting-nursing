@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter"
 import { Badge } from "@/components/ui/badge"
-import { 
+import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -11,18 +11,22 @@ import {
   SidebarMenuItem,
   SidebarHeader
 } from "@/components/ui/sidebar"
-import { 
-  Home, 
-  Users, 
-  ClipboardList, 
-  Calendar, 
-  UserCheck, 
-  Settings, 
+import {
+  Home,
+  Users,
+  ClipboardList,
+  Calendar,
+  UserCheck,
+  Settings,
   FileText,
-  Shield
+  Shield,
+  Building2,
+  BarChart3
 } from "lucide-react"
+import { useIsHeadquarters } from "@/contexts/TenantContext"
 
-const navigationItems = [
+// Base navigation items for facilities
+const facilityNavigationItems = [
   {
     title: "ダッシュボード",
     href: "/",
@@ -71,10 +75,53 @@ const navigationItems = [
     icon: Settings,
     badge: null,
   },
-]
+];
+
+// Headquarters-specific navigation items
+const headquartersNavigationItems = [
+  {
+    title: "統合ダッシュボード",
+    href: "/",
+    icon: BarChart3,
+    badge: null,
+  },
+  {
+    title: "施設管理",
+    href: "/facilities",
+    icon: Building2,
+    badge: null,
+  },
+  {
+    title: "全社員管理",
+    href: "/users",
+    icon: Shield,
+    badge: null,
+  },
+  {
+    title: "全利用者管理",
+    href: "/patients",
+    icon: Users,
+    badge: null,
+  },
+  {
+    title: "統合レポート",
+    href: "/reports",
+    icon: FileText,
+    badge: null,
+  },
+  {
+    title: "システム設定",
+    href: "/settings",
+    icon: Settings,
+    badge: null,
+  },
+];
 
 export function AppSidebar() {
   const [location] = useLocation()
+  const isHeadquarters = useIsHeadquarters()
+
+  const navigationItems = isHeadquarters ? headquartersNavigationItems : facilityNavigationItems
 
   const isActive = (href: string) => {
     return location === href
@@ -85,14 +132,21 @@ export function AppSidebar() {
       <SidebarHeader>
         <div className="flex items-center gap-2 px-4 py-2">
           <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">N</span>
+            <span className="text-primary-foreground font-bold text-sm">{isHeadquarters ? 'HQ' : 'N'}</span>
           </div>
-          <span className="font-bold text-lg">NASRECO</span>
+          <div className="flex flex-col">
+            <span className="font-bold text-lg">NASRECO</span>
+            {isHeadquarters && (
+              <span className="text-xs text-muted-foreground">本社システム</span>
+            )}
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>メインメニュー</SidebarGroupLabel>
+          <SidebarGroupLabel>
+            {isHeadquarters ? '本社メニュー' : 'メインメニュー'}
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.map((item) => {

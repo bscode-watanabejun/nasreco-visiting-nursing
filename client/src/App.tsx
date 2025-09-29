@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useState, useEffect } from "react";
+import { TenantProvider, useTenant, useIsHeadquarters } from "@/contexts/TenantContext";
 
 // Import all main components
 import { Dashboard } from "@/components/Dashboard";
@@ -14,6 +15,8 @@ import { UserManagement } from "@/components/UserManagement";
 import { LoginForm } from "@/components/LoginForm";
 import { Navbar } from "@/components/Navbar";
 import { AppSidebar } from "@/components/Sidebar";
+import { HeadquartersDashboard } from "@/components/HeadquartersDashboard";
+import { FacilityManagement } from "@/components/FacilityManagement";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -46,7 +49,16 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 function MainLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentFacility, setCurrentFacility] = useState('東京本院');
+  const { facility, company, isLoading: tenantLoading } = useTenant();
+  const isHeadquarters = useIsHeadquarters();
+  const [currentFacility, setCurrentFacility] = useState(facility?.name || '東京本院');
+
+  // Update current facility when tenant info changes
+  useEffect(() => {
+    if (facility) {
+      setCurrentFacility(facility.name);
+    }
+  }, [facility]);
 
   const handleLogin = async (email: string, password: string) => {
     try {
@@ -104,6 +116,18 @@ function MainLayout() {
     }
   };
 
+  // Show loading while tenant info is being loaded
+  if (tenantLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">システムを読み込んでいます...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -134,17 +158,33 @@ function MainLayout() {
                 currentFacility={currentFacility}
                 onFacilityChange={handleFacilityChange}
                 userName="田中 花子"
+                userRole={isHeadquarters ? '企業管理者' : '管理者'}
                 onLogout={handleLogout}
               />
             </div>
           </header>
           <main className="flex-1 overflow-auto">
             <Switch>
-              <Route path="/" component={Dashboard} />
-              <Route path="/dashboard" component={Dashboard} />
-              <Route path="/patients" component={PatientManagement} />
-              <Route path="/records" component={NursingRecords} />
-              <Route path="/users" component={UserManagement} />
+              {/* Headquarters-specific routes */}
+              {isHeadquarters ? (
+                <>
+                  <Route path="/" component={HeadquartersDashboard} />
+                  <Route path="/dashboard" component={HeadquartersDashboard} />
+                  <Route path="/facilities" component={FacilityManagement} />
+                  <Route path="/patients" component={PatientManagement} />
+                  <Route path="/records" component={NursingRecords} />
+                  <Route path="/users" component={UserManagement} />
+                </>
+              ) : (
+                /* Facility-specific routes */
+                <>
+                  <Route path="/" component={Dashboard} />
+                  <Route path="/dashboard" component={Dashboard} />
+                  <Route path="/patients" component={PatientManagement} />
+                  <Route path="/records" component={NursingRecords} />
+                  <Route path="/users" component={UserManagement} />
+                </>
+              )}
               <Route component={NotFound} />
             </Switch>
           </main>
@@ -159,8 +199,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ThemeProvider>
-          <MainLayout />
-          <Toaster />
+          <TenantProvider>
+            <MainLayout />
+            <Toaster />
+          </TenantProvider>
         </ThemeProvider>
       </TooltipProvider>
     </QueryClientProvider>
