@@ -60,9 +60,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   const origin = req.get('Origin') || req.get('Referer');
   const host = req.get('Host');
-  
+
   if (!origin) {
     return res.status(403).json({ error: 'CSRF: Missing Origin header' });
+  }
+
+  if (!host) {
+    return res.status(400).json({ error: 'Missing Host header' });
   }
   
   // Parse origin/referer to get hostname

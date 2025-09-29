@@ -1,15 +1,17 @@
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { 
-  Plus, 
-  Search, 
-  Edit, 
-  FileText, 
+import { PatientForm } from "@/components/PatientForm"
+import {
+  Plus,
+  Search,
+  Edit,
+  FileText,
   Calendar,
   Phone,
   MapPin,
@@ -17,88 +19,32 @@ import {
   Filter
 } from "lucide-react"
 
-interface Patient {
-  id: string
-  name: string
-  age: number
-  gender: 'male' | 'female'
-  address: string
-  phone: string
-  condition: string
-  status: 'active' | 'inactive' | 'critical'
-  lastVisit: string
-  nextVisit: string
-  assignedNurse: string
+import type { Patient, PaginatedResult } from "@shared/schema"
+
+// Helper function to calculate age from date of birth
+const calculateAge = (dateOfBirth: string): number => {
+  const today = new Date()
+  const birthDate = new Date(dateOfBirth)
+  let age = today.getFullYear() - birthDate.getFullYear()
+  const monthDiff = today.getMonth() - birthDate.getMonth()
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--
+  }
+
+  return age
 }
 
-// TODO: Remove mock data when implementing real backend
-const mockPatients: Patient[] = [
-  {
-    id: '1',
-    name: '佐藤 太郎',
-    age: 75,
-    gender: 'male',
-    address: '東京都渋谷区神宮前1-1-1',
-    phone: '03-1234-5678',
-    condition: '糖尿病・高血圧',
-    status: 'active',
-    lastVisit: '2024-09-25',
-    nextVisit: '2024-09-28',
-    assignedNurse: '田中 花子'
-  },
-  {
-    id: '2',
-    name: '鈴木 花子',
-    age: 68,
-    gender: 'female',
-    address: '東京都世田谷区三軍茶屋2-2-2',
-    phone: '03-2345-6789',
-    condition: '脏器病・呼吸器疾患',
-    status: 'critical',
-    lastVisit: '2024-09-24',
-    nextVisit: '2024-09-26',
-    assignedNurse: '山田 次郎'
-  },
-  {
-    id: '3',
-    name: '田中 明',
-    age: 82,
-    gender: 'male',
-    address: '東京都新宿区歌舞伎町3-3-3',
-    phone: '03-3456-7890',
-    condition: '認知症・歯行障害',
-    status: 'active',
-    lastVisit: '2024-09-23',
-    nextVisit: '2024-09-30',
-    assignedNurse: '田中 花子'
-  },
-  {
-    id: '4',
-    name: '伊藤 みどり',
-    age: 59,
-    gender: 'female',
-    address: '東京都港区青山4-4-4',
-    phone: '03-4567-8901',
-    condition: 'がん术後フォロー',
-    status: 'active',
-    lastVisit: '2024-09-22',
-    nextVisit: '2024-09-29',
-    assignedNurse: '山田 次郎'
-  },
-  {
-    id: '5',
-    name: '山田 一郎',
-    age: 91,
-    gender: 'male',
-    address: '東京都中央区日本橋5-5-5',
-    phone: '03-5678-9012',
-    condition: '老人介護・寝たきり',
-    status: 'inactive',
-    lastVisit: '2024-09-20',
-    nextVisit: '2024-10-05',
-    assignedNurse: '田中 花子'
-  }
-]
+// Helper function to get full name
+const getFullName = (patient: Patient): string => {
+  return `${patient.lastName} ${patient.firstName}`
+}
+
+// Helper function to get patient status
+const getPatientStatus = (patient: Patient): 'active' | 'inactive' | 'critical' => {
+  if (!patient.isActive) return 'inactive'
+  return 'active' // You can add logic here to determine critical status based on medical conditions
+}
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -119,39 +65,94 @@ const getStatusText = (status: string) => {
 }
 
 export function PatientManagement() {
-  const [patients] = useState(mockPatients)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'critical' | 'inactive'>('all')
+  const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+
+  // Fetch patients from API
+  const { data: patientsData, isLoading, error } = useQuery<PaginatedResult<Patient>>({
+    queryKey: ["patients"],
+    queryFn: async () => {
+      const response = await fetch("/api/patients")
+      if (!response.ok) {
+        throw new Error("患者データの取得に失敗しました")
+      }
+      return response.json()
+    },
+  })
+
+  const patients = patientsData?.data || []
 
   const filteredPatients = patients.filter(patient => {
-    const matchesSearch = patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         patient.condition.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || patient.status === statusFilter
+    const fullName = getFullName(patient)
+    const medicalHistory = patient.medicalHistory || ''
+    const matchesSearch = fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         medicalHistory.toLowerCase().includes(searchTerm.toLowerCase())
+    const patientStatus = getPatientStatus(patient)
+    const matchesStatus = statusFilter === 'all' || patientStatus === statusFilter
     return matchesSearch && matchesStatus
   })
 
-  const activePatients = patients.filter(p => p.status === 'active').length
-  const criticalPatients = patients.filter(p => p.status === 'critical').length
-  const inactivePatients = patients.filter(p => p.status === 'inactive').length
+  const activePatients = patients.filter(p => getPatientStatus(p) === 'active').length
+  const criticalPatients = patients.filter(p => getPatientStatus(p) === 'critical').length
+  const inactivePatients = patients.filter(p => getPatientStatus(p) === 'inactive').length
 
   const handleAddPatient = () => {
-    console.log('新規患者登録クリック')
-    alert('新規患者登録画面を開きます')
+    setSelectedPatient(null)
+    setFormMode('create')
+    setIsPatientFormOpen(true)
   }
 
   const handleEditPatient = (patient: Patient) => {
-    console.log('患者編集クリック:', patient.name)
-    alert(`${patient.name}さんの編集画面を開きます`)
+    setSelectedPatient(patient)
+    setFormMode('edit')
+    setIsPatientFormOpen(true)
+  }
+
+  const handleCloseForm = () => {
+    setIsPatientFormOpen(false)
+    setSelectedPatient(null)
   }
 
   const handleViewRecords = (patient: Patient) => {
-    console.log('看護記録クリック:', patient.name)
-    alert(`${patient.name}さんの看護記録を表示します`)
+    const fullName = getFullName(patient)
+    console.log('看護記録クリック:', fullName)
+    alert(`${fullName}さんの看護記録を表示します`)
   }
 
   const handleViewSchedule = (patient: Patient) => {
-    console.log('スケジュールクリック:', patient.name)
-    alert(`${patient.name}さんのスケジュールを表示します`)
+    const fullName = getFullName(patient)
+    console.log('スケジュールクリック:', fullName)
+    alert(`${fullName}さんのスケジュールを表示します`)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
+            <p className="text-muted-foreground">患者データを読み込んでいます...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <User className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+            <p className="text-muted-foreground mb-2">患者データの取得に失敗しました</p>
+            <p className="text-sm text-red-500">{error.message}</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -282,36 +283,36 @@ export function PatientManagement() {
                 <div className="sm:hidden space-y-3">
                   <div className="flex items-start gap-3">
                     <Avatar className="h-10 w-10 flex-shrink-0">
-                      <AvatarFallback className="text-sm">{patient.name.charAt(0)}</AvatarFallback>
+                      <AvatarFallback className="text-sm">{getFullName(patient).charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <h3 className="font-semibold text-base truncate">{patient.name}</h3>
-                        <Badge className={`${getStatusColor(patient.status)} text-xs flex-shrink-0`}>
-                          {getStatusText(patient.status)}
+                        <h3 className="font-semibold text-base truncate">{getFullName(patient)}</h3>
+                        <Badge className={`${getStatusColor(getPatientStatus(patient))} text-xs flex-shrink-0`}>
+                          {getStatusText(getPatientStatus(patient))}
                         </Badge>
                       </div>
                       <div className="text-xs text-muted-foreground space-y-1">
                         <div className="flex items-center gap-1">
                           <User className="h-3 w-3 flex-shrink-0" />
-                          <span>{patient.age}歳・{patient.gender === 'male' ? '男性' : '女性'}</span>
+                          <span>{calculateAge(patient.dateOfBirth)}歳・{patient.gender === 'male' ? '男性' : patient.gender === 'female' ? '女性' : 'その他'}</span>
                         </div>
                         <div className="flex items-start gap-1">
                           <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-1">{patient.address}</span>
+                          <span className="line-clamp-1">{patient.address || '住所未登録'}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Phone className="h-3 w-3 flex-shrink-0" />
-                          <span>{patient.phone}</span>
+                          <span>{patient.phone || '電話番号未登録'}</span>
                         </div>
-                        <p className="line-clamp-1">病名: {patient.condition}</p>
-                        <p className="line-clamp-1">担当: {patient.assignedNurse}</p>
+                        <p className="line-clamp-1">既往歴: {patient.medicalHistory || '未記録'}</p>
+                        <p className="line-clamp-1">患者番号: {patient.patientNumber}</p>
                       </div>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground px-1">
-                    <p>前回: {new Date(patient.lastVisit).toLocaleDateString('ja-JP')}</p>
-                    <p>次回: {new Date(patient.nextVisit).toLocaleDateString('ja-JP')}</p>
+                    <p>登録日: {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString('ja-JP') : '未記録'}</p>
+                    <p>更新日: {patient.updatedAt ? new Date(patient.updatedAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <Button 
@@ -352,38 +353,38 @@ export function PatientManagement() {
                 <div className="hidden sm:flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
                     <Avatar className="h-12 w-12">
-                      <AvatarFallback>{patient.name.charAt(0)}</AvatarFallback>
+                      <AvatarFallback>{getFullName(patient).charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-lg">{patient.name}</h3>
-                        <Badge className={getStatusColor(patient.status)}>
-                          {getStatusText(patient.status)}
+                        <h3 className="font-semibold text-lg">{getFullName(patient)}</h3>
+                        <Badge className={getStatusColor(getPatientStatus(patient))}>
+                          {getStatusText(getPatientStatus(patient))}
                         </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground space-y-1">
                         <div className="flex items-center gap-2">
                           <User className="h-3 w-3" />
-                          {patient.age}歳 ・ {patient.gender === 'male' ? '男性' : '女性'}
+                          {calculateAge(patient.dateOfBirth)}歳 ・ {patient.gender === 'male' ? '男性' : patient.gender === 'female' ? '女性' : 'その他'}
                         </div>
                         <div className="flex items-center gap-2">
                           <MapPin className="h-3 w-3" />
-                          {patient.address}
+                          {patient.address || '住所未登録'}
                         </div>
                         <div className="flex items-center gap-2">
                           <Phone className="h-3 w-3" />
-                          {patient.phone}
+                          {patient.phone || '電話番号未登録'}
                         </div>
-                        <p>病名: {patient.condition}</p>
-                        <p>担当看護師: {patient.assignedNurse}</p>
+                        <p>既往歴: {patient.medicalHistory || '未記録'}</p>
+                        <p>患者番号: {patient.patientNumber}</p>
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex flex-col md:items-end gap-2 flex-shrink-0">
                     <div className="text-sm text-muted-foreground">
-                      <p>前回訪問: {new Date(patient.lastVisit).toLocaleDateString('ja-JP')}</p>
-                      <p>次回予定: {new Date(patient.nextVisit).toLocaleDateString('ja-JP')}</p>
+                      <p>登録日: {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString('ja-JP') : '未記録'}</p>
+                      <p>更新日: {patient.updatedAt ? new Date(patient.updatedAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                     </div>
                     <div className="flex gap-2">
                       <Button 
@@ -428,6 +429,14 @@ export function PatientManagement() {
           )}
         </CardContent>
       </Card>
+
+      {/* Patient Form Dialog */}
+      <PatientForm
+        isOpen={isPatientFormOpen}
+        onClose={handleCloseForm}
+        patient={selectedPatient}
+        mode={formMode}
+      />
     </div>
   )
 }
