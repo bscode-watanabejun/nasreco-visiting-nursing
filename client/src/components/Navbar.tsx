@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { Bell, Settings, LogOut, Building2, ChevronDown } from "lucide-react"
+import { Bell, Settings, LogOut, Building2, ChevronDown, Heart } from "lucide-react"
 
 interface NavbarProps {
   currentFacility?: string
@@ -29,20 +29,18 @@ export function Navbar({
   const [notificationCount] = useState(3)
 
   return (
-    <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-      <div className="flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4 lg:px-6">
-        {/* Logo and App Name */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded bg-primary flex items-center justify-center flex-shrink-0">
-              <span className="text-primary-foreground font-bold text-xs sm:text-sm">N</span>
-            </div>
-            <div className="min-w-0">
-              <span className="font-bold text-sm sm:text-lg truncate block">
-                <span className="sm:hidden">NASRECO</span>
-                <span className="hidden sm:inline">NASRECO 訪問看護</span>
-              </span>
-            </div>
+    <nav className="flex-1">
+      <div className="flex h-14 sm:h-16 items-center px-3 sm:px-4 lg:px-6 justify-between">
+        {/* Logo and App Name - 左寄せ */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
+            <Heart className="h-4 w-4 sm:h-5 sm:w-5 text-white fill-none stroke-white stroke-2" />
+          </div>
+          <div className="min-w-0">
+            <span className="font-bold text-sm sm:text-lg truncate block">
+              <span className="sm:hidden">NASRECO</span>
+              <span className="hidden sm:inline">NASRECO 訪問看護</span>
+            </span>
           </div>
         </div>
 

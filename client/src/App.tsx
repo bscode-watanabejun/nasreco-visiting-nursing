@@ -127,14 +127,16 @@ function MainLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1">
-          <header className="flex items-center justify-between p-2 border-b bg-background">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <Navbar 
-              currentFacility={currentFacility}
-              onFacilityChange={handleFacilityChange}
-              userName="田中 花子"
-              onLogout={handleLogout}
-            />
+          <header className="border-b bg-background">
+            <div className="flex items-center">
+              <SidebarTrigger data-testid="button-sidebar-toggle" className="ml-2" />
+              <Navbar
+                currentFacility={currentFacility}
+                onFacilityChange={handleFacilityChange}
+                userName="田中 花子"
+                onLogout={handleLogout}
+              />
+            </div>
           </header>
           <main className="flex-1 overflow-auto">
             <Switch>
