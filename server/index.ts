@@ -4,6 +4,7 @@ import ConnectPgSimple from "connect-pg-simple";
 import { Client } from "pg";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { subdomainMiddleware } from "./middleware/subdomain";
 
 const app = express();
 
@@ -45,6 +46,9 @@ app.use(session({
     sameSite: 'lax'
   }
 }));
+
+// Subdomain resolution middleware (before CSRF and other middlewares)
+app.use(subdomainMiddleware);
 
 // Modern CSRF protection middleware
 app.use((req: Request, res: Response, next: NextFunction) => {

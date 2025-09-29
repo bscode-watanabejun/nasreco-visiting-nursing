@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
+import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import { 
   insertUserSchema, 
   insertPatientSchema, 
@@ -9,6 +10,7 @@ import {
   insertNursingRecordSchema, 
   insertMedicationSchema,
   insertFacilitySchema,
+  insertCompanySchema,
   updateUserSelfSchema,
   updateUserAdminSchema,
   updatePatientSchema,
@@ -26,9 +28,14 @@ declare module "express-session" {
   }
 }
 
-// Extend Express Request to include user info
+// Extend Express Request to include user info and hierarchical access
 interface AuthenticatedRequest extends Request {
   user?: any;
+  accessibleFacilities?: string[];
+  isCorporateAdmin?: boolean;
+  company?: any;
+  facility?: any;
+  isHeadquarters?: boolean;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -118,50 +125,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ========== Middleware for authenticated routes ==========
-  const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ error: "認証が必要です" });
+  // ========== Enhanced Middleware for authenticated routes ==========
+  // Use hierarchical access control middleware from separate file
+
+  // Additional middleware to check subdomain access
+  app.use('/api', requireAuth);
+  app.use('/api', checkSubdomainAccess);
+
+  // ========== Companies Routes (Corporate Admin only) ==========
+
+  // Get companies (corporate admin only)
+  app.get("/api/companies", requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const companies = await storage.getCompanies();
+      res.json(companies);
+    } catch (error) {
+      console.error("Get companies error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
-    
-    const user = await storage.getUser(req.session.userId);
-    if (!user || !user.isActive) {
-      return res.status(401).json({ error: "認証が無効です" });
+  });
+
+  // Create company (corporate admin only)
+  app.post("/api/companies", requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const validatedData = insertCompanySchema.parse(req.body);
+      const company = await storage.createCompany(validatedData);
+      res.status(201).json(company);
+    } catch (error) {
+      console.error("Create company error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
-    
-    req.user = user;
-    next();
-  };
+  });
 
   // ========== Facilities Routes ==========
   
-  // Get facilities (admin only)
-  app.get("/api/facilities", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  // Get facilities (hierarchical access)
+  app.get("/api/facilities", async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user.role !== 'admin') {
+      let facilities: any[] = [];
+
+      if (req.isCorporateAdmin) {
+        // Corporate admin can see all facilities in their company
+        const userFacility = await storage.getFacility(req.user.facilityId);
+        if (userFacility) {
+          facilities = await storage.getFacilitiesByCompany(userFacility.companyId);
+        }
+      } else if (['admin', 'manager'].includes(req.user.role)) {
+        // Facility admin/manager can see their own facility
+        const facility = await storage.getFacility(req.user.facilityId);
+        facilities = facility ? [facility] : [];
+      } else {
         return res.status(403).json({ error: "権限がありません" });
       }
-      
-      const facilities = await storage.getFacilities();
+
       res.json(facilities);
-      
+
     } catch (error) {
       console.error("Get facilities error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
 
-  // Create facility (admin only)
-  app.post("/api/facilities", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  // Create facility (corporate admin only)
+  app.post("/api/facilities", requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: "権限がありません" });
-      }
-      
       const validatedData = insertFacilitySchema.parse(req.body);
-      const facility = await storage.createFacility(validatedData);
+
+      // Ensure companyId matches user's company
+      const userFacility = await storage.getFacility(req.user.facilityId);
+      if (!userFacility) {
+        return res.status(400).json({ error: "ユーザーの施設情報が見つかりません" });
+      }
+
+      const facilityToCreate = {
+        ...validatedData,
+        companyId: userFacility.companyId
+      };
+
+      const facility = await storage.createFacility(facilityToCreate);
       res.status(201).json(facility);
-      
+
     } catch (error) {
       console.error("Create facility error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });

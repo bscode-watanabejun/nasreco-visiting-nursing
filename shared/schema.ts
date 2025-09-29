@@ -4,15 +4,17 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Enums for various status fields
-export const userRoleEnum = pgEnum("user_role", ["admin", "nurse", "manager"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "nurse", "manager", "corporate_admin"]);
+export const userAccessLevelEnum = pgEnum("user_access_level", ["facility", "corporate"]);
 export const genderEnum = pgEnum("gender", ["male", "female", "other"]);
 export const recordTypeEnum = pgEnum("record_type", ["vital_signs", "medication", "wound_care", "general_care", "assessment"]);
 export const visitStatusEnum = pgEnum("visit_status", ["scheduled", "completed", "cancelled", "no_show"]);
 
-// ========== Facilities Table (Multi-tenant support) ==========
-export const facilities = pgTable("facilities", {
+// ========== Companies Table (Hierarchical Multi-tenant support) ==========
+export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  domain: text("domain").notNull().unique(), // e.g., "nasreco.com"
   address: text("address"),
   phone: text("phone"),
   email: text("email"),
@@ -20,7 +22,21 @@ export const facilities = pgTable("facilities", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-// ========== Users Table (Enhanced with facility association) ==========
+// ========== Facilities Table (Enhanced Multi-tenant support) ==========
+export const facilities = pgTable("facilities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(), // e.g., "tokyo-honin", "sakura-station"
+  isHeadquarters: boolean("is_headquarters").notNull().default(false),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Users Table (Enhanced with hierarchical access) ==========
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   facilityId: varchar("facility_id").notNull().references(() => facilities.id),
@@ -29,6 +45,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   fullName: text("full_name").notNull(),
   role: userRoleEnum("role").notNull().default("nurse"),
+  accessLevel: userAccessLevelEnum("access_level").notNull().default("facility"),
   licenseNumber: text("license_number"),
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
@@ -125,6 +142,12 @@ export const medications = pgTable("medications", {
 });
 
 // ========== Insert Schemas ==========
+export const insertCompanySchema = createInsertSchema(companies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertFacilitySchema = createInsertSchema(facilities).omit({
   id: true,
   createdAt: true,
@@ -196,6 +219,9 @@ export const updateMedicationSchema = insertMedicationSchema.omit({
 }).partial();
 
 // ========== Type Exports ==========
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Company = typeof companies.$inferSelect;
+
 export type InsertFacility = z.infer<typeof insertFacilitySchema>;
 export type Facility = typeof facilities.$inferSelect;
 

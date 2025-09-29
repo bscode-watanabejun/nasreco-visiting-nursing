@@ -15,7 +15,7 @@ export interface CreateUserRequest {
   password: string;
   email: string;
   fullName: string;
-  role: 'admin' | 'nurse' | 'manager';
+  role: 'admin' | 'nurse' | 'manager' | 'corporate_admin';
   licenseNumber?: string;
   phone?: string;
   isActive?: boolean;
@@ -26,7 +26,7 @@ export interface UpdateUserRequest {
   password?: string;
   email?: string;
   fullName?: string;
-  role?: 'admin' | 'nurse' | 'manager';
+  role?: 'admin' | 'nurse' | 'manager' | 'corporate_admin';
   licenseNumber?: string;
   phone?: string;
   isActive?: boolean;

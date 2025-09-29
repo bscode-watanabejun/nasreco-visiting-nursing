@@ -1,12 +1,13 @@
-import { 
+import {
   type User, type InsertUser,
+  type Company, type InsertCompany,
   type Facility, type InsertFacility,
   type Patient, type InsertPatient,
   type Visit, type InsertVisit,
   type NursingRecord, type InsertNursingRecord,
   type Medication, type InsertMedication,
   type PaginationOptions, type PaginatedResult,
-  users, facilities, patients, visits, nursingRecords, medications
+  users, companies, facilities, patients, visits, nursingRecords, medications
 } from "@shared/schema";
 import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./db";
@@ -14,9 +15,20 @@ import { db } from "./db";
 // Storage interface for all visiting nursing system operations
 export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
+
+  // ========== Companies ==========
+  getCompany(id: string): Promise<Company | undefined>;
+  getCompanyByDomain(domain: string): Promise<Company | undefined>;
+  getCompanies(): Promise<Company[]>;
+  createCompany(company: InsertCompany): Promise<Company>;
+  updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
+  deleteCompany(id: string): Promise<boolean>;
+
   // ========== Facilities ==========
   getFacility(id: string): Promise<Facility | undefined>;
+  getFacilityBySlug(companyId: string, slug: string): Promise<Facility | undefined>;
   getFacilities(): Promise<Facility[]>;
+  getFacilitiesByCompany(companyId: string): Promise<Facility[]>;
   createFacility(facility: InsertFacility): Promise<Facility>;
   updateFacility(id: string, facility: Partial<InsertFacility>): Promise<Facility | undefined>;
   deleteFacility(id: string): Promise<boolean>;
@@ -80,14 +92,61 @@ export interface IStorage {
 
 // PostgreSQL implementation using Drizzle ORM
 export class PostgreSQLStorage implements IStorage {
+  // ========== Companies ==========
+  async getCompany(id: string): Promise<Company | undefined> {
+    const result = await db.select().from(companies).where(eq(companies.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getCompanyByDomain(domain: string): Promise<Company | undefined> {
+    const result = await db.select().from(companies).where(eq(companies.domain, domain)).limit(1);
+    return result[0];
+  }
+
+  async getCompanies(): Promise<Company[]> {
+    return await db.select().from(companies);
+  }
+
+  async createCompany(company: InsertCompany): Promise<Company> {
+    const result = await db.insert(companies).values(company).returning();
+    return result[0];
+  }
+
+  async updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined> {
+    const result = await db
+      .update(companies)
+      .set({ ...company, updatedAt: new Date() })
+      .where(eq(companies.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteCompany(id: string): Promise<boolean> {
+    const result = await db.delete(companies).where(eq(companies.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
   // ========== Facilities ==========
   async getFacility(id: string): Promise<Facility | undefined> {
     const result = await db.select().from(facilities).where(eq(facilities.id, id)).limit(1);
     return result[0];
   }
 
+  async getFacilityBySlug(companyId: string, slug: string): Promise<Facility | undefined> {
+    const result = await db
+      .select()
+      .from(facilities)
+      .where(and(eq(facilities.companyId, companyId), eq(facilities.slug, slug)))
+      .limit(1);
+    return result[0];
+  }
+
   async getFacilities(): Promise<Facility[]> {
     return await db.select().from(facilities);
+  }
+
+  async getFacilitiesByCompany(companyId: string): Promise<Facility[]> {
+    return await db.select().from(facilities).where(eq(facilities.companyId, companyId));
   }
 
   async createFacility(facility: InsertFacility): Promise<Facility> {

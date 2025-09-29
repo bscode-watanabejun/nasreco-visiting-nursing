@@ -30,7 +30,7 @@ interface DisplayUser {
   name: string
   email: string
   phone: string
-  role: 'admin' | 'nurse' | 'manager'
+  role: 'admin' | 'nurse' | 'manager' | 'corporate_admin'
   status: 'active' | 'inactive'
   facility: string
   createdDate: string
@@ -96,7 +96,7 @@ const getStatusText = (status: string) => {
 export function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'manager' | 'nurse'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'manager' | 'nurse' | 'corporate_admin'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [selectedUser, setSelectedUser] = useState<DisplayUser | null>(null)
   const [isCreating, setIsCreating] = useState(false)
