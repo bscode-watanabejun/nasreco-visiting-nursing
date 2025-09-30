@@ -9,6 +9,7 @@ export const userAccessLevelEnum = pgEnum("user_access_level", ["facility", "cor
 export const genderEnum = pgEnum("gender", ["male", "female", "other"]);
 export const recordTypeEnum = pgEnum("record_type", ["vital_signs", "medication", "wound_care", "general_care", "assessment"]);
 export const visitStatusEnum = pgEnum("visit_status", ["scheduled", "completed", "cancelled", "no_show"]);
+export const recordStatusEnum = pgEnum("record_status", ["draft", "completed", "reviewed"]);
 
 // ========== Companies Table (Hierarchical Multi-tenant support) ==========
 export const companies = pgTable("companies", {
@@ -103,7 +104,14 @@ export const nursingRecords = pgTable("nursing_records", {
   visitId: varchar("visit_id").references(() => visits.id),
   recordType: recordTypeEnum("record_type").notNull(),
   recordDate: timestamp("record_date", { withTimezone: true }).notNull(),
-  
+
+  // Record status
+  status: recordStatusEnum("status").notNull().default("draft"),
+
+  // Visit information
+  visitTime: timestamp("visit_time", { withTimezone: true }),
+  visitTypeCategory: text("visit_type_category"), // "定期訪問" or "緊急訪問"
+
   // Vital Signs (if applicable)
   bloodPressureSystolic: integer("blood_pressure_systolic"),
   bloodPressureDiastolic: integer("blood_pressure_diastolic"),
@@ -111,14 +119,17 @@ export const nursingRecords = pgTable("nursing_records", {
   temperature: decimal("temperature", { precision: 4, scale: 1 }),
   respiratoryRate: integer("respiratory_rate"),
   oxygenSaturation: integer("oxygen_saturation"),
-  
+
   // General content
   title: text("title").notNull(),
   content: text("content").notNull(),
   observations: text("observations"),
   interventions: text("interventions"),
   evaluation: text("evaluation"),
-  
+
+  // Patient and family response
+  patientFamilyResponse: text("patient_family_response"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -175,8 +186,13 @@ export const insertVisitSchema = createInsertSchema(visits).omit({
 
 export const insertNursingRecordSchema = createInsertSchema(nursingRecords).omit({
   id: true,
+  facilityId: true, // Set by server from user session
+  nurseId: true,    // Set by server from user session
   createdAt: true,
   updatedAt: true,
+}).extend({
+  recordDate: z.coerce.date(),
+  visitTime: z.coerce.date().optional().nullable(),
 });
 
 export const insertMedicationSchema = createInsertSchema(medications).omit({
@@ -211,13 +227,11 @@ export const updateVisitSchema = insertVisitSchema.omit({
   facilityId: true,
 }).partial();
 
-export const updateNursingRecordSchema = insertNursingRecordSchema.omit({
-  facilityId: true,
-}).partial();
-
 export const updateMedicationSchema = insertMedicationSchema.omit({
   facilityId: true,
 }).partial();
+
+export const updateNursingRecordSchema = insertNursingRecordSchema.partial();
 
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;

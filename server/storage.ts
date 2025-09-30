@@ -64,7 +64,7 @@ export interface IStorage {
   getNursingRecordsByFacility(facilityId: string): Promise<NursingRecord[]>;
   getNursingRecordsByPatient(patientId: string): Promise<NursingRecord[]>;
   getNursingRecordsByNurse(nurseId: string): Promise<NursingRecord[]>;
-  createNursingRecord(record: InsertNursingRecord): Promise<NursingRecord>;
+  createNursingRecord(record: Omit<InsertNursingRecord, 'facilityId' | 'nurseId'>, facilityId: string, nurseId: string): Promise<NursingRecord>;
   updateNursingRecord(id: string, record: Partial<InsertNursingRecord>): Promise<NursingRecord | undefined>;
   deleteNursingRecord(id: string): Promise<boolean>;
 
@@ -319,8 +319,9 @@ export class PostgreSQLStorage implements IStorage {
       .orderBy(desc(nursingRecords.recordDate));
   }
 
-  async createNursingRecord(record: InsertNursingRecord): Promise<NursingRecord> {
-    const result = await db.insert(nursingRecords).values(record).returning();
+  async createNursingRecord(record: Omit<InsertNursingRecord, 'facilityId' | 'nurseId'>, facilityId: string, nurseId: string): Promise<NursingRecord> {
+    const fullRecord = { ...record, facilityId, nurseId };
+    const result = await db.insert(nursingRecords).values(fullRecord).returning();
     return result[0];
   }
 

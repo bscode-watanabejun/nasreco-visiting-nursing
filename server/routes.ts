@@ -579,14 +579,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const recordData = insertNursingRecordSchema.parse(req.body);
       
-      // Set facility ID and nurse ID from current user
-      const recordToCreate = {
-        ...recordData,
-        facilityId: req.user.facilityId,
-        nurseId: req.user.id
-      };
-      
-      const record = await storage.createNursingRecord(recordToCreate);
+      // Pass facility ID and nurse ID separately
+      const record = await storage.createNursingRecord(recordData, req.user.facilityId, req.user.id);
       res.status(201).json(record);
       
     } catch (error) {
@@ -608,19 +602,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Validate update data with Zod schema
       const validatedData = updateNursingRecordSchema.parse(req.body);
-      
+
       // Cross-tenant reference validation
       if (validatedData.patientId) {
         const patient = await storage.getPatient(validatedData.patientId);
         if (!patient || patient.facilityId !== req.user.facilityId) {
           return res.status(400).json({ error: "指定された患者が見つかりません" });
-        }
-      }
-      
-      if (validatedData.nurseId) {
-        const nurse = await storage.getUser(validatedData.nurseId);
-        if (!nurse || nurse.facilityId !== req.user.facilityId) {
-          return res.status(400).json({ error: "指定された看護師が見つかりません" });
         }
       }
       

@@ -11,7 +11,11 @@
       "Bash(git add:*)",
       "Bash(git reset:*)",
       "Bash(DATABASE_URL=$DATABASE_URL npx drizzle-kit push)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(npm run:*)",
+      "Bash(npx drizzle-kit migrate:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(printf \"No, add the constraint without truncating the table\\n\\n\\n\\n\\n\")"
     ],
     "deny": [],
     "ask": []
