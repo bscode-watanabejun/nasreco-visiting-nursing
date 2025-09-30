@@ -18,6 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 
 import type { Patient, InsertPatient, UpdatePatient } from "@shared/schema"
@@ -43,6 +44,7 @@ const patientFormSchema = z.object({
   currentMedications: z.string().optional(),
   careNotes: z.string().optional(),
   isActive: z.boolean().default(true),
+  isCritical: z.boolean().default(false),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -106,6 +108,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       currentMedications: "",
       careNotes: "",
       isActive: true,
+      isCritical: false,
     },
   })
 
@@ -131,6 +134,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           currentMedications: patient.currentMedications || "",
           careNotes: patient.careNotes || "",
           isActive: patient.isActive ?? true,
+          isCritical: patient.isCritical ?? false,
         })
       } else if (mode === 'create') {
         console.log("Resetting form for create mode")
@@ -151,6 +155,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           currentMedications: "",
           careNotes: "",
           isActive: true,
+          isCritical: false,
         })
       }
     }
@@ -580,6 +585,32 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                     </FormItem>
                   )}
                 />
+
+                <Separator className="my-4" />
+
+                <div className="flex items-center justify-between space-x-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base font-semibold">重要患者設定</FormLabel>
+                    <p className="text-sm text-muted-foreground">
+                      特別な配慮が必要な患者として設定します
+                    </p>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="isCritical"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </CardContent>
             </Card>
 

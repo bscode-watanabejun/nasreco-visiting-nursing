@@ -72,6 +72,7 @@ export const patients = pgTable("patients", {
   currentMedications: text("current_medications"),
   careNotes: text("care_notes"),
   isActive: boolean("is_active").notNull().default(true),
+  isCritical: boolean("is_critical").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

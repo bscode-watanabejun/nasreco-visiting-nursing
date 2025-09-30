@@ -43,7 +43,8 @@ const getFullName = (patient: Patient): string => {
 // Helper function to get patient status
 const getPatientStatus = (patient: Patient): 'active' | 'inactive' | 'critical' => {
   if (!patient.isActive) return 'inactive'
-  return 'active' // You can add logic here to determine critical status based on medical conditions
+  if (patient.isCritical) return 'critical'
+  return 'active'
 }
 
 const getStatusColor = (status: string) => {
