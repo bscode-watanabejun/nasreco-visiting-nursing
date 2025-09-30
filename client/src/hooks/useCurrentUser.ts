@@ -11,6 +11,13 @@ interface CurrentUser {
   phone: string | null;
   isActive: boolean;
   facilityId: string;
+  facility?: {
+    id: string;
+    name: string;
+    slug: string;
+    isHeadquarters: boolean;
+    companyId: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -21,7 +21,8 @@ import {
   FileText,
   Shield,
   Building2,
-  BarChart3
+  BarChart3,
+  Heart
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
@@ -135,8 +136,8 @@ export function AppSidebar() {
     <Sidebar variant="inset">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-4 py-2">
-          <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">{shouldShowHeadquartersMenu ? 'HQ' : 'N'}</span>
+          <div className="h-8 w-8 rounded-full bg-orange-500 flex items-center justify-center">
+            <Heart className="h-5 w-5 text-white fill-none stroke-white stroke-2" />
           </div>
           <div className="flex flex-col">
             <span className="font-bold text-lg">NASRECO</span>

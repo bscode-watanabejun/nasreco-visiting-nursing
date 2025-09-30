@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, Heart } from "lucide-react"
 
 interface LoginFormProps {
   onLogin?: (email: string, password: string) => void
@@ -66,8 +66,8 @@ export function LoginForm({
       <Card className="w-full max-w-sm sm:max-w-md">
         <CardHeader className="space-y-1 text-center pb-4 sm:pb-6">
           <div className="flex justify-center mb-3 sm:mb-4">
-            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg sm:text-xl">N</span>
+            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-orange-500 flex items-center justify-center">
+              <Heart className="h-6 w-6 sm:h-7 sm:w-7 text-white fill-none stroke-white stroke-2" />
             </div>
           </div>
           <CardTitle className="text-xl sm:text-2xl font-bold">NASRECO 訪問看護</CardTitle>

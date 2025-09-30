@@ -116,9 +116,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "ユーザーが見つかりません" });
       }
 
+      // Get facility information
+      const facility = await storage.getFacility(user.facilityId);
+
       const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
-      
+      res.json({
+        user: {
+          ...userWithoutPassword,
+          facility: facility || null
+        }
+      });
+
     } catch (error) {
       console.error("Get current user error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });

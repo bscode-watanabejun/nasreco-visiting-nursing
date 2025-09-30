@@ -101,34 +101,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const subdomain = extractSubdomain();
 
       if (!subdomain) {
-        // No subdomain - for Replit environment, default to headquarters for corporate admin users
-        // This will be refined based on user role
-        if (window.location.hostname.includes('replit.dev')) {
-          const mockCompany: Company = {
-            id: '1',
-            name: 'NASRECO株式会社',
-            domain: window.location.hostname,
-          };
-
-          const mockFacility: Facility = {
-            id: 'hq-1',
-            companyId: '1',
-            name: '本社',
-            slug: 'headquarters',
-            isHeadquarters: true,
-          };
-
-          setTenantInfo({
-            company: mockCompany,
-            facility: mockFacility,
-            subdomain: 'headquarters',
-            isHeadquarters: true,
-            isLoading: false,
-          });
-          return;
-        }
-
-        // No subdomain - might be main domain
+        // No subdomain - let user role-based detection handle the facility assignment
+        // Don't default to headquarters automatically
         setTenantInfo({
           company: null,
           facility: null,
