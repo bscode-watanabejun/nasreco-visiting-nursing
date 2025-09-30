@@ -182,28 +182,28 @@ export function UserManagement() {
 
   if (isCreating || selectedUser) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-4 md:space-y-6 p-3 sm:p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-xl md:text-2xl lg:text-3xl font-bold tracking-tight">
               {isCreating ? '新規ユーザー作成' : 'ユーザー編集'}
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-sm md:text-base text-muted-foreground">
               {isCreating ? '新しいスタッフアカウントを作成' : `${selectedUser?.name}のアカウント設定`}
             </p>
           </div>
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
             一覧に戻る
           </Button>
         </div>
 
         <Card>
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
               {/* Basic Information */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">基本情報</h3>
-                <div className="space-y-4">
+                <h3 className="text-base md:text-lg font-semibold">基本情報</h3>
+                <div className="space-y-3 md:space-y-4">
                   <div>
                     <Label>氏名 *</Label>
                     <Input
@@ -257,8 +257,8 @@ export function UserManagement() {
 
               {/* Role and Access */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">権限設定</h3>
-                <div className="space-y-4">
+                <h3 className="text-base md:text-lg font-semibold">権限設定</h3>
+                <div className="space-y-3 md:space-y-4">
                   <div>
                     <Label>役職 *</Label>
                     <Select
@@ -308,7 +308,7 @@ export function UserManagement() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-6 pt-6 border-t">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 mt-6 pt-6 border-t">
               <Button variant="outline" onClick={handleCancel} disabled={createUserMutation.isPending || updateUserMutation.isPending}>
                 キャンセル
               </Button>
@@ -329,21 +329,21 @@ export function UserManagement() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 md:space-y-6 p-3 sm:p-4 md:p-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">ユーザー管理</h1>
-          <p className="text-muted-foreground">スタッフアカウントの管理と権限設定</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">ユーザー管理</h1>
+          <p className="text-sm md:text-base text-muted-foreground">スタッフアカウントの管理と権限設定</p>
         </div>
-        <Button onClick={handleCreateNew} data-testid="button-create-user">
+        <Button onClick={handleCreateNew} data-testid="button-create-user" className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
-          新規ユーザー作成
+          <span className="sm:inline">新規ユーザー作成</span>
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">アクティブユーザー</CardTitle>
@@ -391,20 +391,20 @@ export function UserManagement() {
           <CardDescription>登録済みの全スタッフアカウント</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-3">
+            <div className="relative w-full">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="ユーザー名またはメールアドレスで検索..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 w-full"
                 data-testid="input-user-search"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-full">
               <Select value={roleFilter} onValueChange={(value: any) => setRoleFilter(value)}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue placeholder="役職" />
                 </SelectTrigger>
                 <SelectContent>
@@ -415,7 +415,7 @@ export function UserManagement() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue placeholder="ステータス" />
                 </SelectTrigger>
                 <SelectContent>
@@ -449,72 +449,82 @@ export function UserManagement() {
           {!isLoading && !error && (
             <div className="space-y-4">
               {filteredUsers.map((user) => (
-                <div key={user.id} className="border rounded-lg p-4 hover-elevate">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                <div key={user.id} className="border rounded-lg p-3 md:p-4 hover-elevate">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 md:gap-4">
+                    <Avatar className="h-10 w-10 md:h-12 md:w-12 shrink-0">
+                      <AvatarFallback className="text-sm md:text-base">{user.name.charAt(0)}</AvatarFallback>
                     </Avatar>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-lg">{user.name}</h3>
-                        <Badge className={getRoleColor(user.role)}>
+                    <div className="flex-1 space-y-2 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-base md:text-lg truncate">{user.name}</h3>
+                        <Badge className={`${getRoleColor(user.role)} text-xs`}>
                           {getRoleText(user.role)}
                         </Badge>
-                        <Badge className={getStatusColor(user.status)}>
+                        <Badge className={`${getStatusColor(user.status)} text-xs`}>
                           {getStatusText(user.status)}
                         </Badge>
                       </div>
-                      <div className="text-sm text-muted-foreground space-y-1">
+                      <div className="text-xs md:text-sm text-muted-foreground space-y-1">
                         <div className="flex items-center gap-2">
-                          <Mail className="h-3 w-3" />
-                          {user.email}
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{user.email}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-3 w-3" />
-                          {user.phone}
+                        {user.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3 w-3 shrink-0" />
+                            <span>{user.phone}</span>
+                          </div>
+                        )}
+                        <div className="hidden sm:block space-y-1">
+                          <p>所属: {user.facility}</p>
+                          <p>最終ログイン: {new Date(user.lastLogin).toLocaleString('ja-JP')}</p>
                         </div>
-                        <p>所属: {user.facility}</p>
-                        <p>最終ログイン: {new Date(user.lastLogin).toLocaleString('ja-JP')}</p>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
+
+                  <div className="flex flex-wrap gap-2 pt-2 border-t sm:border-0 sm:pt-0">
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => handleEditUser(user)}
                       data-testid={`button-edit-${user.id}`}
+                      className="flex-1 sm:flex-initial text-xs md:text-sm"
                     >
                       <Edit className="mr-1 h-3 w-3" />
-                      編集
+                      <span>編集</span>
                     </Button>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       data-testid={`button-reset-password-${user.id}`}
+                      className="flex-1 sm:flex-initial text-xs md:text-sm"
                     >
                       <Settings className="mr-1 h-3 w-3" />
-                      パスワードリセット
+                      <span className="hidden sm:inline">パスワード</span>
+                      <span className="sm:hidden">PW</span>
+                      <span className="hidden lg:inline">リセット</span>
                     </Button>
                     {user.status === 'active' ? (
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         data-testid={`button-deactivate-${user.id}`}
+                        className="flex-1 sm:flex-initial text-xs md:text-sm"
                       >
                         <UserX className="mr-1 h-3 w-3" />
-                        無効化
+                        <span>無効化</span>
                       </Button>
                     ) : (
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         data-testid={`button-activate-${user.id}`}
+                        className="flex-1 sm:flex-initial text-xs md:text-sm"
                       >
                         <UserCheck className="mr-1 h-3 w-3" />
-                        有効化
+                        <span>有効化</span>
                       </Button>
                     )}
                   </div>
