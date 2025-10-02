@@ -10,6 +10,7 @@ export const genderEnum = pgEnum("gender", ["male", "female", "other"]);
 export const recordTypeEnum = pgEnum("record_type", ["vital_signs", "medication", "wound_care", "general_care", "assessment"]);
 export const visitStatusEnum = pgEnum("visit_status", ["scheduled", "completed", "cancelled", "no_show"]);
 export const recordStatusEnum = pgEnum("record_status", ["draft", "completed", "reviewed"]);
+export const visitStatusRecordEnum = pgEnum("visit_status_record", ["completed", "cancelled", "rescheduled"]);
 
 // ========== Companies Table (Hierarchical Multi-tenant support) ==========
 export const companies = pgTable("companies", {
@@ -111,6 +112,10 @@ export const nursingRecords = pgTable("nursing_records", {
   // Visit information
   visitTime: timestamp("visit_time", { withTimezone: true }),
   visitTypeCategory: text("visit_type_category"), // "定期訪問" or "緊急訪問"
+  visitStatusRecord: visitStatusRecordEnum("visit_status_record"), // 訪問ステータス
+  actualStartTime: timestamp("actual_start_time", { withTimezone: true }), // 実際の開始時間
+  actualEndTime: timestamp("actual_end_time", { withTimezone: true }), // 実際の終了時間
+  isSecondVisit: boolean("is_second_visit").notNull().default(false), // 本日2回目以降の訪問
 
   // Vital Signs (if applicable)
   bloodPressureSystolic: integer("blood_pressure_systolic"),
@@ -193,6 +198,8 @@ export const insertNursingRecordSchema = createInsertSchema(nursingRecords).omit
 }).extend({
   recordDate: z.coerce.date(),
   visitTime: z.coerce.date().optional().nullable(),
+  actualStartTime: z.coerce.date().optional().nullable(),
+  actualEndTime: z.coerce.date().optional().nullable(),
 });
 
 export const insertMedicationSchema = createInsertSchema(medications).omit({

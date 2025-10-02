@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { VisitRecordDialog } from "@/components/VisitRecordDialog"
 import {
   Users,
   Calendar,
@@ -89,9 +90,10 @@ const getStatusText = (status: string) => {
 
 export function Dashboard() {
   const [visits] = useState(mockVisits)
+  const [isVisitRecordDialogOpen, setIsVisitRecordDialogOpen] = useState(false)
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric',
-    month: 'long', 
+    month: 'long',
     day: 'numeric',
     weekday: 'long'
   })
@@ -118,6 +120,7 @@ export function Dashboard() {
             <Button
               className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white border-orange-600"
               data-testid="button-new-record"
+              onClick={() => setIsVisitRecordDialogOpen(true)}
             >
               <Plus className="mr-2 h-4 w-4" />
               新規記録
@@ -158,6 +161,7 @@ export function Dashboard() {
             size="sm"
             className="ml-auto bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5"
             data-testid="button-new-record"
+            onClick={() => setIsVisitRecordDialogOpen(true)}
           >
             <Plus className="mr-1 h-4 w-4" />
             新規記録
@@ -459,6 +463,12 @@ export function Dashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* 訪問記録ダイアログ */}
+      <VisitRecordDialog
+        open={isVisitRecordDialogOpen}
+        onOpenChange={setIsVisitRecordDialogOpen}
+      />
     </div>
   )
 }
