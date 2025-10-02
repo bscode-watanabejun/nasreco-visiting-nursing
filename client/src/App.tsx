@@ -14,6 +14,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { PatientManagement } from "@/components/PatientManagement";
 import { NursingRecords } from "@/components/NursingRecords";
 import { UserManagement } from "@/components/UserManagement";
+import { ScheduleManagement } from "@/components/ScheduleManagement";
 import { LoginForm } from "@/components/LoginForm";
 import { Navbar } from "@/components/Navbar";
 import { AppSidebar } from "@/components/Sidebar";
@@ -213,6 +214,7 @@ function MainLayout() {
                   <Route path="/facilities" component={FacilityManagement} />
                   <Route path="/patients" component={PatientManagement} />
                   <Route path="/records" component={NursingRecords} />
+                  <Route path="/schedule" component={ScheduleManagement} />
                   <Route path="/users" component={UserManagement} />
                 </>
               ) : (
@@ -222,6 +224,7 @@ function MainLayout() {
                   <Route path="/dashboard" component={Dashboard} />
                   <Route path="/patients" component={PatientManagement} />
                   <Route path="/records" component={NursingRecords} />
+                  <Route path="/schedule" component={ScheduleManagement} />
                   <Route path="/users" component={UserManagement} />
                 </>
               )}

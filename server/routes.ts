@@ -3,20 +3,22 @@ import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
-import { 
-  insertUserSchema, 
-  insertPatientSchema, 
-  insertVisitSchema, 
-  insertNursingRecordSchema, 
+import {
+  insertUserSchema,
+  insertPatientSchema,
+  insertVisitSchema,
+  insertNursingRecordSchema,
   insertMedicationSchema,
   insertFacilitySchema,
   insertCompanySchema,
+  insertScheduleSchema,
   updateUserSelfSchema,
   updateUserAdminSchema,
   updatePatientSchema,
   updateVisitSchema,
   updateNursingRecordSchema,
-  updateMedicationSchema
+  updateMedicationSchema,
+  updateScheduleSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -542,8 +544,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Schedules Routes ==========
+
+  // Get schedules
+  app.get("/api/schedules", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.user.facilityId;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      // Optional filters
+      const nurseId = req.query.nurseId as string | undefined;
+      const patientId = req.query.patientId as string | undefined;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+
+      const result = await storage.getSchedules(facilityId, {
+        page,
+        limit,
+        nurseId,
+        patientId,
+        startDate,
+        endDate
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Get schedules error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single schedule
+  app.get("/api/schedules/:id", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const schedule = await storage.getScheduleById(id);
+
+      if (!schedule) {
+        return res.status(404).json({ error: "スケジュールが見つかりません" });
+      }
+
+      // Check facility access
+      if (schedule.facilityId !== req.user.facilityId && !req.isCorporateAdmin) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      res.json(schedule);
+    } catch (error) {
+      console.error("Get schedule error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create schedule
+  app.post("/api/schedules", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      console.log("受信データ:", req.body); // デバッグ用
+      const validatedData = insertScheduleSchema.parse(req.body);
+      const facilityId = req.user.facilityId;
+      console.log("バリデーション成功、facilityId:", facilityId); // デバッグ用
+
+      const newSchedule = await storage.createSchedule({
+        ...validatedData,
+        facilityId,
+      });
+
+      res.status(201).json(newSchedule);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error("Zodバリデーションエラー:", error.errors); // 詳細ログ
+        return res.status(400).json({
+          error: "入力データが不正です",
+          details: error.errors
+        });
+      }
+      console.error("Create schedule error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update schedule
+  app.put("/api/schedules/:id", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const validatedData = updateScheduleSchema.parse(req.body);
+
+      // Check if schedule exists and user has access
+      const existingSchedule = await storage.getScheduleById(id);
+      if (!existingSchedule) {
+        return res.status(404).json({ error: "スケジュールが見つかりません" });
+      }
+
+      if (existingSchedule.facilityId !== req.user.facilityId && !req.isCorporateAdmin) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      const updatedSchedule = await storage.updateSchedule(id, validatedData);
+      res.json(updatedSchedule);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが不正です",
+          details: error.errors
+        });
+      }
+      console.error("Update schedule error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete schedule
+  app.delete("/api/schedules/:id", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Check if schedule exists and user has access
+      const existingSchedule = await storage.getScheduleById(id);
+      if (!existingSchedule) {
+        return res.status(404).json({ error: "スケジュールが見つかりません" });
+      }
+
+      if (existingSchedule.facilityId !== req.user.facilityId && !req.isCorporateAdmin) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      await storage.deleteSchedule(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete schedule error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Nursing Records Routes ==========
-  
+
   // Get nursing records
   app.get("/api/nursing-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {

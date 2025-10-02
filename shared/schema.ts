@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -11,6 +11,19 @@ export const recordTypeEnum = pgEnum("record_type", ["vital_signs", "medication"
 export const visitStatusEnum = pgEnum("visit_status", ["scheduled", "completed", "cancelled", "no_show"]);
 export const recordStatusEnum = pgEnum("record_status", ["draft", "completed", "reviewed"]);
 export const visitStatusRecordEnum = pgEnum("visit_status_record", ["completed", "cancelled", "rescheduled"]);
+export const insuranceTypeEnum = pgEnum("insurance_type", ["medical", "care"]);
+export const careLevelEnum = pgEnum("care_level", ["support1", "support2", "care1", "care2", "care3", "care4", "care5"]);
+export const specialCareTypeEnum = pgEnum("special_care_type", ["bedsore", "rare_disease", "mental", "none"]);
+export const recurrencePatternEnum = pgEnum("recurrence_pattern", ["none", "daily", "weekly_monday", "weekly_tuesday", "weekly_wednesday", "weekly_thursday", "weekly_friday", "weekly_saturday", "weekly_sunday", "biweekly", "monthly"]);
+
+// ========== Session Table (express-session store) ==========
+// Note: This table is managed by connect-pg-simple, but we define it here to prevent drizzle-kit from deleting it
+// Match the exact structure created by connect-pg-simple to avoid migration warnings
+export const session = pgTable("session", {
+  sid: varchar("sid").primaryKey(), // No length specified to match existing table
+  sess: json("sess").notNull(), // Session data as JSON
+  expire: timestamp("expire", { precision: 6, withTimezone: false }).notNull(), // Match existing timestamp(6) without timezone
+});
 
 // ========== Companies Table (Hierarchical Multi-tenant support) ==========
 export const companies = pgTable("companies", {
@@ -34,6 +47,18 @@ export const facilities = pgTable("facilities", {
   address: text("address"),
   phone: text("phone"),
   email: text("email"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Buildings Table (Same Building Management) ==========
+export const buildings = pgTable("buildings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  name: text("name").notNull(),
+  address: text("address").notNull(),
+  postalCode: text("postal_code"),
+  notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -75,6 +100,15 @@ export const patients = pgTable("patients", {
   careNotes: text("care_notes"),
   isActive: boolean("is_active").notNull().default(true),
   isCritical: boolean("is_critical").notNull().default(false),
+
+  // Enhanced fields for care management
+  careLevel: careLevelEnum("care_level"), // 要支援1-2, 要介護1-5
+  insuranceType: insuranceTypeEnum("insurance_type"), // 医療保険 or 介護保険
+  specialCareType: specialCareTypeEnum("special_care_type").default("none"), // 特別訪問看護
+  buildingId: varchar("building_id").references(() => buildings.id), // 同一建物管理
+  isInHospital: boolean("is_in_hospital").notNull().default(false), // 入院中
+  isInShortStay: boolean("is_in_short_stay").notNull().default(false), // ショートステイ中
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -92,6 +126,41 @@ export const visits = pgTable("visits", {
   actualStartTime: timestamp("actual_start_time", { withTimezone: true }),
   actualEndTime: timestamp("actual_end_time", { withTimezone: true }),
   notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Schedules Table (Enhanced Scheduling) ==========
+export const schedules = pgTable("schedules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  nurseId: varchar("nurse_id").references(() => users.id), // Nullable for demo staff
+  demoStaffName: text("demo_staff_name"), // For non-assigned staff system (ABC, etc.)
+  scheduledDate: timestamp("scheduled_date", { withTimezone: true }).notNull(),
+  scheduledStartTime: timestamp("scheduled_start_time", { withTimezone: true }).notNull(),
+  scheduledEndTime: timestamp("scheduled_end_time", { withTimezone: true }).notNull(),
+  duration: integer("duration").notNull().default(60), // minutes
+  purpose: text("purpose").notNull(),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  recurrencePattern: recurrencePatternEnum("recurrence_pattern").default("none"),
+  recurrenceEndDate: date("recurrence_end_date"),
+  visitType: text("visit_type"), // "定期訪問", "緊急訪問", etc.
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Additional Payments Table (加算管理) ==========
+export const additionalPayments = pgTable("additional_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  type: text("type").notNull(), // "special_management", "multiple_visits", "emergency", "long_visit"
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  reason: text("reason"), // 複数回訪問理由、緊急訪問理由など
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -134,6 +203,12 @@ export const nursingRecords = pgTable("nursing_records", {
 
   // Patient and family response
   patientFamilyResponse: text("patient_family_response"),
+
+  // Additional payment related fields (加算関連)
+  multipleVisitReason: text("multiple_visit_reason"), // 複数回訪問理由
+  emergencyVisitReason: text("emergency_visit_reason"), // 緊急訪問理由
+  longVisitReason: text("long_visit_reason"), // 長時間訪問理由
+  hasAdditionalPaymentAlert: boolean("has_additional_payment_alert").default(false), // 加算未入力アラート
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -208,6 +283,31 @@ export const insertMedicationSchema = createInsertSchema(medications).omit({
   updatedAt: true,
 });
 
+export const insertBuildingSchema = createInsertSchema(buildings).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertScheduleSchema = createInsertSchema(schedules).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  scheduledDate: z.coerce.date(),
+  scheduledStartTime: z.coerce.date(),
+  scheduledEndTime: z.coerce.date(),
+});
+
+export const insertAdditionalPaymentSchema = createInsertSchema(additionalPayments).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -240,6 +340,12 @@ export const updateMedicationSchema = insertMedicationSchema.omit({
 
 export const updateNursingRecordSchema = insertNursingRecordSchema.partial();
 
+export const updateBuildingSchema = insertBuildingSchema.partial();
+
+export const updateScheduleSchema = insertScheduleSchema.partial();
+
+export const updateAdditionalPaymentSchema = insertAdditionalPaymentSchema.partial();
+
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
@@ -262,6 +368,15 @@ export type NursingRecord = typeof nursingRecords.$inferSelect;
 export type InsertMedication = z.infer<typeof insertMedicationSchema>;
 export type Medication = typeof medications.$inferSelect;
 
+export type InsertBuilding = z.infer<typeof insertBuildingSchema>;
+export type Building = typeof buildings.$inferSelect;
+
+export type InsertSchedule = z.infer<typeof insertScheduleSchema>;
+export type Schedule = typeof schedules.$inferSelect;
+
+export type InsertAdditionalPayment = z.infer<typeof insertAdditionalPaymentSchema>;
+export type AdditionalPayment = typeof additionalPayments.$inferSelect;
+
 // Update Types
 export type UpdateUserSelf = z.infer<typeof updateUserSelfSchema>;
 export type UpdateUserAdmin = z.infer<typeof updateUserAdminSchema>;
@@ -269,6 +384,9 @@ export type UpdatePatient = z.infer<typeof updatePatientSchema>;
 export type UpdateVisit = z.infer<typeof updateVisitSchema>;
 export type UpdateNursingRecord = z.infer<typeof updateNursingRecordSchema>;
 export type UpdateMedication = z.infer<typeof updateMedicationSchema>;
+export type UpdateBuilding = z.infer<typeof updateBuildingSchema>;
+export type UpdateSchedule = z.infer<typeof updateScheduleSchema>;
+export type UpdateAdditionalPayment = z.infer<typeof updateAdditionalPaymentSchema>;
 
 // Pagination Types
 export interface PaginationOptions {

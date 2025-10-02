@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +16,7 @@ import {
   User,
   Bell
 } from "lucide-react"
+import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
 
 interface PatientVisit {
   id: string
@@ -25,41 +27,16 @@ interface PatientVisit {
   nurse: string
 }
 
-// TODO: Remove mock data when implementing real backend
-const mockVisits: PatientVisit[] = [
-  {
-    id: '1',
-    patientName: '佐藤 太郎',
-    time: '09:00',
-    type: '定期訪問',
-    status: 'completed',
-    nurse: '田中 花子'
-  },
-  {
-    id: '2', 
-    patientName: '鈴木 花子',
-    time: '10:30',
-    type: 'アセスメント',
-    status: 'in-progress',
-    nurse: '山田 次郎'
-  },
-  {
-    id: '3',
-    patientName: '田中 明',
-    time: '14:00',
-    type: '定期訪問',
-    status: 'scheduled',
-    nurse: '田中 花子'
-  },
-  {
-    id: '4',
-    patientName: '伊藤 みどり',
-    time: '15:30',
-    type: '緊急訪問',
-    status: 'scheduled',
-    nurse: '山田 次郎'
-  }
-]
+// Helper function to get full name
+const getFullName = (patient: Patient): string => {
+  return `${patient.lastName} ${patient.firstName}`
+}
+
+// Helper function to format time
+const formatTime = (date: Date | string): string => {
+  const d = new Date(date)
+  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+}
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -89,7 +66,6 @@ const getStatusText = (status: string) => {
 }
 
 export function Dashboard() {
-  const [visits] = useState(mockVisits)
   const [isVisitRecordDialogOpen, setIsVisitRecordDialogOpen] = useState(false)
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric',
@@ -97,6 +73,65 @@ export function Dashboard() {
     day: 'numeric',
     weekday: 'long'
   })
+
+  // Fetch today's schedules
+  const { data: schedulesData, isLoading: schedulesLoading } = useQuery<PaginatedResult<Schedule>>({
+    queryKey: ["todaySchedules"],
+    queryFn: async () => {
+      const today = new Date()
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0))
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999))
+
+      const response = await fetch(
+        `/api/schedules?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}&limit=100`
+      )
+      if (!response.ok) throw new Error("スケジュールデータの取得に失敗しました")
+      return response.json()
+    },
+    staleTime: 0, // Always fetch fresh data on mount
+    refetchOnMount: true, // Refetch when component mounts
+  })
+
+  // Fetch patients
+  const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
+    queryKey: ["patients"],
+    queryFn: async () => {
+      const response = await fetch("/api/patients")
+      if (!response.ok) throw new Error("患者データの取得に失敗しました")
+      return response.json()
+    },
+  })
+
+  // Fetch users (nurses)
+  const { data: usersData } = useQuery<PaginatedResult<UserType>>({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const response = await fetch("/api/users")
+      if (!response.ok) throw new Error("ユーザーデータの取得に失敗しました")
+      return response.json()
+    },
+  })
+
+  const schedules = schedulesData?.data || []
+  const patients = patientsData?.data || []
+  const users = usersData?.data || []
+
+  // Convert schedules to PatientVisit format
+  const visits: PatientVisit[] = schedules
+    .sort((a, b) => new Date(a.scheduledStartTime).getTime() - new Date(b.scheduledStartTime).getTime())
+    .map((schedule) => {
+      const patient = patients.find(p => p.id === schedule.patientId)
+      const nurse = users.find(u => u.id === schedule.nurseId)
+
+      return {
+        id: schedule.id,
+        patientName: patient ? getFullName(patient) : '患者不明',
+        time: formatTime(schedule.scheduledStartTime),
+        type: schedule.visitType || schedule.purpose,
+        status: 'scheduled', // TODO: Implement actual status tracking
+        nurse: nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当',
+      }
+    })
 
   const completedVisits = visits.filter(v => v.status === 'completed').length
   const totalVisits = visits.length
@@ -274,8 +309,19 @@ export function Dashboard() {
             <h2 className="text-lg font-bold mb-1">本日の訪問スケジュール</h2>
             <p className="text-xs text-muted-foreground mb-3">{today}の訪問予定です</p>
           </div>
-          <div className="space-y-3">
-            {visits.map((visit) => (
+          {schedulesLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">読み込み中...</p>
+            </div>
+          ) : visits.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Calendar className="mx-auto h-12 w-12 mb-4 opacity-50" />
+              <p>本日の訪問予定はありません</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {visits.map((visit) => (
               <div key={visit.id} className={`p-3 sm:p-4 rounded-lg transition-colors ${getCardStatusColor(visit.status)}`}>
                 {/* Mobile layout */}
                 <div className="sm:hidden">
@@ -383,7 +429,8 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="alerts">

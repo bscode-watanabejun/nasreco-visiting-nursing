@@ -6,8 +6,9 @@ import {
   type Visit, type InsertVisit,
   type NursingRecord, type InsertNursingRecord,
   type Medication, type InsertMedication,
+  type Schedule, type InsertSchedule,
   type PaginationOptions, type PaginatedResult,
-  users, companies, facilities, patients, visits, nursingRecords, medications
+  users, companies, facilities, patients, visits, nursingRecords, medications, schedules
 } from "@shared/schema";
 import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "./db";
@@ -58,6 +59,20 @@ export interface IStorage {
   createVisit(visit: InsertVisit): Promise<Visit>;
   updateVisit(id: string, visit: Partial<InsertVisit>): Promise<Visit | undefined>;
   deleteVisit(id: string): Promise<boolean>;
+
+  // ========== Schedules ==========
+  getScheduleById(id: string): Promise<Schedule | undefined>;
+  getSchedules(facilityId: string, filters?: {
+    page: number;
+    limit: number;
+    nurseId?: string;
+    patientId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<PaginatedResult<Schedule>>;
+  createSchedule(schedule: InsertSchedule & { facilityId: string }): Promise<Schedule>;
+  updateSchedule(id: string, schedule: Partial<InsertSchedule>): Promise<Schedule | undefined>;
+  deleteSchedule(id: string): Promise<boolean>;
 
   // ========== Nursing Records ==========
   getNursingRecord(id: string): Promise<NursingRecord | undefined>;
@@ -290,6 +305,84 @@ export class PostgreSQLStorage implements IStorage {
 
   async deleteVisit(id: string): Promise<boolean> {
     const result = await db.delete(visits).where(eq(visits.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ========== Schedules ==========
+  async getScheduleById(id: string): Promise<Schedule | undefined> {
+    const result = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getSchedules(facilityId: string, filters?: {
+    page: number;
+    limit: number;
+    nurseId?: string;
+    patientId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<PaginatedResult<Schedule>> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 50;
+    const offset = (page - 1) * limit;
+
+    // Build query conditions
+    const conditions = [eq(schedules.facilityId, facilityId)];
+
+    if (filters?.nurseId) {
+      conditions.push(eq(schedules.nurseId, filters.nurseId));
+    }
+
+    if (filters?.patientId) {
+      conditions.push(eq(schedules.patientId, filters.patientId));
+    }
+
+    // Get total count
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(schedules)
+      .where(and(...conditions));
+
+    // Get paginated data
+    const data = await db
+      .select()
+      .from(schedules)
+      .where(and(...conditions))
+      .orderBy(desc(schedules.scheduledDate))
+      .limit(limit)
+      .offset(offset);
+
+    const totalPages = Math.ceil(Number(total) / limit);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total: Number(total),
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  async createSchedule(schedule: InsertSchedule & { facilityId: string }): Promise<Schedule> {
+    const result = await db.insert(schedules).values(schedule).returning();
+    return result[0];
+  }
+
+  async updateSchedule(id: string, schedule: Partial<InsertSchedule>): Promise<Schedule | undefined> {
+    const result = await db
+      .update(schedules)
+      .set({ ...schedule, updatedAt: new Date() })
+      .where(eq(schedules.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    const result = await db.delete(schedules).where(eq(schedules.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 
