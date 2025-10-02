@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +23,7 @@ interface PatientVisit {
   patientName: string
   time: string
   type: string
-  status: 'scheduled' | 'in-progress' | 'completed'
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
   nurse: string
 }
 
@@ -41,8 +41,9 @@ const formatTime = (date: Date | string): string => {
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'completed': return 'bg-green-100 text-green-800 border-green-200'
-    case 'in-progress': return 'bg-orange-100 text-orange-800 border-orange-200'
+    case 'in_progress': return 'bg-orange-100 text-orange-800 border-orange-200'
     case 'scheduled': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    case 'cancelled': return 'bg-gray-100 text-gray-800 border-gray-200'
     default: return 'bg-gray-100 text-gray-800 border-gray-200'
   }
 }
@@ -50,8 +51,9 @@ const getStatusColor = (status: string) => {
 const getCardStatusColor = (status: string) => {
   switch (status) {
     case 'completed': return 'bg-green-50 border-green-200 hover:bg-green-100'
-    case 'in-progress': return 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+    case 'in_progress': return 'bg-orange-50 border-orange-200 hover:bg-orange-100'
     case 'scheduled': return 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100'
+    case 'cancelled': return 'bg-gray-50 border-gray-200 hover:bg-gray-100'
     default: return 'bg-gray-50 border-gray-200 hover:bg-gray-100'
   }
 }
@@ -59,14 +61,17 @@ const getCardStatusColor = (status: string) => {
 const getStatusText = (status: string) => {
   switch (status) {
     case 'completed': return '完了'
-    case 'in-progress': return '実施中'
+    case 'in_progress': return '実施中'
     case 'scheduled': return '予定'
+    case 'cancelled': return 'キャンセル'
     default: return status
   }
 }
 
 export function Dashboard() {
+  const queryClient = useQueryClient()
   const [isVisitRecordDialogOpen, setIsVisitRecordDialogOpen] = useState(false)
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: 'long',
@@ -116,6 +121,25 @@ export function Dashboard() {
   const patients = patientsData?.data || []
   const users = usersData?.data || []
 
+  // Mutation for updating schedule status
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const response = await fetch(`/api/schedules/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      if (!response.ok) {
+        throw new Error("ステータス更新に失敗しました")
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      queryClient.invalidateQueries({ queryKey: ["schedules"] })
+    },
+  })
+
   // Convert schedules to PatientVisit format
   const visits: PatientVisit[] = schedules
     .sort((a, b) => new Date(a.scheduledStartTime).getTime() - new Date(b.scheduledStartTime).getTime())
@@ -128,10 +152,27 @@ export function Dashboard() {
         patientName: patient ? getFullName(patient) : '患者不明',
         time: formatTime(schedule.scheduledStartTime),
         type: schedule.visitType || schedule.purpose,
-        status: 'scheduled', // TODO: Implement actual status tracking
+        status: schedule.status || 'scheduled',
         nurse: nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当',
       }
     })
+
+  // Handler functions
+  const handleStartVisit = (scheduleId: string) => {
+    updateStatusMutation.mutate({ id: scheduleId, status: "in_progress" })
+  }
+
+  const handleCompleteVisit = (scheduleId: string) => {
+    updateStatusMutation.mutate(
+      { id: scheduleId, status: "completed" },
+      {
+        onSuccess: () => {
+          setSelectedScheduleId(scheduleId)
+          setIsVisitRecordDialogOpen(true)
+        }
+      }
+    )
+  }
 
   const completedVisits = visits.filter(v => v.status === 'completed').length
   const totalVisits = visits.length
@@ -325,7 +366,7 @@ export function Dashboard() {
               <div key={visit.id} className={`p-3 sm:p-4 rounded-lg transition-colors ${getCardStatusColor(visit.status)}`}>
                 {/* Mobile layout */}
                 <div className="sm:hidden">
-                  <Card className={`p-4 ${visit.status === 'in-progress' ? 'border-orange-200 bg-orange-50' : ''}`}>
+                  <Card className={`p-4 ${visit.status === 'in_progress' ? 'border-orange-200 bg-orange-50' : ''}`}>
                     <div className="space-y-3">
                       <div className="flex items-start justify-between">
                         <div>
@@ -345,7 +386,7 @@ export function Dashboard() {
                         {visit.status === 'completed' && (
                           <span className="text-xs text-green-600 font-medium">完了</span>
                         )}
-                        {visit.status === 'in-progress' && (
+                        {visit.status === 'in_progress' && (
                           <span className="text-xs text-orange-600 font-medium">実施中</span>
                         )}
                         {visit.status === 'scheduled' && (
@@ -356,13 +397,15 @@ export function Dashboard() {
                       {visit.status === 'scheduled' && (
                         <Button
                           size="sm"
-                          className="w-full bg-red-500 hover:bg-red-600 text-white"
+                          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
                           data-testid={`button-start-visit-${visit.id}`}
+                          onClick={() => handleStartVisit(visit.id)}
                         >
-                          <span className="bg-white text-red-500 rounded-full px-2 py-0.5 mr-2 text-xs">待機I</span>
+                          <Clock className="mr-1 h-3 w-3" />
+                          開始
                         </Button>
                       )}
-                      {visit.status === 'in-progress' && (
+                      {visit.status === 'in_progress' && (
                         <div className="flex gap-2">
                           <Button
                             size="sm"
@@ -376,13 +419,14 @@ export function Dashboard() {
                             size="sm"
                             className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
                             data-testid={`button-complete-visit-${visit.id}`}
+                            onClick={() => handleCompleteVisit(visit.id)}
                           >
                             記録
                           </Button>
                         </div>
                       )}
 
-                      {(visit.status === 'scheduled' || visit.status === 'in-progress') && (
+                      {(visit.status === 'scheduled' || visit.status === 'in_progress') && (
                         <div className="text-xs text-muted-foreground">
                           備考: {visit.id === '1' ? '定期訪問 - バイタルチェックと服薬確認' :
                                  visit.id === '2' ? 'アセスメント訪問 - 状態評価と計画見直し' :
@@ -414,13 +458,23 @@ export function Dashboard() {
                       {getStatusText(visit.status)}
                     </Badge>
                     {visit.status === 'scheduled' && (
-                      <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600" data-testid={`button-start-visit-${visit.id}`}>
+                      <Button
+                        size="sm"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600"
+                        data-testid={`button-start-visit-${visit.id}`}
+                        onClick={() => handleStartVisit(visit.id)}
+                      >
                         <Clock className="mr-1 h-3 w-3" />
-                        待機
+                        開始
                       </Button>
                     )}
-                    {visit.status === 'in-progress' && (
-                      <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white border-orange-600" data-testid={`button-complete-visit-${visit.id}`}>
+                    {visit.status === 'in_progress' && (
+                      <Button
+                        size="sm"
+                        className="bg-orange-500 hover:bg-orange-600 text-white border-orange-600"
+                        data-testid={`button-complete-visit-${visit.id}`}
+                        onClick={() => handleCompleteVisit(visit.id)}
+                      >
                         <CheckCircle className="mr-1 h-3 w-3" />
                         記録
                       </Button>
@@ -515,6 +569,7 @@ export function Dashboard() {
       <VisitRecordDialog
         open={isVisitRecordDialogOpen}
         onOpenChange={setIsVisitRecordDialogOpen}
+        schedule={selectedScheduleId ? schedules.find(s => s.id === selectedScheduleId) : null}
       />
     </div>
   )

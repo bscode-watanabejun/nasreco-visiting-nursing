@@ -653,6 +653,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update schedule status
+  app.patch("/api/schedules/:id/status", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      // Validate status
+      if (!["scheduled", "in_progress", "completed", "cancelled"].includes(status)) {
+        return res.status(400).json({ error: "無効なステータスです" });
+      }
+
+      // Check if schedule exists and user has access
+      const existingSchedule = await storage.getScheduleById(id);
+      if (!existingSchedule) {
+        return res.status(404).json({ error: "スケジュールが見つかりません" });
+      }
+
+      if (existingSchedule.facilityId !== req.user.facilityId && !req.isCorporateAdmin) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      // Update status with timestamps
+      const updateData: any = { status };
+      const now = new Date();
+
+      if (status === "in_progress" && !existingSchedule.actualStartTime) {
+        updateData.actualStartTime = now;
+      }
+
+      if (status === "completed" && !existingSchedule.actualEndTime) {
+        updateData.actualEndTime = now;
+      }
+
+      const updatedSchedule = await storage.updateSchedule(id, updateData);
+      res.json(updatedSchedule);
+    } catch (error) {
+      console.error("Update schedule status error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Delete schedule
   app.delete("/api/schedules/:id", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {

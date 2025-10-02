@@ -15,6 +15,7 @@ export const insuranceTypeEnum = pgEnum("insurance_type", ["medical", "care"]);
 export const careLevelEnum = pgEnum("care_level", ["support1", "support2", "care1", "care2", "care3", "care4", "care5"]);
 export const specialCareTypeEnum = pgEnum("special_care_type", ["bedsore", "rare_disease", "mental", "none"]);
 export const recurrencePatternEnum = pgEnum("recurrence_pattern", ["none", "daily", "weekly_monday", "weekly_tuesday", "weekly_wednesday", "weekly_thursday", "weekly_friday", "weekly_saturday", "weekly_sunday", "biweekly", "monthly"]);
+export const scheduleStatusEnum = pgEnum("schedule_status", ["scheduled", "in_progress", "completed", "cancelled"]);
 
 // ========== Session Table (express-session store) ==========
 // Note: This table is managed by connect-pg-simple, but we define it here to prevent drizzle-kit from deleting it
@@ -142,6 +143,9 @@ export const schedules = pgTable("schedules", {
   scheduledEndTime: timestamp("scheduled_end_time", { withTimezone: true }).notNull(),
   duration: integer("duration").notNull().default(60), // minutes
   purpose: text("purpose").notNull(),
+  status: scheduleStatusEnum("status").notNull().default("scheduled"), // Schedule status
+  actualStartTime: timestamp("actual_start_time", { withTimezone: true }), // When nurse starts the visit
+  actualEndTime: timestamp("actual_end_time", { withTimezone: true }), // When nurse completes the visit
   isRecurring: boolean("is_recurring").notNull().default(false),
   recurrencePattern: recurrencePatternEnum("recurrence_pattern").default("none"),
   recurrenceEndDate: date("recurrence_end_date"),
@@ -293,6 +297,9 @@ export const insertBuildingSchema = createInsertSchema(buildings).omit({
 export const insertScheduleSchema = createInsertSchema(schedules).omit({
   id: true,
   facilityId: true, // Set by server from user session
+  status: true, // Defaults to 'scheduled'
+  actualStartTime: true, // Set when status changes
+  actualEndTime: true, // Set when status changes
   createdAt: true,
   updatedAt: true,
 }).extend({

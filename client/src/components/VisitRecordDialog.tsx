@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Dialog,
@@ -14,11 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { AlertCircle, CheckCircle, XCircle } from "lucide-react"
-import type { Patient, PaginatedResult } from "@shared/schema"
+import type { Patient, Schedule, PaginatedResult } from "@shared/schema"
 
 interface VisitRecordDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  schedule?: Schedule | null
 }
 
 interface FormData {
@@ -36,13 +37,21 @@ interface FormData {
   oxygenSaturation: string
   careProvided: string
   nextVisitNotes: string
+  // Additional payment fields
+  multipleVisitReason: string
+  emergencyVisitReason: string
+  longVisitReason: string
 }
 
-const getInitialFormData = (): FormData => ({
-  patientId: '',
+const getInitialFormData = (schedule?: Schedule | null): FormData => ({
+  patientId: schedule?.patientId || '',
   visitStatusRecord: 'completed',
-  actualStartTime: new Date().toTimeString().slice(0, 5),
-  actualEndTime: '',
+  actualStartTime: schedule?.actualStartTime
+    ? new Date(schedule.actualStartTime).toTimeString().slice(0, 5)
+    : new Date().toTimeString().slice(0, 5),
+  actualEndTime: schedule?.actualEndTime
+    ? new Date(schedule.actualEndTime).toTimeString().slice(0, 5)
+    : new Date().toTimeString().slice(0, 5),
   observations: '',
   isSecondVisit: false,
   bloodPressureSystolic: '',
@@ -52,16 +61,29 @@ const getInitialFormData = (): FormData => ({
   respiratoryRate: '',
   oxygenSaturation: '',
   careProvided: '',
-  nextVisitNotes: ''
+  nextVisitNotes: '',
+  multipleVisitReason: '',
+  emergencyVisitReason: schedule?.visitType === '緊急訪問' ? '緊急訪問のため' : '',
+  longVisitReason: ''
 })
 
-export function VisitRecordDialog({ open, onOpenChange }: VisitRecordDialogProps) {
+export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordDialogProps) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState("basic")
-  const [formData, setFormData] = useState<FormData>(getInitialFormData())
+  const [formData, setFormData] = useState<FormData>(getInitialFormData(schedule))
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+
+  // Reset form data when dialog opens or schedule changes
+  useEffect(() => {
+    if (open) {
+      setFormData(getInitialFormData(schedule))
+      setSaveError(null)
+      setValidationErrors([])
+      setActiveTab("basic")
+    }
+  }, [open, schedule])
 
   // Fetch patients
   const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
@@ -101,6 +123,22 @@ export function VisitRecordDialog({ open, onOpenChange }: VisitRecordDialogProps
     }
     if (!formData.observations.trim()) {
       errors.push('「観察事項」を入力してください')
+    }
+
+    // 加算管理のバリデーション
+    if (formData.isSecondVisit && !formData.multipleVisitReason.trim()) {
+      errors.push('複数回訪問の理由を入力してください')
+    }
+    if (schedule?.visitType === '緊急訪問' && !formData.emergencyVisitReason.trim()) {
+      errors.push('緊急訪問の理由を入力してください')
+    }
+
+    // 長時間訪問チェック
+    const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
+    const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
+    const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
+    if (duration > 90 && !formData.longVisitReason.trim()) {
+      errors.push('長時間訪問（90分超）の理由を入力してください')
     }
 
     // 特別管理加算の検証（該当項目がある場合）
@@ -157,6 +195,11 @@ export function VisitRecordDialog({ open, onOpenChange }: VisitRecordDialogProps
         ...(formData.temperature && { temperature: formData.temperature }),
         ...(formData.respiratoryRate && { respiratoryRate: parseInt(formData.respiratoryRate) }),
         ...(formData.oxygenSaturation && { oxygenSaturation: parseInt(formData.oxygenSaturation) }),
+
+        // 加算管理フィールド
+        ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
+        ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
+        ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
       }
 
       const response = await fetch('/api/nursing-records', {
@@ -171,6 +214,8 @@ export function VisitRecordDialog({ open, onOpenChange }: VisitRecordDialogProps
       }
 
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] })
       alert('訪問記録を保存しました')
       setFormData(getInitialFormData())
       onOpenChange(false)
@@ -375,6 +420,65 @@ export function VisitRecordDialog({ open, onOpenChange }: VisitRecordDialogProps
               <Label htmlFor="second-visit" className="cursor-pointer">
                 本日2回目以降の訪問
               </Label>
+            </div>
+
+            {/* 加算管理セクション */}
+            <div className="border-t pt-4 mt-4">
+              <h3 className="text-sm font-semibold mb-3">加算管理</h3>
+              <div className="space-y-4">
+                {formData.isSecondVisit && (
+                  <div className="space-y-2">
+                    <Label htmlFor="multiple-visit-reason">
+                      複数回訪問の理由 <span className="text-red-500">*</span>
+                    </Label>
+                    <Textarea
+                      id="multiple-visit-reason"
+                      placeholder="複数回訪問が必要な理由を記載してください"
+                      value={formData.multipleVisitReason}
+                      onChange={(e) => setFormData(prev => ({ ...prev, multipleVisitReason: e.target.value }))}
+                      className="min-h-[80px] resize-none"
+                    />
+                  </div>
+                )}
+
+                {schedule?.visitType === '緊急訪問' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="emergency-visit-reason">
+                      緊急訪問の理由 <span className="text-red-500">*</span>
+                    </Label>
+                    <Textarea
+                      id="emergency-visit-reason"
+                      placeholder="緊急訪問が必要となった理由を記載してください"
+                      value={formData.emergencyVisitReason}
+                      onChange={(e) => setFormData(prev => ({ ...prev, emergencyVisitReason: e.target.value }))}
+                      className="min-h-[80px] resize-none"
+                    />
+                  </div>
+                )}
+
+                {(() => {
+                  const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
+                  const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
+                  const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
+                  return duration > 90 ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="long-visit-reason">
+                        長時間訪問の理由 <span className="text-red-500">*</span>
+                      </Label>
+                      <Textarea
+                        id="long-visit-reason"
+                        placeholder="90分を超える訪問が必要な理由を記載してください"
+                        value={formData.longVisitReason}
+                        onChange={(e) => setFormData(prev => ({ ...prev, longVisitReason: e.target.value }))}
+                        className="min-h-[80px] resize-none"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        訪問時間: {Math.floor(duration)}分
+                      </p>
+                    </div>
+                  ) : null
+                })()}
+              </div>
             </div>
           </TabsContent>
 
