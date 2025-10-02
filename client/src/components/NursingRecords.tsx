@@ -9,6 +9,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Plus,
   Search,
   Edit,
@@ -19,7 +29,8 @@ import {
   FileText,
   AlertCircle,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Trash2
 } from "lucide-react"
 
 import type { Patient, NursingRecord, PaginatedResult } from "@shared/schema"
@@ -32,20 +43,23 @@ interface NursingRecordDisplay extends NursingRecord {
 
 interface FormData {
   patientId: string
-  date: string
-  time: string
-  visitType: string
-  vitalSigns: {
-    temperature: string
-    pulse: string
-    systolicBP: string
-    diastolicBP: string
-    spo2: string
-    respiration: string
-  }
+  visitStatusRecord: "completed" | "cancelled" | "rescheduled"
+  actualStartTime: string
+  actualEndTime: string
   observations: string
+  isSecondVisit: boolean
+  bloodPressureSystolic: string
+  bloodPressureDiastolic: string
+  heartRate: string
+  temperature: string
+  respiratoryRate: string
+  oxygenSaturation: string
   careProvided: string
-  patientFamilyResponse: string
+  nextVisitNotes: string
+  // Additional payment fields
+  multipleVisitReason: string
+  emergencyVisitReason: string
+  longVisitReason: string
 }
 
 // Helper function to get full name
@@ -53,98 +67,84 @@ const getFullName = (patient: Patient): string => {
   return `${patient.lastName} ${patient.firstName}`
 }
 
-// Helper function to convert FormData to API format (corrected for Zod validation)
+// Helper function to convert FormData to API format (unified with VisitRecordDialog)
 const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'completed') => {
   const currentDateTime = new Date()
-  const visitDateTime = new Date(`${formData.date}T${formData.time}`)
+  const today = currentDateTime.toISOString().split('T')[0]
+
+  // 時間をISO文字列に変換
+  const startDateTime = new Date(`${today}T${formData.actualStartTime}:00`)
+  const endDateTime = new Date(`${today}T${formData.actualEndTime}:00`)
 
   const apiData: any = {
     patientId: formData.patientId,
     recordType: 'general_care' as const,
-    recordDate: currentDateTime.toISOString(), // ISO string for API
-
-    // NEW: Status field (now supported)
+    recordDate: currentDateTime.toISOString(),
     status,
+    title: `訪問記録 - ${today}`,
+    content: `訪問日時: ${today}\n開始時間: ${formData.actualStartTime}\n終了時間: ${formData.actualEndTime}\n訪問ステータス: ${formData.visitStatusRecord}\n\n観察事項:\n${formData.observations}\n\n実施したケア:\n${formData.careProvided}\n\n次回訪問時の申し送り:\n${formData.nextVisitNotes}`,
 
-    // Core required fields
-    title: `${formData.visitType || '訪問記録'} - ${formData.date}`,
-    content: `訪問日時: ${formData.date} ${formData.time}\n訪問種別: ${formData.visitType || '未選択'}\nステータス: ${status === 'draft' ? '下書き' : '完成'}\n\n観察事項:\n${formData.observations || '未入力'}\n\n実施したケア:\n${formData.careProvided || '未入力'}\n\n患者・家族の反応:\n${formData.patientFamilyResponse || '特になし'}`,
+    // 新規フィールド
+    visitStatusRecord: formData.visitStatusRecord,
+    actualStartTime: startDateTime.toISOString(),
+    actualEndTime: endDateTime.toISOString(),
+    isSecondVisit: formData.isSecondVisit,
 
-    // Structured fields
-    observations: formData.observations || '',
-    interventions: formData.careProvided || '',
-    evaluation: `記録ステータス: ${status === 'draft' ? '下書き' : '完成'}`,
-  }
+    // 既存フィールド
+    observations: formData.observations,
+    interventions: formData.careProvided,
+    patientFamilyResponse: formData.nextVisitNotes,
 
-  // Add optional fields only if they have values
-  if (formData.visitType) {
-    apiData.visitTypeCategory = formData.visitType
-  }
+    // バイタルサイン
+    ...(formData.bloodPressureSystolic && { bloodPressureSystolic: parseInt(formData.bloodPressureSystolic) }),
+    ...(formData.bloodPressureDiastolic && { bloodPressureDiastolic: parseInt(formData.bloodPressureDiastolic) }),
+    ...(formData.heartRate && { heartRate: parseInt(formData.heartRate) }),
+    ...(formData.temperature && { temperature: formData.temperature }),
+    ...(formData.respiratoryRate && { respiratoryRate: parseInt(formData.respiratoryRate) }),
+    ...(formData.oxygenSaturation && { oxygenSaturation: parseInt(formData.oxygenSaturation) }),
 
-  if (formData.date && formData.time) {
-    apiData.visitTime = visitDateTime.toISOString()
-  }
-
-  if (formData.patientFamilyResponse) {
-    apiData.patientFamilyResponse = formData.patientFamilyResponse
-  }
-
-  // Add vital signs only if they have values
-  if (formData.vitalSigns.systolicBP && formData.vitalSigns.systolicBP.trim()) {
-    apiData.bloodPressureSystolic = parseInt(formData.vitalSigns.systolicBP)
-  }
-
-  if (formData.vitalSigns.diastolicBP && formData.vitalSigns.diastolicBP.trim()) {
-    apiData.bloodPressureDiastolic = parseInt(formData.vitalSigns.diastolicBP)
-  }
-
-  if (formData.vitalSigns.pulse && formData.vitalSigns.pulse.trim()) {
-    apiData.heartRate = parseInt(formData.vitalSigns.pulse)
-  }
-
-  if (formData.vitalSigns.temperature && formData.vitalSigns.temperature.trim()) {
-    apiData.temperature = formData.vitalSigns.temperature // Keep as string for decimal schema
-  }
-
-  if (formData.vitalSigns.respiration && formData.vitalSigns.respiration.trim()) {
-    apiData.respiratoryRate = parseInt(formData.vitalSigns.respiration)
-  }
-
-  if (formData.vitalSigns.spo2 && formData.vitalSigns.spo2.trim()) {
-    apiData.oxygenSaturation = parseInt(formData.vitalSigns.spo2)
+    // 加算管理フィールド
+    ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
+    ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
+    ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
   }
 
   return apiData
 }
 
-// Helper function to validate required fields
-const validateFormData = (formData: FormData, isComplete: boolean) => {
+// Helper function to validate required fields (unified with VisitRecordDialog)
+const validateFormData = (formData: FormData, isComplete: boolean, selectedPatient?: Patient) => {
   const errors: string[] = []
 
   if (!formData.patientId) {
     errors.push('患者を選択してください')
   }
 
-  if (!formData.date) {
-    errors.push('訪問日を入力してください')
+  if (!formData.actualStartTime) {
+    errors.push('「実際の開始時間」を入力してください')
   }
 
-  if (!formData.time) {
-    errors.push('訪問時間を入力してください')
+  if (!formData.actualEndTime) {
+    errors.push('「実際の終了時間」を入力してください')
   }
 
   // Complete record requires additional validation
   if (isComplete) {
-    if (!formData.visitType) {
-      errors.push('訪問理由を選択してください')
-    }
-
     if (!formData.observations.trim()) {
       errors.push('観察事項を入力してください')
     }
 
-    if (!formData.careProvided.trim()) {
-      errors.push('実施したケアを入力してください')
+    // 加算管理のバリデーション
+    if (formData.isSecondVisit && !formData.multipleVisitReason.trim()) {
+      errors.push('複数回訪問の理由を入力してください')
+    }
+
+    // 長時間訪問チェック
+    const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
+    const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
+    const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
+    if (duration > 90 && !formData.longVisitReason.trim()) {
+      errors.push('長時間訪問（90分超）の理由を入力してください')
     }
   }
 
@@ -170,23 +170,25 @@ const getStatusText = (status: string) => {
   }
 }
 
-// Helper function to get initial form data
+// Helper function to get initial form data (unified with VisitRecordDialog)
 const getInitialFormData = (): FormData => ({
   patientId: '',
-  date: new Date().toISOString().split('T')[0],
-  time: new Date().toTimeString().slice(0, 5),
-  visitType: '',
-  vitalSigns: {
-    temperature: '',
-    pulse: '',
-    systolicBP: '',
-    diastolicBP: '',
-    spo2: '',
-    respiration: ''
-  },
+  visitStatusRecord: 'completed',
+  actualStartTime: new Date().toTimeString().slice(0, 5),
+  actualEndTime: new Date().toTimeString().slice(0, 5),
   observations: '',
+  isSecondVisit: false,
+  bloodPressureSystolic: '',
+  bloodPressureDiastolic: '',
+  heartRate: '',
+  temperature: '',
+  respiratoryRate: '',
+  oxygenSaturation: '',
   careProvided: '',
-  patientFamilyResponse: ''
+  nextVisitNotes: '',
+  multipleVisitReason: '',
+  emergencyVisitReason: '',
+  longVisitReason: ''
 })
 
 export function NursingRecords() {
@@ -196,10 +198,12 @@ export function NursingRecords() {
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [activeTab, setActiveTab] = useState<'form' | 'preview'>('form')
+  const [activeTab, setActiveTab] = useState<'basic' | 'vitals' | 'care' | 'special' | 'photos'>('basic')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormData>(getInitialFormData())
+  const [recordToDelete, setRecordToDelete] = useState<NursingRecordDisplay | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Fetch patients from API
   const { data: patientsData, isLoading: isPatientsLoading } = useQuery<PaginatedResult<Patient>>({
@@ -263,26 +267,30 @@ export function NursingRecords() {
     setSelectedRecord(record)
     setIsCreating(false)
     setIsEditing(false)
-    setSaveError(null) // Clear any previous errors
+    setSaveError(null)
 
-    // Load record data for view-only display
-    const visitDate = record.visitTime ? new Date(record.visitTime) : new Date()
+    // Load record data for view-only display (unified with new format)
+    const startTime = record.actualStartTime ? new Date(record.actualStartTime) : new Date()
+    const endTime = record.actualEndTime ? new Date(record.actualEndTime) : new Date()
+
     setFormData({
       patientId: record.patientId,
-      date: visitDate.toISOString().split('T')[0],
-      time: visitDate.toTimeString().slice(0, 5),
-      visitType: record.visitTypeCategory || '',
-      vitalSigns: {
-        temperature: record.temperature?.toString() || '',
-        pulse: record.heartRate?.toString() || '',
-        systolicBP: record.bloodPressureSystolic?.toString() || '',
-        diastolicBP: record.bloodPressureDiastolic?.toString() || '',
-        spo2: record.oxygenSaturation?.toString() || '',
-        respiration: record.respiratoryRate?.toString() || ''
-      },
+      visitStatusRecord: (record.visitStatusRecord as 'completed' | 'cancelled' | 'rescheduled') || 'completed',
+      actualStartTime: startTime.toTimeString().slice(0, 5),
+      actualEndTime: endTime.toTimeString().slice(0, 5),
       observations: record.observations || '',
+      isSecondVisit: record.isSecondVisit || false,
+      bloodPressureSystolic: record.bloodPressureSystolic?.toString() || '',
+      bloodPressureDiastolic: record.bloodPressureDiastolic?.toString() || '',
+      heartRate: record.heartRate?.toString() || '',
+      temperature: record.temperature?.toString() || '',
+      respiratoryRate: record.respiratoryRate?.toString() || '',
+      oxygenSaturation: record.oxygenSaturation?.toString() || '',
       careProvided: record.interventions || '',
-      patientFamilyResponse: record.patientFamilyResponse || ''
+      nextVisitNotes: record.patientFamilyResponse || '',
+      multipleVisitReason: record.multipleVisitReason || '',
+      emergencyVisitReason: record.emergencyVisitReason || '',
+      longVisitReason: record.longVisitReason || ''
     })
 
     console.log('記録表示:', record.id)
@@ -292,28 +300,61 @@ export function NursingRecords() {
     setSelectedRecord(record)
     setIsCreating(false)
     setIsEditing(true)
-    setSaveError(null) // Clear any previous errors
+    setSaveError(null)
 
-    // Load existing record data into form
-    const visitDate = record.visitTime ? new Date(record.visitTime) : new Date()
+    // Load existing record data into form (unified with new format)
+    const startTime = record.actualStartTime ? new Date(record.actualStartTime) : new Date()
+    const endTime = record.actualEndTime ? new Date(record.actualEndTime) : new Date()
+
     setFormData({
       patientId: record.patientId,
-      date: visitDate.toISOString().split('T')[0],
-      time: visitDate.toTimeString().slice(0, 5),
-      visitType: record.visitTypeCategory || '',
-      vitalSigns: {
-        temperature: record.temperature?.toString() || '',
-        pulse: record.heartRate?.toString() || '',
-        systolicBP: record.bloodPressureSystolic?.toString() || '',
-        diastolicBP: record.bloodPressureDiastolic?.toString() || '',
-        spo2: record.oxygenSaturation?.toString() || '',
-        respiration: record.respiratoryRate?.toString() || ''
-      },
+      visitStatusRecord: (record.visitStatusRecord as 'completed' | 'cancelled' | 'rescheduled') || 'completed',
+      actualStartTime: startTime.toTimeString().slice(0, 5),
+      actualEndTime: endTime.toTimeString().slice(0, 5),
       observations: record.observations || '',
+      isSecondVisit: record.isSecondVisit || false,
+      bloodPressureSystolic: record.bloodPressureSystolic?.toString() || '',
+      bloodPressureDiastolic: record.bloodPressureDiastolic?.toString() || '',
+      heartRate: record.heartRate?.toString() || '',
+      temperature: record.temperature?.toString() || '',
+      respiratoryRate: record.respiratoryRate?.toString() || '',
+      oxygenSaturation: record.oxygenSaturation?.toString() || '',
       careProvided: record.interventions || '',
-      patientFamilyResponse: record.patientFamilyResponse || ''
+      nextVisitNotes: record.patientFamilyResponse || '',
+      multipleVisitReason: record.multipleVisitReason || '',
+      emergencyVisitReason: record.emergencyVisitReason || '',
+      longVisitReason: record.longVisitReason || ''
     })
     console.log('記録編集モード:', record.id)
+  }
+
+  // Delete record function
+  const handleDeleteRecord = async () => {
+    if (!recordToDelete) return
+
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/nursing-records/${recordToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error('削除に失敗しました')
+      }
+
+      // Refresh the records list
+      queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      alert('記録を削除しました')
+      setRecordToDelete(null)
+    } catch (error) {
+      console.error('Delete error:', error)
+      alert('削除中にエラーが発生しました')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   // Save as draft function
@@ -322,7 +363,8 @@ export function NursingRecords() {
     setIsSaving(true)
 
     try {
-      const validationErrors = validateFormData(formData, false)
+      const selectedPatient = patients.find(p => p.id === formData.patientId)
+      const validationErrors = validateFormData(formData, false, selectedPatient)
       if (validationErrors.length > 0) {
         setSaveError(validationErrors.join('\n'))
         return
@@ -365,7 +407,8 @@ export function NursingRecords() {
     setIsSaving(true)
 
     try {
-      const validationErrors = validateFormData(formData, true)
+      const selectedPatient = patients.find(p => p.id === formData.patientId)
+      const validationErrors = validateFormData(formData, true, selectedPatient)
       if (validationErrors.length > 0) {
         setSaveError(validationErrors.join('\n'))
         return
@@ -416,7 +459,8 @@ export function NursingRecords() {
     setIsSaving(true)
 
     try {
-      const validationErrors = validateFormData(formData, status === 'completed' || status === 'reviewed')
+      const selectedPatient = patients.find(p => p.id === formData.patientId)
+      const validationErrors = validateFormData(formData, status === 'completed' || status === 'reviewed', selectedPatient)
       if (validationErrors.length > 0) {
         setSaveError(validationErrors.join('\n'))
         return
@@ -482,27 +526,30 @@ export function NursingRecords() {
           </Button>
         </div>
 
-        {/* Patient Selection */}
+        {/* Basic Information Section (unified with VisitRecordDialog) */}
         {(isCreating || isEditing) && (
-          <Card>
-            <CardContent className="pt-6">
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border">
+            <h3 className="font-semibold text-base">基本情報</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 患者名 */}
               <div className="space-y-2">
-                <Label htmlFor="patient-select">患者を選択 *</Label>
+                <Label htmlFor="patient">患者名</Label>
                 <Select
                   value={formData.patientId}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, patientId: value }))}
                   disabled={isEditing}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger>
                     <SelectValue placeholder="患者を選択してください" />
                   </SelectTrigger>
                   <SelectContent>
                     {patients.map((patient) => (
                       <SelectItem key={patient.id} value={patient.id}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>{getFullName(patient)}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{patient.lastName} {patient.firstName}</span>
                           {patient.isCritical && (
-                            <Badge className="ml-2 bg-red-100 text-red-800 border-red-200 text-xs">
+                            <Badge className="ml-2 bg-yellow-100 text-yellow-800 text-xs">
                               重要
                             </Badge>
                           )}
@@ -512,49 +559,315 @@ export function NursingRecords() {
                   </SelectContent>
                 </Select>
               </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Form/Preview Tabs */}
-        {(isCreating || isEditing) ? (
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'form' | 'preview')} className="w-full">
-            <div className="border-b border-gray-200 mb-4">
-              <TabsList className="grid w-full grid-cols-2 bg-gray-50">
-                <TabsTrigger value="form" className="text-sm sm:text-base">フォーム</TabsTrigger>
-                <TabsTrigger value="preview" className="text-sm sm:text-base">プレビュー</TabsTrigger>
-              </TabsList>
+              {/* 担当者 */}
+              <div className="space-y-2">
+                <Label>担当者</Label>
+                <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                  <span className="text-sm">ログインユーザー</span>
+                </div>
+              </div>
+
+              {/* 訪問ステータス */}
+              <div className="space-y-2">
+                <Label htmlFor="visit-status">訪問ステータス</Label>
+                <Select
+                  value={formData.visitStatusRecord}
+                  onValueChange={(value: "completed" | "cancelled" | "rescheduled") =>
+                    setFormData(prev => ({ ...prev, visitStatusRecord: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="completed">完了</SelectItem>
+                    <SelectItem value="cancelled">キャンセル</SelectItem>
+                    <SelectItem value="rescheduled">日程変更</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <TabsContent value="form" className="space-y-6">
-              {renderFormContent(selectedRecord, formData, setFormData)}
+            {/* 特別管理加算対象患者エリア */}
+            {selectedPatient?.isCritical && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-sm text-yellow-900">特別管理加算対象患者</p>
+                    <div className="text-xs text-yellow-800 mt-1">
+                      <p>対象項目:</p>
+                      <ul className="list-disc list-inside ml-2 mt-1">
+                        <li>在宅悪性腫瘍法</li>
+                        <li>点滴注射(週3日以上)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* バリデーションエラー表示 */}
+            {saveError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-red-900">未入力の必須項目があります</p>
+                    <ul className="list-disc list-inside text-xs text-red-800 mt-1">
+                      {saveError.split('\n').map((error, index) => (
+                        <li key={index}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5 Tabs */}
+        {(isCreating || isEditing) ? (
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
+            <TabsList className="grid w-full grid-cols-5 h-auto">
+              <TabsTrigger value="basic" className="text-xs sm:text-sm py-2">
+                基本記録
+                <span className="ml-1 text-red-500">●</span>
+              </TabsTrigger>
+              <TabsTrigger value="vitals" className="text-xs sm:text-sm py-2">
+                バイタル
+              </TabsTrigger>
+              <TabsTrigger value="care" className="text-xs sm:text-sm py-2">
+                ケア内容
+              </TabsTrigger>
+              <TabsTrigger value="special" className="text-xs sm:text-sm py-2">
+                特管記録
+              </TabsTrigger>
+              <TabsTrigger value="photos" className="text-xs sm:text-sm py-2">
+                写真・メモ
+              </TabsTrigger>
+            </TabsList>
+
+            {/* 基本記録タブ */}
+            <TabsContent value="basic" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="start-time">
+                    実際の開始時間 <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="start-time"
+                    type="time"
+                    value={formData.actualStartTime}
+                    onChange={(e) => setFormData(prev => ({ ...prev, actualStartTime: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="end-time">
+                    実際の終了時間 <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="end-time"
+                    type="time"
+                    value={formData.actualEndTime}
+                    onChange={(e) => setFormData(prev => ({ ...prev, actualEndTime: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="observations">
+                  観察事項 <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="observations"
+                  placeholder="患者の状態、変化、気づいた点などを記録してください"
+                  value={formData.observations}
+                  onChange={(e) => setFormData(prev => ({ ...prev, observations: e.target.value }))}
+                  className="min-h-[120px] resize-none"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="second-visit"
+                  checked={formData.isSecondVisit}
+                  onChange={(e) => setFormData(prev => ({ ...prev, isSecondVisit: e.target.checked }))}
+                  className="w-4 h-4"
+                />
+                <Label htmlFor="second-visit" className="cursor-pointer">
+                  本日2回目以降の訪問
+                </Label>
+              </div>
+
+              {/* 加算管理セクション */}
+              <div className="border-t pt-4 mt-4">
+                <h3 className="text-sm font-semibold mb-3">加算管理</h3>
+                <div className="space-y-4">
+                  {formData.isSecondVisit && (
+                    <div className="space-y-2">
+                      <Label htmlFor="multiple-visit-reason">
+                        複数回訪問の理由 <span className="text-red-500">*</span>
+                      </Label>
+                      <Textarea
+                        id="multiple-visit-reason"
+                        placeholder="複数回訪問が必要な理由を記載してください"
+                        value={formData.multipleVisitReason}
+                        onChange={(e) => setFormData(prev => ({ ...prev, multipleVisitReason: e.target.value }))}
+                        className="min-h-[80px] resize-none"
+                      />
+                    </div>
+                  )}
+
+                  {(() => {
+                    const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
+                    const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
+                    const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
+                    return duration > 90 ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="long-visit-reason">
+                          長時間訪問の理由 <span className="text-red-500">*</span>
+                        </Label>
+                        <Textarea
+                          id="long-visit-reason"
+                          placeholder="90分を超える訪問が必要な理由を記載してください"
+                          value={formData.longVisitReason}
+                          onChange={(e) => setFormData(prev => ({ ...prev, longVisitReason: e.target.value }))}
+                          className="min-h-[80px] resize-none"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          訪問時間: {Math.floor(duration)}分
+                        </p>
+                      </div>
+                    ) : null
+                  })()}
+                </div>
+              </div>
             </TabsContent>
 
-            <TabsContent value="preview" className="space-y-6">
-              {renderPreviewContent(formData, selectedPatient)}
+            {/* バイタルタブ */}
+            <TabsContent value="vitals" className="space-y-4 mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bp">血圧 (mmHg)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="bp-systolic"
+                      type="number"
+                      placeholder="収縮期"
+                      value={formData.bloodPressureSystolic}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        bloodPressureSystolic: e.target.value
+                      }))}
+                    />
+                    <span className="text-muted-foreground">/</span>
+                    <Input
+                      id="bp-diastolic"
+                      type="number"
+                      placeholder="拡張期"
+                      value={formData.bloodPressureDiastolic}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        bloodPressureDiastolic: e.target.value
+                      }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="heart-rate">脈拍 (回/分)</Label>
+                  <Input
+                    id="heart-rate"
+                    type="number"
+                    placeholder="例: 72"
+                    value={formData.heartRate}
+                    onChange={(e) => setFormData(prev => ({ ...prev, heartRate: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="temperature">体温 (°C)</Label>
+                  <Input
+                    id="temperature"
+                    type="number"
+                    step="0.1"
+                    placeholder="例: 36.5"
+                    value={formData.temperature}
+                    onChange={(e) => setFormData(prev => ({ ...prev, temperature: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="respiratory-rate">呼吸数 (回/分)</Label>
+                  <Input
+                    id="respiratory-rate"
+                    type="number"
+                    placeholder="例: 18"
+                    value={formData.respiratoryRate}
+                    onChange={(e) => setFormData(prev => ({ ...prev, respiratoryRate: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="spo2">酸素飽和度 (%)</Label>
+                  <Input
+                    id="spo2"
+                    type="number"
+                    placeholder="例: 98"
+                    value={formData.oxygenSaturation}
+                    onChange={(e) => setFormData(prev => ({ ...prev, oxygenSaturation: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ケア内容タブ */}
+            <TabsContent value="care" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="care-provided">実施したケア内容</Label>
+                <Textarea
+                  id="care-provided"
+                  placeholder="実施した看護ケア、処置、指導内容などを記録してください"
+                  value={formData.careProvided}
+                  onChange={(e) => setFormData(prev => ({ ...prev, careProvided: e.target.value }))}
+                  className="min-h-[120px] resize-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="next-visit-notes">次回訪問時の申し送り</Label>
+                <Textarea
+                  id="next-visit-notes"
+                  placeholder="次回訪問時に注意すべき点、継続すべきケアなどを記録してください"
+                  value={formData.nextVisitNotes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, nextVisitNotes: e.target.value }))}
+                  className="min-h-[120px] resize-none"
+                />
+              </div>
+            </TabsContent>
+
+            {/* 特管記録タブ（保留） */}
+            <TabsContent value="special" className="mt-4">
+              <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                <p className="text-sm">特別管理加算記録機能は準備中です</p>
+              </div>
+            </TabsContent>
+
+            {/* 写真・メモタブ（保留） */}
+            <TabsContent value="photos" className="mt-4">
+              <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                <p className="text-sm">写真・メモ機能は準備中です</p>
+              </div>
             </TabsContent>
           </Tabs>
         ) : (
           // View-only mode
           <div className="space-y-6">
             {renderPreviewContent(formData, selectedPatient)}
-          </div>
-        )}
-
-        {/* Error Display */}
-        {saveError && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-4">
-            <div className="flex">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">エラー</h3>
-                <div className="mt-2 text-sm text-red-700">
-                  {saveError.split('\n').map((error, index) => (
-                    <p key={index}>{error}</p>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -782,6 +1095,15 @@ export function NursingRecords() {
                         編集
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setRecordToDelete(record)}
+                      data-testid={`button-delete-${record.id}`}
+                    >
+                      <Trash2 className="mr-1 h-3 w-3" />
+                      削除
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -802,248 +1124,37 @@ export function NursingRecords() {
           )}
         </CardContent>
       </Card>
-    </div>
-  )
-}
 
-// Helper function to render form content
-function renderFormContent(
-  selectedRecord: NursingRecord | null,
-  formData: FormData,
-  setFormData: React.Dispatch<React.SetStateAction<FormData>>
-) {
-  return (
-    <div className="space-y-6">
-      {/* Basic Information Section */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">基本情報</CardTitle>
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Visit Date and Time - Responsive Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="visit-date">訪問日 *</Label>
-              <Input
-                id="visit-date"
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="visit-time">訪問時間 *</Label>
-              <Input
-                id="visit-time"
-                type="time"
-                value={formData.time}
-                onChange={(e) => setFormData(prev => ({ ...prev, time: e.target.value }))}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          {/* Visit Type */}
-          <div className="space-y-2">
-            <Label htmlFor="visit-type">訪問理由</Label>
-            <Select
-              value={formData.visitType}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, visitType: value }))}
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!recordToDelete} onOpenChange={(open) => !open && setRecordToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>訪問記録を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {recordToDelete && (
+                <div className="space-y-2">
+                  <p>以下の記録を削除します。この操作は取り消せません。</p>
+                  <div className="bg-muted p-3 rounded-md text-sm space-y-1">
+                    <p><span className="font-medium">患者名:</span> {recordToDelete.patientName}</p>
+                    <p><span className="font-medium">訪問日時:</span> {recordToDelete.visitTime ? new Date(recordToDelete.visitTime).toLocaleString('ja-JP') : '未設定'}</p>
+                    <p><span className="font-medium">訪問理由:</span> {recordToDelete.visitTypeCategory || '未設定'}</p>
+                  </div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteRecord}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="選択してください" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="定期訪問">定期訪問</SelectItem>
-                <SelectItem value="緊急訪問">緊急訪問</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Vital Signs Section */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">バイタルサイン</CardTitle>
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Responsive Vital Signs Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="temperature">体温</Label>
-              <div className="relative">
-                <Input
-                  id="temperature"
-                  type="number"
-                  step="0.1"
-                  placeholder="36.5"
-                  value={formData.vitalSigns.temperature}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    vitalSigns: { ...prev.vitalSigns, temperature: e.target.value }
-                  }))}
-                  className="pr-8 placeholder:text-gray-400"
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
-                  ℃
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="pulse">脈拍</Label>
-              <div className="relative">
-                <Input
-                  id="pulse"
-                  type="number"
-                  placeholder="72"
-                  value={formData.vitalSigns.pulse}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    vitalSigns: { ...prev.vitalSigns, pulse: e.target.value }
-                  }))}
-                  className="pr-12 placeholder:text-gray-400"
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
-                  回/分
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="systolic-bp">血圧（収縮期）</Label>
-              <div className="relative">
-                <Input
-                  id="systolic-bp"
-                  type="number"
-                  placeholder="120"
-                  value={formData.vitalSigns.systolicBP}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    vitalSigns: { ...prev.vitalSigns, systolicBP: e.target.value }
-                  }))}
-                  className="pr-12 placeholder:text-gray-400"
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
-                  mmHg
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="diastolic-bp">血圧（拡張期）</Label>
-              <div className="relative">
-                <Input
-                  id="diastolic-bp"
-                  type="number"
-                  placeholder="80"
-                  value={formData.vitalSigns.diastolicBP}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    vitalSigns: { ...prev.vitalSigns, diastolicBP: e.target.value }
-                  }))}
-                  className="pr-12 placeholder:text-gray-400"
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
-                  mmHg
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="spo2">SpO2</Label>
-              <div className="relative">
-                <Input
-                  id="spo2"
-                  type="number"
-                  placeholder="98"
-                  value={formData.vitalSigns.spo2}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    vitalSigns: { ...prev.vitalSigns, spo2: e.target.value }
-                  }))}
-                  className="pr-8 placeholder:text-gray-400"
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
-                  %
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="respiration">呼吸数</Label>
-              <div className="relative">
-                <Input
-                  id="respiration"
-                  type="number"
-                  placeholder="18"
-                  value={formData.vitalSigns.respiration}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    vitalSigns: { ...prev.vitalSigns, respiration: e.target.value }
-                  }))}
-                  className="pr-12 placeholder:text-gray-400"
-                />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">
-                  回/分
-                </span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Nursing Records Section */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">訪問記録</CardTitle>
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="observations">観察事項 *</Label>
-            <Textarea
-              id="observations"
-              placeholder="患者の状態、症状、外観などを記載してください"
-              value={formData.observations}
-              onChange={(e) => setFormData(prev => ({ ...prev, observations: e.target.value }))}
-              className="min-h-[120px] resize-none placeholder:text-gray-400"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="care-provided">実施したケア *</Label>
-            <Textarea
-              id="care-provided"
-              placeholder="実施した看護ケア、処置などを記載してください"
-              value={formData.careProvided}
-              onChange={(e) => setFormData(prev => ({ ...prev, careProvided: e.target.value }))}
-              className="min-h-[120px] resize-none placeholder:text-gray-400"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="patient-family-response">患者・家族の反応</Label>
-            <Textarea
-              id="patient-family-response"
-              placeholder="患者や家族の反応、コメントなどを記載してください"
-              value={formData.patientFamilyResponse}
-              onChange={(e) => setFormData(prev => ({ ...prev, patientFamilyResponse: e.target.value }))}
-              className="min-h-[100px] resize-none placeholder:text-gray-400"
-            />
-          </div>
-        </CardContent>
-      </Card>
+              {isDeleting ? '削除中...' : '削除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -1070,16 +1181,20 @@ function renderPreviewContent(formData: FormData, selectedPatient: Patient | und
           <h3 className="font-semibold text-base">基本情報</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <div>
-              <span className="font-medium">訪問日:</span>
-              <span className="ml-2">{formData.date || '未入力'}</span>
+              <span className="font-medium">訪問ステータス:</span>
+              <span className="ml-2">{formData.visitStatusRecord === 'completed' ? '完了' : formData.visitStatusRecord === 'cancelled' ? 'キャンセル' : '日程変更'}</span>
             </div>
             <div>
-              <span className="font-medium">訪問時間:</span>
-              <span className="ml-2">{formData.time || '未入力'}</span>
+              <span className="font-medium">開始時間:</span>
+              <span className="ml-2">{formData.actualStartTime || '未入力'}</span>
             </div>
-            <div className="sm:col-span-2">
-              <span className="font-medium">訪問理由:</span>
-              <span className="ml-2">{formData.visitType || '未入力'}</span>
+            <div>
+              <span className="font-medium">終了時間:</span>
+              <span className="ml-2">{formData.actualEndTime || '未入力'}</span>
+            </div>
+            <div>
+              <span className="font-medium">2回目以降の訪問:</span>
+              <span className="ml-2">{formData.isSecondVisit ? 'はい' : 'いいえ'}</span>
             </div>
           </div>
         </div>
@@ -1090,27 +1205,27 @@ function renderPreviewContent(formData: FormData, selectedPatient: Patient | und
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
             <div>
               <span className="font-medium">体温:</span>
-              <span className="ml-2">{formData.vitalSigns.temperature || '未入力'}</span>
+              <span className="ml-2">{formData.temperature || '未入力'}</span>
             </div>
             <div>
               <span className="font-medium">脈拍:</span>
-              <span className="ml-2">{formData.vitalSigns.pulse || '未入力'}</span>
+              <span className="ml-2">{formData.heartRate || '未入力'}</span>
             </div>
             <div>
               <span className="font-medium">血圧（収縮期）:</span>
-              <span className="ml-2">{formData.vitalSigns.systolicBP || '未入力'}</span>
+              <span className="ml-2">{formData.bloodPressureSystolic || '未入力'}</span>
             </div>
             <div>
               <span className="font-medium">血圧（拡張期）:</span>
-              <span className="ml-2">{formData.vitalSigns.diastolicBP || '未入力'}</span>
+              <span className="ml-2">{formData.bloodPressureDiastolic || '未入力'}</span>
             </div>
             <div>
               <span className="font-medium">SpO2:</span>
-              <span className="ml-2">{formData.vitalSigns.spo2 || '未入力'}</span>
+              <span className="ml-2">{formData.oxygenSaturation || '未入力'}</span>
             </div>
             <div>
               <span className="font-medium">呼吸数:</span>
-              <span className="ml-2">{formData.vitalSigns.respiration || '未入力'}</span>
+              <span className="ml-2">{formData.respiratoryRate || '未入力'}</span>
             </div>
           </div>
         </div>
@@ -1132,9 +1247,9 @@ function renderPreviewContent(formData: FormData, selectedPatient: Patient | und
               </p>
             </div>
             <div>
-              <span className="font-medium block mb-1">患者・家族の反応:</span>
+              <span className="font-medium block mb-1">次回訪問時の申し送り:</span>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap border-l-2 border-gray-200 pl-3">
-                {formData.patientFamilyResponse || '未入力'}
+                {formData.nextVisitNotes || '未入力'}
               </p>
             </div>
           </div>

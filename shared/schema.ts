@@ -216,6 +216,7 @@ export const nursingRecords = pgTable("nursing_records", {
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 // ========== Medications Table ==========

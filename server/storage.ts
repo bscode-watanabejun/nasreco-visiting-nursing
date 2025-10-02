@@ -10,7 +10,7 @@ import {
   type PaginationOptions, type PaginatedResult,
   users, companies, facilities, patients, visits, nursingRecords, medications, schedules
 } from "@shared/schema";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, isNull } from "drizzle-orm";
 import { db } from "./db";
 
 // Storage interface for all visiting nursing system operations
@@ -393,14 +393,21 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async getNursingRecordsByFacility(facilityId: string): Promise<NursingRecord[]> {
-    return await db.select().from(nursingRecords).where(eq(nursingRecords.facilityId, facilityId));
+    return await db.select().from(nursingRecords)
+      .where(and(
+        eq(nursingRecords.facilityId, facilityId),
+        isNull(nursingRecords.deletedAt)
+      ));
   }
 
   async getNursingRecordsByPatient(patientId: string): Promise<NursingRecord[]> {
     return await db
       .select()
       .from(nursingRecords)
-      .where(eq(nursingRecords.patientId, patientId))
+      .where(and(
+        eq(nursingRecords.patientId, patientId),
+        isNull(nursingRecords.deletedAt)
+      ))
       .orderBy(desc(nursingRecords.recordDate));
   }
 
@@ -408,7 +415,10 @@ export class PostgreSQLStorage implements IStorage {
     return await db
       .select()
       .from(nursingRecords)
-      .where(eq(nursingRecords.nurseId, nurseId))
+      .where(and(
+        eq(nursingRecords.nurseId, nurseId),
+        isNull(nursingRecords.deletedAt)
+      ))
       .orderBy(desc(nursingRecords.recordDate));
   }
 
@@ -428,7 +438,10 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async deleteNursingRecord(id: string): Promise<boolean> {
-    const result = await db.delete(nursingRecords).where(eq(nursingRecords.id, id));
+    // Soft delete by setting deletedAt timestamp
+    const result = await db.update(nursingRecords)
+      .set({ deletedAt: new Date() })
+      .where(eq(nursingRecords.id, id));
     return (result.rowCount ?? 0) > 0;
   }
 
@@ -596,15 +609,21 @@ export class PostgreSQLStorage implements IStorage {
 
   async getNursingRecordsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>> {
     const offset = (options.page - 1) * options.limit;
-    
+
     const [data, totalResult] = await Promise.all([
       db.select().from(nursingRecords)
-        .where(eq(nursingRecords.facilityId, facilityId))
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt)
+        ))
         .orderBy(desc(nursingRecords.recordDate))
         .limit(options.limit)
         .offset(offset),
       db.select({ count: count() }).from(nursingRecords)
-        .where(eq(nursingRecords.facilityId, facilityId))
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt)
+        ))
     ]);
 
     const total = Number(totalResult[0].count);
@@ -613,12 +632,13 @@ export class PostgreSQLStorage implements IStorage {
 
   async getNursingRecordsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>> {
     const offset = (options.page - 1) * options.limit;
-    
+
     const [data, totalResult] = await Promise.all([
       db.select().from(nursingRecords)
         .where(and(
           eq(nursingRecords.patientId, patientId),
-          eq(nursingRecords.facilityId, facilityId)
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt)
         ))
         .orderBy(desc(nursingRecords.recordDate))
         .limit(options.limit)
@@ -626,7 +646,8 @@ export class PostgreSQLStorage implements IStorage {
       db.select({ count: count() }).from(nursingRecords)
         .where(and(
           eq(nursingRecords.patientId, patientId),
-          eq(nursingRecords.facilityId, facilityId)
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt)
         ))
     ]);
 

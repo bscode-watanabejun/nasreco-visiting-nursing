@@ -802,12 +802,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "入力データが正しくありません",
-          details: error.errors 
+          details: error.errors
         });
       }
       console.error("Update nursing record error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete nursing record (soft delete)
+  app.delete("/api/nursing-records/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Check if nursing record belongs to user's facility
+      const existingRecord = await storage.getNursingRecord(id);
+      if (!existingRecord || existingRecord.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      // Soft delete by setting deletedAt timestamp
+      const record = await storage.deleteNursingRecord(id);
+      if (!record) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      res.json({ message: "看護記録を削除しました", id });
+
+    } catch (error) {
+      console.error("Delete nursing record error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
