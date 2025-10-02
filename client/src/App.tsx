@@ -12,6 +12,7 @@ import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters";
 // Import all main components
 import { Dashboard } from "@/components/Dashboard";
 import { PatientManagement } from "@/components/PatientManagement";
+import { PatientDetail } from "@/components/PatientDetail";
 import { NursingRecords } from "@/components/NursingRecords";
 import { UserManagement } from "@/components/UserManagement";
 import { ScheduleManagement } from "@/components/ScheduleManagement";
@@ -212,6 +213,7 @@ function MainLayout() {
                   <Route path="/" component={HeadquartersDashboard} />
                   <Route path="/dashboard" component={HeadquartersDashboard} />
                   <Route path="/facilities" component={FacilityManagement} />
+                  <Route path="/patients/:id" component={PatientDetail} />
                   <Route path="/patients" component={PatientManagement} />
                   <Route path="/records" component={NursingRecords} />
                   <Route path="/schedule" component={ScheduleManagement} />
@@ -222,6 +224,7 @@ function MainLayout() {
                 <>
                   <Route path="/" component={Dashboard} />
                   <Route path="/dashboard" component={Dashboard} />
+                  <Route path="/patients/:id" component={PatientDetail} />
                   <Route path="/patients" component={PatientManagement} />
                   <Route path="/records" component={NursingRecords} />
                   <Route path="/schedule" component={ScheduleManagement} />

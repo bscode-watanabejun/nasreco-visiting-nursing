@@ -15,7 +15,12 @@
       "Bash(npm run:*)",
       "Bash(npx drizzle-kit migrate:*)",
       "Bash(npx drizzle-kit:*)",
-      "Bash(printf \"No, add the constraint without truncating the table\\n\\n\\n\\n\\n\")"
+      "Bash(printf \"No, add the constraint without truncating the table\\n\\n\\n\\n\\n\")",
+      "Bash(if [ -n \"$DATABASE_URL\" ])",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(exit 1)",
+      "Bash(fi)"
     ],
     "deny": [],
     "ask": []

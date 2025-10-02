@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useLocation } from "wouter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +17,8 @@ import {
   Phone,
   MapPin,
   User,
-  Filter
+  Filter,
+  Eye
 } from "lucide-react"
 
 import type { Patient, PaginatedResult } from "@shared/schema"
@@ -66,6 +68,7 @@ const getStatusText = (status: string) => {
 }
 
 export function PatientManagement() {
+  const [, setLocation] = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'critical' | 'inactive'>('all')
   const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
@@ -115,6 +118,10 @@ export function PatientManagement() {
   const handleCloseForm = () => {
     setIsPatientFormOpen(false)
     setSelectedPatient(null)
+  }
+
+  const handleViewDetail = (patient: Patient) => {
+    setLocation(`/patients/${patient.id}`)
   }
 
   const handleViewRecords = (patient: Patient) => {
@@ -315,37 +322,26 @@ export function PatientManagement() {
                     <p>登録日: {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                     <p>更新日: {patient.updatedAt ? new Date(patient.updatedAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button 
-                      size="default" 
-                      variant="outline" 
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="default"
+                      variant="default"
+                      onClick={() => handleViewDetail(patient)}
+                      className="text-xs px-2"
+                      data-testid={`button-detail-${patient.id}`}
+                    >
+                      <Eye className="mr-1 h-3 w-3" />
+                      詳細
+                    </Button>
+                    <Button
+                      size="default"
+                      variant="outline"
                       onClick={() => handleEditPatient(patient)}
                       className="text-xs px-2"
                       data-testid={`button-edit-${patient.id}`}
                     >
                       <Edit className="mr-1 h-3 w-3" />
                       編集
-                    </Button>
-                    <Button 
-                      size="default" 
-                      variant="outline" 
-                      onClick={() => handleViewRecords(patient)}
-                      className="text-xs px-2"
-                      data-testid={`button-records-${patient.id}`}
-                    >
-                      <FileText className="mr-1 h-3 w-3" />
-                      記録
-                    </Button>
-                    <Button 
-                      size="default" 
-                      variant="outline" 
-                      onClick={() => handleViewSchedule(patient)}
-                      className="text-xs px-2"
-                      data-testid={`button-schedule-${patient.id}`}
-                    >
-                      <Calendar className="mr-1 h-3 w-3" />
-                      <span className="hidden xs:inline">スケジュール</span>
-                      <span className="xs:hidden">予定</span>
                     </Button>
                   </div>
                 </div>
@@ -388,32 +384,23 @@ export function PatientManagement() {
                       <p>更新日: {patient.updatedAt ? new Date(patient.updatedAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handleViewDetail(patient)}
+                        data-testid={`button-detail-${patient.id}`}
+                      >
+                        <Eye className="mr-1 h-3 w-3" />
+                        詳細
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleEditPatient(patient)}
                         data-testid={`button-edit-${patient.id}`}
                       >
                         <Edit className="mr-1 h-3 w-3" />
                         編集
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => handleViewRecords(patient)}
-                        data-testid={`button-records-${patient.id}`}
-                      >
-                        <FileText className="mr-1 h-3 w-3" />
-                        記録
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => handleViewSchedule(patient)}
-                        data-testid={`button-schedule-${patient.id}`}
-                      >
-                        <Calendar className="mr-1 h-3 w-3" />
-                        スケジュール
                       </Button>
                     </div>
                   </div>
