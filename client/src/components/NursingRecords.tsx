@@ -195,6 +195,7 @@ export function NursingRecords() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState<'form' | 'preview'>('form')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -261,7 +262,58 @@ export function NursingRecords() {
   const handleViewRecord = (record: NursingRecordDisplay) => {
     setSelectedRecord(record)
     setIsCreating(false)
+    setIsEditing(false)
+    setSaveError(null) // Clear any previous errors
+
+    // Load record data for view-only display
+    const visitDate = record.visitTime ? new Date(record.visitTime) : new Date()
+    setFormData({
+      patientId: record.patientId,
+      date: visitDate.toISOString().split('T')[0],
+      time: visitDate.toTimeString().slice(0, 5),
+      visitType: record.visitTypeCategory || '',
+      vitalSigns: {
+        temperature: record.temperature?.toString() || '',
+        pulse: record.heartRate?.toString() || '',
+        systolicBP: record.bloodPressureSystolic?.toString() || '',
+        diastolicBP: record.bloodPressureDiastolic?.toString() || '',
+        spo2: record.oxygenSaturation?.toString() || '',
+        respiration: record.respiratoryRate?.toString() || ''
+      },
+      observations: record.observations || '',
+      careProvided: record.interventions || '',
+      patientFamilyResponse: record.patientFamilyResponse || ''
+    })
+
     console.log('記録表示:', record.id)
+  }
+
+  const handleEditRecord = (record: NursingRecordDisplay) => {
+    setSelectedRecord(record)
+    setIsCreating(false)
+    setIsEditing(true)
+    setSaveError(null) // Clear any previous errors
+
+    // Load existing record data into form
+    const visitDate = record.visitTime ? new Date(record.visitTime) : new Date()
+    setFormData({
+      patientId: record.patientId,
+      date: visitDate.toISOString().split('T')[0],
+      time: visitDate.toTimeString().slice(0, 5),
+      visitType: record.visitTypeCategory || '',
+      vitalSigns: {
+        temperature: record.temperature?.toString() || '',
+        pulse: record.heartRate?.toString() || '',
+        systolicBP: record.bloodPressureSystolic?.toString() || '',
+        diastolicBP: record.bloodPressureDiastolic?.toString() || '',
+        spo2: record.oxygenSaturation?.toString() || '',
+        respiration: record.respiratoryRate?.toString() || ''
+      },
+      observations: record.observations || '',
+      careProvided: record.interventions || '',
+      patientFamilyResponse: record.patientFamilyResponse || ''
+    })
+    console.log('記録編集モード:', record.id)
   }
 
   // Save as draft function
@@ -320,8 +372,13 @@ export function NursingRecords() {
       }
 
       const apiData = convertFormDataToApiFormat(formData, 'completed')
-      const response = await fetch('/api/nursing-records', {
-        method: 'POST',
+
+      // If editing, use PUT; if creating, use POST
+      const url = isEditing && selectedRecord ? `/api/nursing-records/${selectedRecord.id}` : '/api/nursing-records'
+      const method = isEditing && selectedRecord ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -337,14 +394,60 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
-      alert('記録を完成しました')
+      alert(isEditing ? '記録を更新しました' : '記録を完成しました')
       setFormData(getInitialFormData()) // Reset form after successful save
       setIsCreating(false)
+      setIsEditing(false)
       setSelectedRecord(null)
     } catch (error) {
       console.error('Complete record error:', error)
       console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'completed'))
       setSaveError(error instanceof Error ? error.message : '保存中にエラーが発生しました')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Update existing record
+  const handleUpdateRecord = async (status: 'draft' | 'completed' | 'reviewed') => {
+    if (!selectedRecord) return
+
+    setSaveError(null)
+    setIsSaving(true)
+
+    try {
+      const validationErrors = validateFormData(formData, status === 'completed' || status === 'reviewed')
+      if (validationErrors.length > 0) {
+        setSaveError(validationErrors.join('\n'))
+        return
+      }
+
+      const apiData = convertFormDataToApiFormat(formData, status as 'draft' | 'completed')
+
+      const response = await fetch(`/api/nursing-records/${selectedRecord.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...apiData, status }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown server error' }))
+        console.error('API Error Details:', error)
+        const errorMessage = error.error || error.message || `サーバーエラー (${response.status}): ${response.statusText}`
+        throw new Error(errorMessage)
+      }
+
+      // Success - invalidate queries and show notification
+      await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      alert('記録を更新しました')
+      setFormData(getInitialFormData())
+      setIsEditing(false)
+      setSelectedRecord(null)
+    } catch (error) {
+      console.error('Update record error:', error)
+      setSaveError(error instanceof Error ? error.message : '更新中にエラーが発生しました')
     } finally {
       setIsSaving(false)
     }
@@ -359,7 +462,7 @@ export function NursingRecords() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">
-              {isCreating ? '新規看護記録' : '看護記録詳細'}
+              {isCreating ? '新規訪問記録' : '訪問記録詳細'}
             </h1>
             <p className="text-sm sm:text-base text-muted-foreground">
               {isCreating ? '新しい訪問記録を作成' : `${selectedRecord?.patientName}さんの記録`}
@@ -367,7 +470,12 @@ export function NursingRecords() {
           </div>
           <Button
             variant="outline"
-            onClick={() => { setIsCreating(false); setSelectedRecord(null) }}
+            onClick={() => {
+              setIsCreating(false)
+              setIsEditing(false)
+              setSelectedRecord(null)
+              setSaveError(null)
+            }}
             className="w-full sm:w-auto flex-shrink-0"
           >
             一覧に戻る
@@ -375,7 +483,7 @@ export function NursingRecords() {
         </div>
 
         {/* Patient Selection */}
-        {isCreating && (
+        {(isCreating || isEditing) && (
           <Card>
             <CardContent className="pt-6">
               <div className="space-y-2">
@@ -383,6 +491,7 @@ export function NursingRecords() {
                 <Select
                   value={formData.patientId}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, patientId: value }))}
+                  disabled={isEditing}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="患者を選択してください" />
@@ -408,22 +517,29 @@ export function NursingRecords() {
         )}
 
         {/* Form/Preview Tabs */}
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'form' | 'preview')} className="w-full">
-          <div className="border-b border-gray-200 mb-4">
-            <TabsList className="grid w-full grid-cols-2 bg-gray-50">
-              <TabsTrigger value="form" className="text-sm sm:text-base">フォーム</TabsTrigger>
-              <TabsTrigger value="preview" className="text-sm sm:text-base">プレビュー</TabsTrigger>
-            </TabsList>
-          </div>
+        {(isCreating || isEditing) ? (
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'form' | 'preview')} className="w-full">
+            <div className="border-b border-gray-200 mb-4">
+              <TabsList className="grid w-full grid-cols-2 bg-gray-50">
+                <TabsTrigger value="form" className="text-sm sm:text-base">フォーム</TabsTrigger>
+                <TabsTrigger value="preview" className="text-sm sm:text-base">プレビュー</TabsTrigger>
+              </TabsList>
+            </div>
 
-          <TabsContent value="form" className="space-y-6">
-            {renderFormContent(selectedRecord, formData, setFormData)}
-          </TabsContent>
+            <TabsContent value="form" className="space-y-6">
+              {renderFormContent(selectedRecord, formData, setFormData)}
+            </TabsContent>
 
-          <TabsContent value="preview" className="space-y-6">
+            <TabsContent value="preview" className="space-y-6">
+              {renderPreviewContent(formData, selectedPatient)}
+            </TabsContent>
+          </Tabs>
+        ) : (
+          // View-only mode
+          <div className="space-y-6">
             {renderPreviewContent(formData, selectedPatient)}
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
 
         {/* Error Display */}
         {saveError && (
@@ -462,10 +578,43 @@ export function NursingRecords() {
                 {isSaving ? '保存中...' : '記録完成'}
               </Button>
             </>
+          ) : isEditing ? (
+            <>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => handleUpdateRecord('draft')}
+                disabled={isSaving}
+              >
+                {isSaving ? '保存中...' : '下書きとして保存'}
+              </Button>
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => handleUpdateRecord('completed')}
+                disabled={isSaving}
+              >
+                {isSaving ? '保存中...' : '完成として保存'}
+              </Button>
+            </>
           ) : (
             <>
-              {selectedRecord?.status === 'draft' && <Button className="w-full sm:w-auto">編集</Button>}
-              {selectedRecord?.status === 'completed' && <Button className="w-full sm:w-auto">確認済みにする</Button>}
+              {selectedRecord?.status === 'draft' && (
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={() => handleEditRecord(selectedRecord)}
+                >
+                  編集
+                </Button>
+              )}
+              {selectedRecord?.status === 'completed' && (
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={() => handleUpdateRecord('reviewed')}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '処理中...' : '確認済みにする'}
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -478,7 +627,7 @@ export function NursingRecords() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">看護記録</h1>
+          <h1 className="text-3xl font-bold tracking-tight">訪問記録</h1>
           <p className="text-muted-foreground">訪問看護記録の管理と作成</p>
         </div>
         <Button onClick={handleCreateNew} data-testid="button-create-record">
@@ -624,8 +773,9 @@ export function NursingRecords() {
                       詳細
                     </Button>
                     {record.status === 'draft' && (
-                      <Button 
+                      <Button
                         size="sm"
+                        onClick={() => handleEditRecord(record)}
                         data-testid={`button-edit-${record.id}`}
                       >
                         <Edit className="mr-1 h-3 w-3" />
@@ -855,7 +1005,7 @@ function renderFormContent(
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">看護記録</CardTitle>
+            <CardTitle className="text-lg font-semibold">訪問記録</CardTitle>
             <ChevronUp className="h-4 w-4 text-muted-foreground" />
           </div>
         </CardHeader>

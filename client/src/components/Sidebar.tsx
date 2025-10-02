@@ -42,7 +42,7 @@ const facilityNavigationItems = [
     badge: null,
   },
   {
-    title: "看護記録",
+    title: "訪問記録",
     href: "/records",
     icon: ClipboardList,
     badge: { text: "3", variant: "destructive" as const },
