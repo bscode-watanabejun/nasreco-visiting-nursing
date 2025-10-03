@@ -295,10 +295,10 @@ export function UserManagement() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl md:text-2xl lg:text-3xl font-bold tracking-tight">
-              {isCreating ? '新規ユーザー作成' : 'ユーザー編集'}
+              {isCreating ? '新規ユーザー登録' : 'ユーザー編集'}
             </h1>
             <p className="text-sm md:text-base text-muted-foreground">
-              {isCreating ? '新しいスタッフアカウントを作成' : `${selectedUser?.name}のアカウント設定`}
+              {isCreating ? '新しいスタッフアカウントを登録' : `${selectedUser?.name}のアカウント設定`}
             </p>
           </div>
           <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
@@ -448,7 +448,7 @@ export function UserManagement() {
         </div>
         <Button onClick={handleCreateNew} data-testid="button-create-user" className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
-          <span className="sm:inline">新規ユーザー作成</span>
+          <span className="sm:inline">新規ユーザー登録</span>
         </Button>
       </div>
 

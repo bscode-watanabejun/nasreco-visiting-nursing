@@ -163,15 +163,8 @@ export function Dashboard() {
   }
 
   const handleCompleteVisit = (scheduleId: string) => {
-    updateStatusMutation.mutate(
-      { id: scheduleId, status: "completed" },
-      {
-        onSuccess: () => {
-          setSelectedScheduleId(scheduleId)
-          setIsVisitRecordDialogOpen(true)
-        }
-      }
-    )
+    setSelectedScheduleId(scheduleId)
+    setIsVisitRecordDialogOpen(true)
   }
 
   const completedVisits = visits.filter(v => v.status === 'completed').length
@@ -199,7 +192,7 @@ export function Dashboard() {
               onClick={() => setIsVisitRecordDialogOpen(true)}
             >
               <Plus className="mr-2 h-4 w-4" />
-              新規記録
+              新規記録登録
             </Button>
             <Button
               variant="outline"
@@ -240,7 +233,7 @@ export function Dashboard() {
             onClick={() => setIsVisitRecordDialogOpen(true)}
           >
             <Plus className="mr-1 h-4 w-4" />
-            新規記録
+            新規記録登録
           </Button>
         </div>
       </div>

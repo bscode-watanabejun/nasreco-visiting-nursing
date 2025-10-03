@@ -138,7 +138,7 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
   const patientSchedules = (patientSchedulesData?.data || []) as Schedule[]
   const selectedSchedule = patientSchedules.find(s => s.id === formData.selectedScheduleId)
 
-  const validateForm = (): string[] => {
+  const validateForm = (isComplete: boolean): string[] => {
     const errors: string[] = []
 
     if (!formData.patientId) {
@@ -150,39 +150,122 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
     if (!formData.actualEndTime) {
       errors.push('「実際の終了時間」を入力してください')
     }
-    if (!formData.observations.trim()) {
-      errors.push('「観察事項」を入力してください')
-    }
 
-    // 加算管理のバリデーション
-    if (formData.isSecondVisit && !formData.multipleVisitReason.trim()) {
-      errors.push('複数回訪問の理由を入力してください')
-    }
-    if (schedule?.visitType === '緊急訪問' && !formData.emergencyVisitReason.trim()) {
-      errors.push('緊急訪問の理由を入力してください')
-    }
+    // 完了時のみ追加のバリデーションを実施
+    if (isComplete) {
+      if (!formData.observations.trim()) {
+        errors.push('「観察事項」を入力してください')
+      }
 
-    // 長時間訪問チェック
-    const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
-    const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
-    const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
-    if (duration > 90 && !formData.longVisitReason.trim()) {
-      errors.push('長時間訪問（90分超）の理由を入力してください')
-    }
+      // 加算管理のバリデーション
+      if (formData.isSecondVisit && !formData.multipleVisitReason.trim()) {
+        errors.push('複数回訪問の理由を入力してください')
+      }
+      if (schedule?.visitType === '緊急訪問' && !formData.emergencyVisitReason.trim()) {
+        errors.push('緊急訪問の理由を入力してください')
+      }
 
-    // 特別管理加算の検証（該当項目がある場合）
-    if (selectedPatient?.isCritical) {
-      // 将来的な検証ロジック
+      // 長時間訪問チェック
+      const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
+      const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
+      const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
+      if (duration > 90 && !formData.longVisitReason.trim()) {
+        errors.push('長時間訪問（90分超）の理由を入力してください')
+      }
+
+      // 特別管理加算の検証（該当項目がある場合）
+      if (selectedPatient?.isCritical) {
+        // 将来的な検証ロジック
+      }
     }
 
     return errors
+  }
+
+  const handleSaveDraft = async () => {
+    setSaveError(null)
+    setValidationErrors([])
+
+    const errors = validateForm(false)
+    if (errors.length > 0) {
+      setValidationErrors(errors)
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const currentDateTime = new Date()
+      const today = currentDateTime.toISOString().split('T')[0]
+
+      // 時間をISO文字列に変換
+      const startDateTime = new Date(`${today}T${formData.actualStartTime}:00`)
+      const endDateTime = new Date(`${today}T${formData.actualEndTime}:00`)
+
+      const apiData = {
+        patientId: formData.patientId,
+        recordType: 'general_care' as const,
+        recordDate: currentDateTime.toISOString(),
+        status: 'draft' as const,
+        title: `訪問記録 - ${today}`,
+        content: `訪問日時: ${today}\n開始時間: ${formData.actualStartTime}\n終了時間: ${formData.actualEndTime}\n訪問ステータス: ${formData.visitStatusRecord}\n\n観察事項:\n${formData.observations}\n\n実施したケア:\n${formData.careProvided}\n\n次回訪問時の申し送り:\n${formData.nextVisitNotes}`,
+
+        // 新規フィールド
+        visitStatusRecord: formData.visitStatusRecord,
+        actualStartTime: startDateTime.toISOString(),
+        actualEndTime: endDateTime.toISOString(),
+        isSecondVisit: formData.isSecondVisit,
+
+        // 既存フィールド
+        observations: formData.observations,
+        interventions: formData.careProvided,
+        patientFamilyResponse: formData.nextVisitNotes,
+
+        // バイタルサイン
+        ...(formData.bloodPressureSystolic && { bloodPressureSystolic: parseInt(formData.bloodPressureSystolic) }),
+        ...(formData.bloodPressureDiastolic && { bloodPressureDiastolic: parseInt(formData.bloodPressureDiastolic) }),
+        ...(formData.heartRate && { heartRate: parseInt(formData.heartRate) }),
+        ...(formData.temperature && { temperature: formData.temperature }),
+        ...(formData.respiratoryRate && { respiratoryRate: parseInt(formData.respiratoryRate) }),
+        ...(formData.oxygenSaturation && { oxygenSaturation: parseInt(formData.oxygenSaturation) }),
+
+        // 加算管理フィールド
+        ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
+        ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
+        ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
+      }
+
+      const response = await fetch('/api/nursing-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiData),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown server error' }))
+        throw new Error(error.error || `サーバーエラー (${response.status})`)
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+      alert('下書きとして保存しました')
+      setFormData(getInitialFormData())
+      onOpenChange(false)
+
+    } catch (error) {
+      console.error('Save draft error:', error)
+      setSaveError(error instanceof Error ? error.message : '保存中にエラーが発生しました')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleSave = async () => {
     setSaveError(null)
     setValidationErrors([])
 
-    const errors = validateForm()
+    const errors = validateForm(true)
     if (errors.length > 0) {
       setValidationErrors(errors)
       return
@@ -240,6 +323,25 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown server error' }))
         throw new Error(error.error || `サーバーエラー (${response.status})`)
+      }
+
+      // 訪問ステータスが「完了」の場合、スケジュールのステータスも更新
+      if (formData.visitStatusRecord === 'completed') {
+        const scheduleId = schedule?.id || formData.selectedScheduleId
+        if (scheduleId && scheduleId !== 'none') {
+          try {
+            const statusResponse = await fetch(`/api/schedules/${scheduleId}/status`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "completed" }),
+            })
+            if (!statusResponse.ok) {
+              console.error('スケジュールステータスの更新に失敗しました')
+            }
+          } catch (error) {
+            console.error('スケジュールステータス更新エラー:', error)
+          }
+        }
       }
 
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
@@ -691,6 +793,14 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
             className="w-full sm:w-auto"
           >
             キャンセル
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleSaveDraft}
+            disabled={isSaving}
+            className="w-full sm:w-auto"
+          >
+            {isSaving ? '保存中...' : '下書き保存'}
           </Button>
           <Button
             onClick={handleSave}

@@ -537,10 +537,10 @@ export function NursingRecords() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">
-              {isCreating ? '新規訪問記録' : '訪問記録詳細'}
+              {isCreating ? '新規訪問記録登録' : '訪問記録詳細'}
             </h1>
             <p className="text-sm sm:text-base text-muted-foreground">
-              {isCreating ? '新しい訪問記録を作成' : `${selectedRecord?.patientName}さんの記録`}
+              {isCreating ? '新しい訪問記録を登録' : `${selectedRecord?.patientName}さんの記録`}
             </p>
           </div>
           <Button
@@ -1017,7 +1017,7 @@ export function NursingRecords() {
         </div>
         <Button onClick={handleCreateNew} data-testid="button-create-record">
           <Plus className="mr-2 h-4 w-4" />
-          新規記録作成
+          新規記録登録
         </Button>
       </div>
 
