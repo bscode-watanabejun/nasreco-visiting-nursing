@@ -10,7 +10,7 @@ import {
   type PaginationOptions, type PaginatedResult,
   users, companies, facilities, patients, visits, nursingRecords, medications, schedules
 } from "@shared/schema";
-import { eq, and, desc, count, isNull } from "drizzle-orm";
+import { eq, and, desc, count, isNull, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 
 // Storage interface for all visiting nursing system operations
@@ -335,6 +335,12 @@ export class PostgreSQLStorage implements IStorage {
 
     if (filters?.patientId) {
       conditions.push(eq(schedules.patientId, filters.patientId));
+    }
+
+    if (filters?.startDate && filters?.endDate) {
+      // Filter by date range using scheduledStartTime
+      conditions.push(gte(schedules.scheduledStartTime, new Date(filters.startDate)));
+      conditions.push(lte(schedules.scheduledStartTime, new Date(filters.endDate)));
     }
 
     // Get total count

@@ -758,6 +758,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startDate,
         endDate
       });
+
       res.json(result);
     } catch (error) {
       console.error("Get schedules error:", error);

@@ -60,6 +60,8 @@ interface FormData {
   multipleVisitReason: string
   emergencyVisitReason: string
   longVisitReason: string
+  // Selected schedule ID (for multiple schedules)
+  selectedScheduleId: string
 }
 
 // Helper function to get full name
@@ -188,7 +190,8 @@ const getInitialFormData = (): FormData => ({
   nextVisitNotes: '',
   multipleVisitReason: '',
   emergencyVisitReason: '',
-  longVisitReason: ''
+  longVisitReason: '',
+  selectedScheduleId: ''
 })
 
 export function NursingRecords() {
@@ -231,6 +234,32 @@ export function NursingRecords() {
 
   const patients = patientsData?.data || []
   const rawRecords = recordsData?.data || []
+
+  // Fetch today's schedules for the selected patient
+  const { data: patientSchedulesData } = useQuery({
+    queryKey: ["patientSchedules", formData.patientId],
+    queryFn: async () => {
+      if (!formData.patientId) return { data: [] }
+
+      // Get today's date range in ISO format (will be interpreted as UTC by server)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+
+      const startOfDay = today.toISOString()
+      const endOfDay = tomorrow.toISOString()
+
+      const url = `/api/schedules?patientId=${formData.patientId}&startDate=${startOfDay}&endDate=${endOfDay}`
+      const response = await fetch(url)
+      if (!response.ok) return { data: [] }
+      return response.json()
+    },
+    enabled: !!formData.patientId && (isCreating || isEditing), // Fetch if patient is selected and creating OR editing
+  })
+
+  const patientSchedules = (patientSchedulesData?.data || []) as any[]
+  const selectedSchedule = patientSchedules.find((s: any) => s.id === formData.selectedScheduleId)
 
   // Transform records to include patient and nurse names
   const records: NursingRecordDisplay[] = rawRecords.map(record => {
@@ -290,7 +319,8 @@ export function NursingRecords() {
       nextVisitNotes: record.patientFamilyResponse || '',
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
-      longVisitReason: record.longVisitReason || ''
+      longVisitReason: record.longVisitReason || '',
+      selectedScheduleId: ''
     })
 
     console.log('記録表示:', record.id)
@@ -323,7 +353,8 @@ export function NursingRecords() {
       nextVisitNotes: record.patientFamilyResponse || '',
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
-      longVisitReason: record.longVisitReason || ''
+      longVisitReason: record.longVisitReason || '',
+      selectedScheduleId: ''
     })
     console.log('記録編集モード:', record.id)
   }
@@ -566,6 +597,47 @@ export function NursingRecords() {
                 <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
                   <span className="text-sm">ログインユーザー</span>
                 </div>
+              </div>
+
+              {/* 予定時間 */}
+              <div className="space-y-2">
+                <Label>予定時間</Label>
+                {!formData.patientId ? (
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                    <span className="text-sm text-muted-foreground">患者を選択してください</span>
+                  </div>
+                ) : patientSchedules.length === 0 ? (
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                    <span className="text-sm text-muted-foreground">予定なし（予定外訪問）</span>
+                  </div>
+                ) : patientSchedules.length === 1 ? (
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                    <span className="text-sm">
+                      {patientSchedules[0].scheduledStartTime && patientSchedules[0].scheduledEndTime
+                        ? `${new Date(patientSchedules[0].scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(patientSchedules[0].scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+                        : '予定時間未設定'}
+                    </span>
+                  </div>
+                ) : (
+                  <Select
+                    value={formData.selectedScheduleId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, selectedScheduleId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="予定を選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {patientSchedules.map((sched: any) => (
+                        <SelectItem key={sched.id} value={sched.id}>
+                          {sched.scheduledStartTime && sched.scheduledEndTime
+                            ? `${new Date(sched.scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(sched.scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+                            : '予定時間未設定'}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="none">予定なし（予定外訪問）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* 訪問ステータス */}
