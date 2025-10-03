@@ -7,6 +7,24 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Plus,
   Search,
   Edit,
@@ -18,9 +36,11 @@ import {
   UserCheck,
   UserX,
   Settings,
-  Loader2
+  Loader2,
+  Copy,
+  CheckCircle2
 } from "lucide-react"
-import { useUsersQuery, useCreateUserMutation, useUpdateUserMutation } from '@/hooks/useUsers'
+import { useUsersQuery, useCreateUserMutation, useUpdateUserMutation, useDeactivateUserMutation, useActivateUserMutation, useResetPasswordMutation } from '@/hooks/useUsers'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import type { User as ApiUser } from '@shared/schema'
 import type { CreateUserRequest, UpdateUserRequest } from '@/lib/api'
@@ -103,11 +123,21 @@ export function UserManagement() {
   const [isCreating, setIsCreating] = useState(false)
   const [formData, setFormData] = useState<CreateUserRequest | UpdateUserRequest>({})
 
+  // Dialog states
+  const [deactivateDialogUser, setDeactivateDialogUser] = useState<DisplayUser | null>(null)
+  const [activateDialogUser, setActivateDialogUser] = useState<DisplayUser | null>(null)
+  const [resetPasswordDialogUser, setResetPasswordDialogUser] = useState<DisplayUser | null>(null)
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null)
+  const [passwordCopied, setPasswordCopied] = useState(false)
+
   // Fetch users data
   const { data: usersResponse, isLoading, error } = useUsersQuery(currentPage, 20)
   const { data: currentUser } = useCurrentUser()
   const createUserMutation = useCreateUserMutation()
   const updateUserMutation = useUpdateUserMutation()
+  const deactivateUserMutation = useDeactivateUserMutation()
+  const activateUserMutation = useActivateUserMutation()
+  const resetPasswordMutation = useResetPasswordMutation()
 
   const users = usersResponse?.data.map(mapApiUserToDisplay) || []
 
@@ -180,6 +210,83 @@ export function UserManagement() {
 
   const updateFormData = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Handle deactivate user
+  const handleDeactivateUser = async (user: DisplayUser) => {
+    setDeactivateDialogUser(user)
+  }
+
+  const confirmDeactivate = async () => {
+    if (!deactivateDialogUser) return
+
+    try {
+      await deactivateUserMutation.mutateAsync(deactivateDialogUser.id)
+      setDeactivateDialogUser(null)
+    } catch (error) {
+      // Error is handled by the mutation hook
+    }
+  }
+
+  // Handle activate user
+  const handleActivateUser = async (user: DisplayUser) => {
+    setActivateDialogUser(user)
+  }
+
+  const confirmActivate = async () => {
+    if (!activateDialogUser) return
+
+    try {
+      await activateUserMutation.mutateAsync(activateDialogUser.id)
+      setActivateDialogUser(null)
+    } catch (error) {
+      // Error is handled by the mutation hook
+    }
+  }
+
+  // Handle reset password
+  const handleResetPassword = async (user: DisplayUser) => {
+    setResetPasswordDialogUser(user)
+  }
+
+  const confirmResetPassword = async () => {
+    if (!resetPasswordDialogUser) return
+
+    try {
+      const result = await resetPasswordMutation.mutateAsync(resetPasswordDialogUser.id)
+      setTemporaryPassword(result.temporaryPassword)
+      setResetPasswordDialogUser(null)
+      setPasswordCopied(false)
+    } catch (error) {
+      // Error is handled by the mutation hook
+    }
+  }
+
+  // Copy password to clipboard
+  const copyPassword = async () => {
+    if (temporaryPassword) {
+      await navigator.clipboard.writeText(temporaryPassword)
+      setPasswordCopied(true)
+      setTimeout(() => setPasswordCopied(false), 2000)
+    }
+  }
+
+  // Check if current user can manage target user
+  const canManageUser = (targetUser: DisplayUser): boolean => {
+    if (!currentUser) return false
+
+    // Nurse cannot manage anyone
+    if (currentUser.role === 'nurse') return false
+
+    // Admin can manage everyone
+    if (currentUser.role === 'admin') return true
+
+    // Manager can only manage nurses
+    if (currentUser.role === 'manager') {
+      return targetUser.role === 'nurse'
+    }
+
+    return false
   }
 
   if (isCreating || selectedUser) {
@@ -501,6 +608,8 @@ export function UserManagement() {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => handleResetPassword(user)}
+                      disabled={!canManageUser(user) || currentUser?.id === user.id}
                       data-testid={`button-reset-password-${user.id}`}
                       className="flex-1 sm:flex-initial text-xs md:text-sm"
                     >
@@ -513,6 +622,8 @@ export function UserManagement() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => handleDeactivateUser(user)}
+                        disabled={!canManageUser(user) || currentUser?.id === user.id}
                         data-testid={`button-deactivate-${user.id}`}
                         className="flex-1 sm:flex-initial text-xs md:text-sm"
                       >
@@ -523,6 +634,8 @@ export function UserManagement() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => handleActivateUser(user)}
+                        disabled={!canManageUser(user)}
                         data-testid={`button-activate-${user.id}`}
                         className="flex-1 sm:flex-initial text-xs md:text-sm"
                       >
@@ -545,6 +658,131 @@ export function UserManagement() {
           )}
         </CardContent>
       </Card>
+
+      {/* Deactivate User Dialog */}
+      <AlertDialog open={!!deactivateDialogUser} onOpenChange={(open) => !open && setDeactivateDialogUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ユーザーを無効化しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deactivateDialogUser?.name}さんのアカウントを無効化します。
+              このユーザーはログインできなくなります。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deactivateUserMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeactivate}
+              disabled={deactivateUserMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deactivateUserMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              無効化
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Activate User Dialog */}
+      <AlertDialog open={!!activateDialogUser} onOpenChange={(open) => !open && setActivateDialogUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ユーザーを有効化しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {activateDialogUser?.name}さんのアカウントを有効化します。
+              このユーザーは再度ログインできるようになります。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={activateUserMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmActivate}
+              disabled={activateUserMutation.isPending}
+            >
+              {activateUserMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              有効化
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Password Dialog */}
+      <AlertDialog open={!!resetPasswordDialogUser} onOpenChange={(open) => !open && setResetPasswordDialogUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>パスワードをリセットしますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {resetPasswordDialogUser?.name}さんのパスワードをリセットします。
+              新しい一時パスワードが発行されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetPasswordMutation.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmResetPassword}
+              disabled={resetPasswordMutation.isPending}
+            >
+              {resetPasswordMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              リセット
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Temporary Password Dialog */}
+      <Dialog open={!!temporaryPassword} onOpenChange={(open) => !open && setTemporaryPassword(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>一時パスワード発行完了</DialogTitle>
+            <DialogDescription>
+              以下の一時パスワードをユーザーに伝えてください。
+              このパスワードは一度だけ表示されます。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted p-4 rounded-lg">
+              <div className="flex items-center justify-between gap-4">
+                <code className="text-lg font-mono font-bold flex-1 text-center">
+                  {temporaryPassword}
+                </code>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={copyPassword}
+                  className="shrink-0"
+                >
+                  {passwordCopied ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      コピー済み
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-2" />
+                      コピー
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p>⚠️ このパスワードは次回ログイン時に変更が必要です。</p>
+              <p>⚠️ ダイアログを閉じると再表示できません。</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setTemporaryPassword(null)} className="w-full">
+              閉じる
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

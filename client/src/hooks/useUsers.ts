@@ -97,3 +97,78 @@ export function useDeleteUserMutation() {
     },
   });
 }
+
+// Hook for deactivating a user
+export function useDeactivateUserMutation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: (userId: string) => userApi.deactivateUser(userId),
+    onSuccess: (deactivatedUser) => {
+      // Invalidate and refetch users list
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+
+      toast({
+        title: 'ユーザー無効化完了',
+        description: `${deactivatedUser.fullName}さんのアカウントを無効化しました`,
+      });
+    },
+    onError: (error: ApiError) => {
+      toast({
+        title: 'ユーザー無効化エラー',
+        description: error.message || '予期しないエラーが発生しました',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+// Hook for activating a user
+export function useActivateUserMutation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: (userId: string) => userApi.activateUser(userId),
+    onSuccess: (activatedUser) => {
+      // Invalidate and refetch users list
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+
+      toast({
+        title: 'ユーザー有効化完了',
+        description: `${activatedUser.fullName}さんのアカウントを有効化しました`,
+      });
+    },
+    onError: (error: ApiError) => {
+      toast({
+        title: 'ユーザー有効化エラー',
+        description: error.message || '予期しないエラーが発生しました',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+// Hook for resetting user password
+export function useResetPasswordMutation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: (userId: string) => userApi.resetPassword(userId),
+    onSuccess: () => {
+      // Invalidate and refetch users list
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+
+      // Success toast is handled in the component to show the temporary password
+    },
+    onError: (error: ApiError) => {
+      toast({
+        title: 'パスワードリセットエラー',
+        description: error.message || '予期しないエラーが発生しました',
+        variant: 'destructive',
+      });
+    },
+  });
+}

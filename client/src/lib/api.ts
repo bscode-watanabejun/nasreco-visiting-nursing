@@ -102,6 +102,27 @@ export const userApi = {
       method: 'DELETE',
     });
   },
+
+  // Deactivate user
+  async deactivateUser(id: string): Promise<User> {
+    return fetchApi<User>(`/users/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Activate user
+  async activateUser(id: string): Promise<User> {
+    return fetchApi<User>(`/users/${id}/activate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Reset user password
+  async resetPassword(id: string): Promise<{ temporaryPassword: string }> {
+    return fetchApi<{ temporaryPassword: string }>(`/users/${id}/reset-password`, {
+      method: 'POST',
+    });
+  },
 };
 
 // Company API functions (Corporate Admin only)
@@ -154,6 +175,17 @@ export const tenantApi = {
   // Validate subdomain
   async validateSubdomain(subdomain: string): Promise<{ valid: boolean; facility?: Facility }> {
     return fetchApi<{ valid: boolean; facility?: Facility }>(`/tenant/validate/${subdomain}`);
+  },
+};
+
+// Auth API functions
+export const authApi = {
+  // Change password on first login
+  async changePasswordFirstLogin(newPassword: string): Promise<{ success: boolean; message: string }> {
+    return fetchApi<{ success: boolean; message: string }>('/auth/change-password-first-login', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
   },
 };
 

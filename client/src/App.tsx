@@ -21,6 +21,7 @@ import { Navbar } from "@/components/Navbar";
 import { AppSidebar } from "@/components/Sidebar";
 import { HeadquartersDashboard } from "@/components/HeadquartersDashboard";
 import { FacilityManagement } from "@/components/FacilityManagement";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -54,6 +55,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 function MainLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState<string | undefined>(undefined);
+  const [requirePasswordChange, setRequirePasswordChange] = useState(false);
   const { facility, company, isLoading: tenantLoading } = useTenant();
   const isHeadquarters = useIsHeadquarters();
   const isUserBasedHeadquarters = useUserBasedHeadquarters();
@@ -114,6 +116,12 @@ function MainLayout() {
 
       if (response.ok) {
         const data = await response.json();
+
+        // Check if password change is required
+        if (data.requirePasswordChange) {
+          setRequirePasswordChange(true);
+        }
+
         // Invalidate user query to refetch user data after login
         queryClient.invalidateQueries({ queryKey: ["currentUser"] });
         setLoginError(undefined); // Clear error on success
@@ -127,6 +135,12 @@ function MainLayout() {
       console.error('ログインエラー:', error);
       setLoginError('ネットワークエラーが発生しました');
     }
+  };
+
+  const handlePasswordChangeSuccess = () => {
+    setRequirePasswordChange(false);
+    // Refetch user data to update mustChangePassword flag
+    queryClient.invalidateQueries({ queryKey: ["currentUser"] });
   };
 
   const handleForgotPassword = () => {
@@ -182,6 +196,18 @@ function MainLayout() {
           onForgotPassword={handleForgotPassword}
           loading={false}
           error={loginError}
+        />
+      </div>
+    );
+  }
+
+  // Show password change dialog if required
+  if (requirePasswordChange) {
+    return (
+      <div className="min-h-screen bg-background">
+        <ChangePasswordDialog
+          open={requirePasswordChange}
+          onSuccess={handlePasswordChangeSuccess}
         />
       </div>
     );

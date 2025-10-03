@@ -77,6 +77,7 @@ export const users = pgTable("users", {
   licenseNumber: text("license_number"),
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

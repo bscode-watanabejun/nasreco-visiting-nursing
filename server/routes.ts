@@ -87,7 +87,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Return user info (without password)
         const { password: _, ...userWithoutPassword } = user;
-        res.json({ user: userWithoutPassword });
+        res.json({
+          user: userWithoutPassword,
+          requirePasswordChange: user.mustChangePassword || false
+        });
       });
       
     } catch (error) {
@@ -335,6 +338,194 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       console.error("Update user error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Deactivate user
+  app.patch("/api/users/:id/deactivate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Self-deactivation is not allowed
+      if (req.user.id === id) {
+        return res.status(403).json({ error: "自分自身を無効化することはできません" });
+      }
+
+      // Get target user
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      // Check facility access
+      if (targetUser.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      // Permission check
+      if (req.user.role === 'nurse') {
+        return res.status(403).json({ error: "権限がありません" });
+      }
+
+      // Manager can only deactivate nurses
+      if (req.user.role === 'manager' && targetUser.role !== 'nurse') {
+        return res.status(403).json({ error: "主任は看護師のみ無効化できます" });
+      }
+
+      // Prevent deactivating the last admin
+      if (targetUser.role === 'admin') {
+        const admins = await storage.getUsersByFacility(req.user.facilityId);
+        const activeAdmins = admins.filter(u => u.role === 'admin' && u.isActive);
+        if (activeAdmins.length === 1) {
+          return res.status(403).json({ error: "この施設の最後の管理者は無効化できません" });
+        }
+      }
+
+      // Deactivate user
+      const updatedUser = await storage.updateUser(id, { isActive: false });
+      if (!updatedUser) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+
+    } catch (error) {
+      console.error("Deactivate user error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Activate user
+  app.patch("/api/users/:id/activate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Get target user
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      // Check facility access
+      if (targetUser.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      // Permission check
+      if (req.user.role === 'nurse') {
+        return res.status(403).json({ error: "権限がありません" });
+      }
+
+      // Manager can only activate nurses
+      if (req.user.role === 'manager' && targetUser.role !== 'nurse') {
+        return res.status(403).json({ error: "主任は看護師のみ有効化できます" });
+      }
+
+      // Activate user
+      const updatedUser = await storage.updateUser(id, { isActive: true });
+      if (!updatedUser) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+
+    } catch (error) {
+      console.error("Activate user error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Reset user password
+  app.post("/api/users/:id/reset-password", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Get target user
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      // Check facility access
+      if (targetUser.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      // Permission check
+      if (req.user.role === 'nurse') {
+        return res.status(403).json({ error: "権限がありません" });
+      }
+
+      // Manager can only reset passwords for nurses
+      if (req.user.role === 'manager' && targetUser.role !== 'nurse') {
+        return res.status(403).json({ error: "主任は看護師のみパスワードリセットできます" });
+      }
+
+      // Generate temporary password (12 characters: alphanumeric)
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let temporaryPassword = '';
+      for (let i = 0; i < 12; i++) {
+        temporaryPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      // Hash the temporary password
+      const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+      // Update user password and set mustChangePassword flag
+      await storage.updateUser(id, {
+        password: hashedPassword,
+        mustChangePassword: true
+      });
+
+      // Return temporary password (only shown once)
+      res.json({ temporaryPassword });
+
+    } catch (error) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Change password on first login (after temporary password)
+  app.post("/api/auth/change-password-first-login", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { newPassword } = req.body;
+
+      if (!newPassword || typeof newPassword !== 'string') {
+        return res.status(400).json({ error: "新しいパスワードが必要です" });
+      }
+
+      // Validate password strength
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: "パスワードは8文字以上である必要があります" });
+      }
+
+      // Check if user must change password
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ error: "ユーザーが見つかりません" });
+      }
+
+      if (!user.mustChangePassword) {
+        return res.status(400).json({ error: "パスワード変更は不要です" });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password and clear mustChangePassword flag
+      await storage.updateUser(req.user.id, {
+        password: hashedPassword,
+        mustChangePassword: false
+      });
+
+      res.json({ success: true, message: "パスワードを変更しました" });
+
+    } catch (error) {
+      console.error("Change password first login error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
