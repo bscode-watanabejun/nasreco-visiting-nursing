@@ -237,6 +237,19 @@ export const medications = pgTable("medications", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Nursing Record Attachments Table ==========
+export const nursingRecordAttachments = pgTable("nursing_record_attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  nursingRecordId: varchar("nursing_record_id").references(() => nursingRecords.id),
+  fileName: text("file_name").notNull(),
+  originalFileName: text("original_file_name").notNull(),
+  fileType: text("file_type").notNull(), // image/jpeg, image/png, application/pdf
+  fileSize: integer("file_size").notNull(), // bytes
+  filePath: text("file_path").notNull(), // relative path from uploads directory
+  caption: text("caption"), // メモ・説明
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
 // ========== Insert Schemas ==========
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
@@ -315,6 +328,11 @@ export const insertAdditionalPaymentSchema = createInsertSchema(additionalPaymen
   updatedAt: true,
 });
 
+export const insertNursingRecordAttachmentSchema = createInsertSchema(nursingRecordAttachments).omit({
+  id: true,
+  createdAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -353,6 +371,8 @@ export const updateScheduleSchema = insertScheduleSchema.partial();
 
 export const updateAdditionalPaymentSchema = insertAdditionalPaymentSchema.partial();
 
+export const updateNursingRecordAttachmentSchema = insertNursingRecordAttachmentSchema.partial();
+
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
@@ -384,6 +404,9 @@ export type Schedule = typeof schedules.$inferSelect;
 export type InsertAdditionalPayment = z.infer<typeof insertAdditionalPaymentSchema>;
 export type AdditionalPayment = typeof additionalPayments.$inferSelect;
 
+export type InsertNursingRecordAttachment = z.infer<typeof insertNursingRecordAttachmentSchema>;
+export type NursingRecordAttachment = typeof nursingRecordAttachments.$inferSelect;
+
 // Update Types
 export type UpdateUserSelf = z.infer<typeof updateUserSelfSchema>;
 export type UpdateUserAdmin = z.infer<typeof updateUserAdminSchema>;
@@ -394,6 +417,7 @@ export type UpdateMedication = z.infer<typeof updateMedicationSchema>;
 export type UpdateBuilding = z.infer<typeof updateBuildingSchema>;
 export type UpdateSchedule = z.infer<typeof updateScheduleSchema>;
 export type UpdateAdditionalPayment = z.infer<typeof updateAdditionalPaymentSchema>;
+export type UpdateNursingRecordAttachment = z.infer<typeof updateNursingRecordAttachmentSchema>;
 
 // Pagination Types
 export interface PaginationOptions {

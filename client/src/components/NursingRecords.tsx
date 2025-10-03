@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "wouter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,12 +31,20 @@ import {
   AlertCircle,
   ChevronUp,
   ChevronDown,
-  Trash2
+  Trash2,
+  Camera,
+  Upload,
+  X,
+  Image as ImageIcon,
+  Loader2,
+  Download,
+  ZoomIn,
+  ExternalLink
 } from "lucide-react"
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useToast } from "@/hooks/use-toast"
 
-import type { Patient, NursingRecord, PaginatedResult } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment } from "@shared/schema"
 
 // Display-specific interface for nursing records with patient/nurse names
 interface NursingRecordDisplay extends NursingRecord {
@@ -215,6 +223,19 @@ export function NursingRecords() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [cameFromUrl, setCameFromUrl] = useState(false)
 
+  // File attachments state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [filePreviews, setFilePreviews] = useState<string[]>([])
+  const [fileCaptions, setFileCaptions] = useState<{ [key: number]: string }>({})
+  const [isUploading, setIsUploading] = useState(false)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<NursingRecordAttachment | null>(null)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+
   // Fetch patients from API
   const { data: patientsData, isLoading: isPatientsLoading } = useQuery<PaginatedResult<Patient>>({
     queryKey: ["patients"],
@@ -297,6 +318,18 @@ export function NursingRecords() {
     enabled: !!scheduleIdFromUrl,
   })
 
+  // Fetch attachments for selected record
+  const { data: attachments = [], isLoading: isLoadingAttachments } = useQuery<NursingRecordAttachment[]>({
+    queryKey: ["nursing-record-attachments", selectedRecord?.id],
+    queryFn: async () => {
+      if (!selectedRecord?.id) return []
+      const response = await fetch(`/api/nursing-records/${selectedRecord.id}/attachments`)
+      if (!response.ok) return []
+      return response.json()
+    },
+    enabled: !!selectedRecord?.id && !isCreating,
+  })
+
   // Handle URL parameters for creating/editing from Dashboard
   useEffect(() => {
     if (scheduleIdFromUrl && scheduleFromUrl && modeFromUrl === 'create') {
@@ -361,7 +394,9 @@ export function NursingRecords() {
     setSelectedRecord(null)
     setFormData(getInitialFormData()) // Reset form to initial state
     setSaveError(null) // Clear any previous errors
-    console.log('新規記録作成モード')
+    setSelectedFiles([])
+    setFilePreviews([])
+    setFileCaptions({})
   }
 
   const handleViewRecord = (record: NursingRecordDisplay) => {
@@ -369,6 +404,9 @@ export function NursingRecords() {
     setIsCreating(false)
     setIsEditing(false)
     setSaveError(null)
+    setSelectedFiles([])
+    setFilePreviews([])
+    setFileCaptions({})
 
     // Load record data for view-only display (unified with new format)
     const startTime = record.actualStartTime ? new Date(record.actualStartTime) : new Date()
@@ -395,7 +433,6 @@ export function NursingRecords() {
       selectedScheduleId: ''
     })
 
-    console.log('記録表示:', record.id)
   }
 
   const handleEditRecord = (record: NursingRecordDisplay) => {
@@ -428,7 +465,6 @@ export function NursingRecords() {
       longVisitReason: record.longVisitReason || '',
       selectedScheduleId: ''
     })
-    console.log('記録編集モード:', record.id)
   }
 
   // Delete record function
@@ -467,6 +503,47 @@ export function NursingRecords() {
     }
   }
 
+  // Upload attachments function
+  const uploadAttachments = async (recordId: string) => {
+    if (selectedFiles.length === 0) return
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      selectedFiles.forEach(file => {
+        formData.append('files', file)
+      })
+
+      // Add captions as JSON
+      const captionsArray = selectedFiles.map((_, index) => fileCaptions[index] || '')
+      formData.append('captions', JSON.stringify(captionsArray))
+
+      const response = await fetch(`/api/nursing-records/${recordId}/attachments`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('ファイルのアップロードに失敗しました')
+      }
+
+      toast({
+        title: "アップロード完了",
+        description: `${selectedFiles.length}件のファイルをアップロードしました`
+      })
+
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast({
+        title: "エラー",
+        description: "ファイルのアップロードに失敗しました",
+        variant: "destructive"
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   // Save as draft function
   const handleSaveDraft = async () => {
     setSaveError(null)
@@ -496,6 +573,13 @@ export function NursingRecords() {
         throw new Error(errorMessage)
       }
 
+      const savedRecord = await response.json()
+
+      // Upload attachments if any files are selected
+      if (selectedFiles.length > 0 && savedRecord.id) {
+        await uploadAttachments(savedRecord.id)
+      }
+
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       toast({
@@ -503,6 +587,9 @@ export function NursingRecords() {
         description: "下書きとして保存しました",
       })
       setFormData(getInitialFormData()) // Reset form after successful save
+      setSelectedFiles([])
+      setFilePreviews([])
+      setFileCaptions({})
       setIsCreating(false)
       setSelectedRecord(null)
     } catch (error) {
@@ -548,6 +635,13 @@ export function NursingRecords() {
         throw new Error(errorMessage)
       }
 
+      const savedRecord = await response.json()
+
+      // Upload attachments if any files are selected
+      if (selectedFiles.length > 0 && savedRecord.id) {
+        await uploadAttachments(savedRecord.id)
+      }
+
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       toast({
@@ -555,6 +649,9 @@ export function NursingRecords() {
         description: isEditing ? '記録を更新しました' : '記録を完成しました',
       })
       setFormData(getInitialFormData()) // Reset form after successful save
+      setSelectedFiles([])
+      setFilePreviews([])
+      setFileCaptions({})
       setIsCreating(false)
       setIsEditing(false)
       setSelectedRecord(null)
@@ -599,13 +696,24 @@ export function NursingRecords() {
         throw new Error(errorMessage)
       }
 
+      const updatedRecord = await response.json()
+
+      // Upload attachments if any files are selected
+      if (selectedFiles.length > 0 && updatedRecord.id) {
+        await uploadAttachments(updatedRecord.id)
+      }
+
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["nursing-record-attachments", selectedRecord.id] })
       toast({
         title: "更新完了",
         description: "記録を更新しました",
       })
       setFormData(getInitialFormData())
+      setSelectedFiles([])
+      setFilePreviews([])
+      setFileCaptions({})
       setIsEditing(false)
       setSelectedRecord(null)
     } catch (error) {
@@ -1027,17 +1135,259 @@ export function NursingRecords() {
               </div>
             </TabsContent>
 
-            {/* 写真・メモタブ（保留） */}
-            <TabsContent value="photos" className="mt-4">
-              <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
-                <p className="text-sm">写真・メモ機能は準備中です</p>
+            {/* 写真・メモタブ */}
+            <TabsContent value="photos" className="mt-4 space-y-4">
+              {/* File input (hidden) */}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="hidden"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (files.length === 0) return
+
+                  // Validate
+                  const validTypes = ['image/jpeg', 'image/jpg', 'image/png']
+                  const invalidFiles = files.filter(f => !validTypes.includes(f.type))
+                  if (invalidFiles.length > 0) {
+                    toast({ title: "エラー", description: "画像ファイルのみアップロード可能です", variant: "destructive" })
+                    return
+                  }
+
+                  if (attachments.length + selectedFiles.length + files.length > 10) {
+                    toast({ title: "エラー", description: "ファイルは最大10個までです", variant: "destructive" })
+                    return
+                  }
+
+                  // Generate previews
+                  const newPreviews: string[] = []
+                  for (const file of files) {
+                    const preview = URL.createObjectURL(file)
+                    newPreviews.push(preview)
+                  }
+
+                  setSelectedFiles(prev => [...prev, ...files])
+                  setFilePreviews(prev => [...prev, ...newPreviews])
+                }}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                className="hidden"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (files.length === 0) return
+
+                  // Validate
+                  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf']
+                  const invalidFiles = files.filter(f => !validTypes.includes(f.type))
+                  if (invalidFiles.length > 0) {
+                    toast({ title: "エラー", description: "画像またはPDFのみアップロード可能です", variant: "destructive" })
+                    return
+                  }
+
+                  const oversized = files.filter(f => f.size > 10 * 1024 * 1024)
+                  if (oversized.length > 0) {
+                    toast({ title: "エラー", description: "ファイルサイズは10MB以下にしてください", variant: "destructive" })
+                    return
+                  }
+
+                  if (attachments.length + selectedFiles.length + files.length > 10) {
+                    toast({ title: "エラー", description: "ファイルは最大10個までです", variant: "destructive" })
+                    return
+                  }
+
+                  // Generate previews
+                  const newPreviews: string[] = []
+                  for (const file of files) {
+                    if (file.type.startsWith('image/')) {
+                      const preview = URL.createObjectURL(file)
+                      newPreviews.push(preview)
+                    } else {
+                      newPreviews.push('')
+                    }
+                  }
+
+                  setSelectedFiles(prev => [...prev, ...files])
+                  setFilePreviews(prev => [...prev, ...newPreviews])
+                }}
+              />
+
+              {/* Upload buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-20 flex flex-col gap-2"
+                  onClick={() => cameraInputRef.current?.click()}
+                >
+                  <Camera className="h-6 w-6" />
+                  <span>カメラで撮影</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-20 flex flex-col gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-6 w-6" />
+                  <span>ファイルを選択</span>
+                </Button>
+              </div>
+
+              {/* All attachments (existing + new) */}
+              {(attachments.length > 0 || selectedFiles.length > 0) && (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">
+                    添付ファイル ({attachments.length + selectedFiles.length}/10)
+                  </p>
+                  <div className="space-y-3">
+                    {/* Existing attachments */}
+                    {attachments.map((attachment) => (
+                      <div key={attachment.id} className="border rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0">
+                            {attachment.fileType.startsWith('image/') ? (
+                              <img
+                                src={`/api/attachments/${attachment.id}`}
+                                alt={attachment.originalFileName}
+                                className="w-20 h-20 object-cover rounded border"
+                              />
+                            ) : (
+                              <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center">
+                                <FileText className="h-8 w-8 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{attachment.originalFileName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(attachment.fileSize / 1024).toFixed(1)} KB
+                            </p>
+                            {attachment.caption && (
+                              <div className="text-sm mt-2 p-2 bg-gray-50 rounded">
+                                {attachment.caption}
+                              </div>
+                            )}
+                          </div>
+                          {isEditing && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={async () => {
+                                if (!confirm(`${attachment.originalFileName} を削除しますか？`)) return
+
+                                try {
+                                  const response = await fetch(`/api/attachments/${attachment.id}`, {
+                                    method: 'DELETE'
+                                  })
+
+                                  if (!response.ok) {
+                                    throw new Error('削除に失敗しました')
+                                  }
+
+                                  // Refresh attachments list
+                                  await queryClient.invalidateQueries({
+                                    queryKey: ["nursing-record-attachments", selectedRecord?.id]
+                                  })
+
+                                  toast({
+                                    title: "削除完了",
+                                    description: "ファイルを削除しました"
+                                  })
+                                } catch (error) {
+                                  toast({
+                                    title: "エラー",
+                                    description: "ファイルの削除に失敗しました",
+                                    variant: "destructive"
+                                  })
+                                }
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* New files to upload */}
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="border rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0">
+                            {file.type.startsWith('image/') && filePreviews[index] ? (
+                              <img src={filePreviews[index]} alt={file.name} className="w-20 h-20 object-cover rounded border" />
+                            ) : (
+                              <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center">
+                                <ImageIcon className="h-8 w-8 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+                            <Input
+                              placeholder="メモ・説明を入力"
+                              value={fileCaptions[index] || ''}
+                              onChange={(e) => setFileCaptions(prev => ({ ...prev, [index]: e.target.value }))}
+                              className="text-sm mt-2"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+                              setFilePreviews(prev => {
+                                if (prev[index]) URL.revokeObjectURL(prev[index])
+                                return prev.filter((_, i) => i !== index)
+                              })
+                              setFileCaptions(prev => {
+                                const newCaptions = { ...prev }
+                                delete newCaptions[index]
+                                return newCaptions
+                              })
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isUploading && (
+                <div className="flex items-center justify-center gap-2 p-4 bg-blue-50 rounded-lg">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">アップロード中...</span>
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground space-y-1 p-3 bg-gray-50 rounded">
+                <p>• 画像（JPEG、PNG）またはPDFファイルをアップロードできます</p>
+                <p>• ファイルサイズは1ファイルあたり10MBまで</p>
+                <p>• 最大10個のファイルをアップロード可能</p>
               </div>
             </TabsContent>
           </Tabs>
         ) : (
           // View-only mode
           <div className="space-y-6">
-            {renderDetailContent(selectedRecord, formData, selectedPatient, users, currentUser)}
+            {renderDetailContent(selectedRecord, formData, selectedPatient, users, currentUser, attachments, (attachment, index) => {
+              setLightboxImage(attachment)
+              setLightboxIndex(index)
+              setLightboxOpen(true)
+            })}
           </div>
         )}
 
@@ -1101,11 +1451,107 @@ export function NursingRecords() {
             </>
           )}
         </div>
+
+        {/* Image Lightbox - Custom Modal */}
+        {lightboxOpen && lightboxImage && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+            {/* Overlay */}
+            <div
+              className="absolute inset-0 bg-black/80"
+              onClick={() => {
+                setLightboxOpen(false)
+                setLightboxImage(null)
+              }}
+            />
+            {/* Modal Content */}
+            <div className="relative bg-background rounded-lg shadow-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-auto">
+              {/* Close Button */}
+              <button
+                onClick={() => {
+                  setLightboxOpen(false)
+                  setLightboxImage(null)
+                }}
+                className="absolute right-4 top-4 z-10 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 bg-white/90 p-2"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              {/* Header */}
+              <div className="p-6 pb-4 border-b">
+                <div className="flex items-center justify-between pr-8">
+                  <h2 className="text-lg font-semibold truncate">{lightboxImage.originalFileName}</h2>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const link = document.createElement('a')
+                      link.href = `/api/attachments/${lightboxImage.id}`
+                      link.download = lightboxImage.originalFileName
+                      link.click()
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    ダウンロード
+                  </Button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4">
+                <div className="relative bg-black rounded-lg overflow-hidden">
+                  <img
+                    src={`/api/attachments/${lightboxImage.id}`}
+                    alt={lightboxImage.originalFileName}
+                    className="w-full max-h-[60vh] object-contain"
+                  />
+                </div>
+                {lightboxImage.caption && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm font-medium text-muted-foreground mb-1">メモ</p>
+                    <p className="text-sm whitespace-pre-wrap">{lightboxImage.caption}</p>
+                  </div>
+                )}
+                {attachments.filter(a => a.fileType.startsWith('image/')).length > 1 && (
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const imageAttachments = attachments.filter(a => a.fileType.startsWith('image/'))
+                        const newIndex = lightboxIndex > 0 ? lightboxIndex - 1 : imageAttachments.length - 1
+                        setLightboxIndex(newIndex)
+                        setLightboxImage(imageAttachments[newIndex])
+                      }}
+                      disabled={attachments.filter(a => a.fileType.startsWith('image/')).length <= 1}
+                    >
+                      ← 前へ
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {lightboxIndex + 1} / {attachments.filter(a => a.fileType.startsWith('image/')).length}
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const imageAttachments = attachments.filter(a => a.fileType.startsWith('image/'))
+                        const newIndex = lightboxIndex < imageAttachments.length - 1 ? lightboxIndex + 1 : 0
+                        setLightboxIndex(newIndex)
+                        setLightboxImage(imageAttachments[newIndex])
+                      }}
+                      disabled={attachments.filter(a => a.fileType.startsWith('image/')).length <= 1}
+                    >
+                      次へ →
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
   return (
+    <>
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1327,6 +1773,8 @@ export function NursingRecords() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+
+    </>
   )
 }
 
@@ -1336,7 +1784,9 @@ function renderDetailContent(
   formData: FormData,
   selectedPatient: Patient | undefined,
   users: any[],
-  currentUser: any
+  currentUser: any,
+  attachments: NursingRecordAttachment[] = [],
+  onImageClick?: (attachment: NursingRecordAttachment, index: number) => void
 ) {
   const nurse = record ? users.find(u => u.id === record.nurseId) : null
   const getStatusBadge = (status: string) => {
@@ -1496,6 +1946,99 @@ function renderDetailContent(
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Attachments Section */}
+      {attachments && attachments.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">添付ファイル ({attachments.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {attachments.map((attachment, index) => {
+                const imageAttachments = attachments.filter(a => a.fileType.startsWith('image/'))
+                const imageIndex = imageAttachments.findIndex(a => a.id === attachment.id)
+
+                return (
+                  <div key={attachment.id} className="space-y-2">
+                    {attachment.fileType.startsWith('image/') ? (
+                      <div
+                        className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer group"
+                        onClick={() => {
+                          onImageClick?.(attachment, imageIndex)
+                        }}
+                      >
+                        <img
+                          src={`/api/attachments/${attachment.id}`}
+                          alt={attachment.originalFileName}
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                          <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
+                        <FileText className="h-12 w-12 text-gray-400" />
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium truncate" title={attachment.originalFileName}>
+                        {attachment.originalFileName}
+                      </p>
+                      {attachment.caption && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {attachment.caption}
+                        </p>
+                      )}
+                      <div className="flex gap-1">
+                        {attachment.fileType.startsWith('image/') ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onImageClick?.(attachment, imageIndex)
+                            }}
+                          >
+                            <ZoomIn className="h-3 w-3 mr-1" />
+                            拡大
+                          </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs flex-1"
+                          onClick={() => window.open(`/api/attachments/${attachment.id}`, '_blank')}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          開く
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          const link = document.createElement('a')
+                          link.href = `/api/attachments/${attachment.id}`
+                          link.download = attachment.originalFileName
+                          link.click()
+                        }}
+                      >
+                        <Download className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
       )}

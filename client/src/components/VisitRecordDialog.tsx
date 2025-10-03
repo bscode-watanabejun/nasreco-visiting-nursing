@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Dialog,
@@ -13,9 +13,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, CheckCircle, XCircle } from "lucide-react"
+import { AlertCircle, CheckCircle, XCircle, Camera, Upload, X, Image as ImageIcon, FileText, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import type { Patient, Schedule, PaginatedResult } from "@shared/schema"
+import type { Patient, Schedule, PaginatedResult, NursingRecordAttachment } from "@shared/schema"
 
 interface VisitRecordDialogProps {
   open: boolean
@@ -80,6 +80,15 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
   const [saveError, setSaveError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
 
+  // File attachments state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [filePreviews, setFilePreviews] = useState<string[]>([])
+  const [fileCaptions, setFileCaptions] = useState<{ [key: number]: string }>({})
+  const [isUploading, setIsUploading] = useState(false)
+  const [savedRecordId, setSavedRecordId] = useState<string | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Reset form data when dialog opens or schedule changes
   useEffect(() => {
     if (open) {
@@ -87,6 +96,10 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
       setSaveError(null)
       setValidationErrors([])
       setActiveTab("basic")
+      setSelectedFiles([])
+      setFilePreviews([])
+      setFileCaptions({})
+      setSavedRecordId(null)
     }
   }, [open, schedule])
 
@@ -266,6 +279,178 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
     }
   }
 
+  // File handling functions
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    await addFiles(files)
+  }
+
+  const addFiles = async (files: File[]) => {
+    // Validate file types
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf']
+    const invalidFiles = files.filter(f => !validTypes.includes(f.type))
+
+    if (invalidFiles.length > 0) {
+      toast({
+        title: "エラー",
+        description: "画像（JPEG、PNG）またはPDFファイルのみアップロード可能です",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Validate file sizes (10MB max)
+    const oversizedFiles = files.filter(f => f.size > 10 * 1024 * 1024)
+    if (oversizedFiles.length > 0) {
+      toast({
+        title: "エラー",
+        description: "ファイルサイズは10MB以下にしてください",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Check total file count
+    if (selectedFiles.length + files.length > 10) {
+      toast({
+        title: "エラー",
+        description: "ファイルは最大10個までアップロード可能です",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Generate previews for images
+    const newPreviews: string[] = []
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        // Compress image before preview
+        const compressed = await compressImage(file)
+        const preview = URL.createObjectURL(compressed)
+        newPreviews.push(preview)
+      } else {
+        newPreviews.push('') // PDF doesn't need preview
+      }
+    }
+
+    setSelectedFiles(prev => [...prev, ...files])
+    setFilePreviews(prev => [...prev, ...newPreviews])
+  }
+
+  const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')!
+
+          // Max dimensions
+          const maxWidth = 1920
+          const maxHeight = 1920
+          let width = img.width
+          let height = img.height
+
+          // Calculate new dimensions
+          if (width > height) {
+            if (width > maxWidth) {
+              height *= maxWidth / width
+              width = maxWidth
+            }
+          } else {
+            if (height > maxHeight) {
+              width *= maxHeight / height
+              height = maxHeight
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+          ctx.drawImage(img, 0, 0, width, height)
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now()
+              })
+              resolve(compressedFile)
+            } else {
+              resolve(file)
+            }
+          }, 'image/jpeg', 0.85)
+        }
+        img.src = e.target?.result as string
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+    setFilePreviews(prev => {
+      // Revoke object URL to prevent memory leak
+      if (prev[index]) URL.revokeObjectURL(prev[index])
+      return prev.filter((_, i) => i !== index)
+    })
+    setFileCaptions(prev => {
+      const newCaptions = { ...prev }
+      delete newCaptions[index]
+      // Reindex captions
+      const reindexed: { [key: number]: string } = {}
+      Object.keys(newCaptions).forEach(key => {
+        const oldIndex = parseInt(key)
+        if (oldIndex > index) {
+          reindexed[oldIndex - 1] = newCaptions[oldIndex]
+        } else {
+          reindexed[oldIndex] = newCaptions[oldIndex]
+        }
+      })
+      return reindexed
+    })
+  }
+
+  const uploadAttachments = async (recordId: string) => {
+    if (selectedFiles.length === 0) return
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      selectedFiles.forEach(file => {
+        formData.append('files', file)
+      })
+
+      // Add captions as JSON
+      const captionsArray = selectedFiles.map((_, index) => fileCaptions[index] || '')
+      formData.append('captions', JSON.stringify(captionsArray))
+
+      const response = await fetch(`/api/nursing-records/${recordId}/attachments`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('ファイルのアップロードに失敗しました')
+      }
+
+      toast({
+        title: "アップロード完了",
+        description: `${selectedFiles.length}件のファイルをアップロードしました`
+      })
+
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast({
+        title: "エラー",
+        description: "ファイルのアップロードに失敗しました",
+        variant: "destructive"
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   const handleSave = async () => {
     setSaveError(null)
     setValidationErrors([])
@@ -328,6 +513,13 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown server error' }))
         throw new Error(error.error || `サーバーエラー (${response.status})`)
+      }
+
+      const savedRecord = await response.json()
+
+      // Upload attachments if any files are selected
+      if (selectedFiles.length > 0 && savedRecord.id) {
+        await uploadAttachments(savedRecord.id)
       }
 
       // 訪問ステータスが「完了」の場合、スケジュールのステータスも更新
@@ -771,10 +963,133 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
             </div>
           </TabsContent>
 
-          {/* 写真・メモタブ（保留） */}
-          <TabsContent value="photos" className="mt-4">
-            <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
-              <p className="text-sm">写真・メモ機能は準備中です</p>
+          {/* 写真・メモタブ */}
+          <TabsContent value="photos" className="mt-4 space-y-4">
+            {/* File input (hidden) */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+
+            {/* Upload buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-20 flex flex-col gap-2"
+                onClick={() => cameraInputRef.current?.click()}
+              >
+                <Camera className="h-6 w-6" />
+                <span>カメラで撮影</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-20 flex flex-col gap-2"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-6 w-6" />
+                <span>ファイルを選択</span>
+              </Button>
+            </div>
+
+            {/* File list */}
+            {selectedFiles.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">選択中のファイル ({selectedFiles.length}/10)</p>
+                </div>
+
+                <div className="space-y-3">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-start gap-3">
+                        {/* Preview */}
+                        <div className="flex-shrink-0">
+                          {file.type.startsWith('image/') ? (
+                            filePreviews[index] ? (
+                              <img
+                                src={filePreviews[index]}
+                                alt={file.name}
+                                className="w-20 h-20 object-cover rounded border"
+                              />
+                            ) : (
+                              <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center">
+                                <ImageIcon className="h-8 w-8 text-gray-400" />
+                              </div>
+                            )
+                          ) : (
+                            <div className="w-20 h-20 bg-gray-100 rounded border flex items-center justify-center">
+                              <FileText className="h-8 w-8 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* File info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </p>
+
+                          {/* Caption input */}
+                          <div className="mt-2">
+                            <Input
+                              placeholder="メモ・説明を入力"
+                              value={fileCaptions[index] || ''}
+                              onChange={(e) => setFileCaptions(prev => ({
+                                ...prev,
+                                [index]: e.target.value
+                              }))}
+                              className="text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Delete button */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeFile(index)}
+                          className="flex-shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Upload status */}
+            {isUploading && (
+              <div className="flex items-center justify-center gap-2 p-4 bg-blue-50 rounded-lg">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">アップロード中...</span>
+              </div>
+            )}
+
+            {/* Info text */}
+            <div className="text-xs text-muted-foreground space-y-1 p-3 bg-gray-50 rounded">
+              <p>• 画像（JPEG、PNG）またはPDFファイルをアップロードできます</p>
+              <p>• ファイルサイズは1ファイルあたり10MBまで</p>
+              <p>• 最大10個のファイルをアップロード可能</p>
+              <p>• 画像は自動的に圧縮されます</p>
             </div>
           </TabsContent>
         </Tabs>

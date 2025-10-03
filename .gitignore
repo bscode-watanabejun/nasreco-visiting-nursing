@@ -9,4 +9,4 @@ vite.config.ts.*
 .claude/settings.local.json
 
 # Design attachments
-design_attachments/
+design_attachments/uploads/

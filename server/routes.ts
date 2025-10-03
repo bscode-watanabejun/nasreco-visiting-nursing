@@ -1,6 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import {
@@ -18,9 +21,13 @@ import {
   updateVisitSchema,
   updateNursingRecordSchema,
   updateMedicationSchema,
-  updateScheduleSchema
+  updateScheduleSchema,
+  nursingRecordAttachments,
+  type NursingRecordAttachment
 } from "@shared/schema";
 import { z } from "zod";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -41,6 +48,45 @@ interface AuthenticatedRequest extends Request {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ========== Multer Configuration for File Uploads ==========
+  const uploadStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const nursingRecordId = req.params.id || 'temp';
+      const uploadDir = path.join(process.cwd(), 'uploads', 'nursing-records', nursingRecordId);
+
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      // Generate unique filename with timestamp and random string
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+      const ext = path.extname(file.originalname);
+      cb(null, `${uniqueSuffix}${ext}`);
+    }
+  });
+
+  const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('画像（JPEG、PNG）またはPDFファイルのみアップロード可能です'));
+    }
+  };
+
+  const upload = multer({
+    storage: uploadStorage,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB
+    },
+    fileFilter: fileFilter
+  });
+
   // ========== Authentication Routes ==========
   
   // Login
@@ -1033,6 +1079,194 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Delete nursing record error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Nursing Record Attachments Routes ==========
+
+  // Upload attachment to nursing record
+  app.post("/api/nursing-records/:id/attachments", requireAuth, upload.array('files', 10), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { captions } = req.body; // Array of captions corresponding to files
+
+      // Check if nursing record exists and belongs to user's facility
+      const nursingRecord = await storage.getNursingRecord(id);
+      if (!nursingRecord || nursingRecord.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "ファイルがアップロードされていません" });
+      }
+
+      // Parse captions if provided as JSON string
+      let captionsArray: string[] = [];
+      if (captions) {
+        try {
+          captionsArray = typeof captions === 'string' ? JSON.parse(captions) : captions;
+        } catch (e) {
+          captionsArray = [];
+        }
+      }
+
+      // Save attachment records to database
+      const attachments: NursingRecordAttachment[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const caption = captionsArray[i] || null;
+
+        const [attachment] = await db.insert(nursingRecordAttachments).values({
+          nursingRecordId: id,
+          fileName: file.filename,
+          originalFileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          filePath: path.join('nursing-records', id, file.filename),
+          caption: caption
+        }).returning();
+
+        attachments.push(attachment);
+      }
+
+      res.json({ message: "ファイルをアップロードしました", attachments });
+
+    } catch (error) {
+      console.error("Upload attachment error:", error);
+      res.status(500).json({ error: "ファイルのアップロードに失敗しました" });
+    }
+  });
+
+  // Get attachments for nursing record
+  app.get("/api/nursing-records/:id/attachments", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Check if nursing record exists and belongs to user's facility
+      const nursingRecord = await storage.getNursingRecord(id);
+      if (!nursingRecord || nursingRecord.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      const attachments = await db.select()
+        .from(nursingRecordAttachments)
+        .where(eq(nursingRecordAttachments.nursingRecordId, id));
+
+      res.json(attachments);
+
+    } catch (error) {
+      console.error("Get attachments error:", error);
+      res.status(500).json({ error: "添付ファイルの取得に失敗しました" });
+    }
+  });
+
+  // Get single attachment file
+  app.get("/api/attachments/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const [attachment] = await db.select()
+        .from(nursingRecordAttachments)
+        .where(eq(nursingRecordAttachments.id, id));
+
+      if (!attachment) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      // Verify access through nursing record
+      const nursingRecord = await storage.getNursingRecord(attachment.nursingRecordId!);
+      if (!nursingRecord || nursingRecord.facilityId !== req.user.facilityId) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      const filePath = path.join(process.cwd(), 'uploads', attachment.filePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      // Set appropriate content type
+      res.setHeader('Content-Type', attachment.fileType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.originalFileName)}"`);
+
+      // Stream file to response
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+    } catch (error) {
+      console.error("Get attachment file error:", error);
+      res.status(500).json({ error: "ファイルの取得に失敗しました" });
+    }
+  });
+
+  // Delete attachment
+  app.delete("/api/attachments/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const [attachment] = await db.select()
+        .from(nursingRecordAttachments)
+        .where(eq(nursingRecordAttachments.id, id));
+
+      if (!attachment) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      // Verify access through nursing record
+      const nursingRecord = await storage.getNursingRecord(attachment.nursingRecordId!);
+      if (!nursingRecord || nursingRecord.facilityId !== req.user.facilityId) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      // Delete file from filesystem
+      const filePath = path.join(process.cwd(), 'uploads', attachment.filePath);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      // Delete record from database
+      await db.delete(nursingRecordAttachments).where(eq(nursingRecordAttachments.id, id));
+
+      res.json({ message: "添付ファイルを削除しました" });
+
+    } catch (error) {
+      console.error("Delete attachment error:", error);
+      res.status(500).json({ error: "ファイルの削除に失敗しました" });
+    }
+  });
+
+  // Update attachment caption
+  app.patch("/api/attachments/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { caption } = req.body;
+
+      const [attachment] = await db.select()
+        .from(nursingRecordAttachments)
+        .where(eq(nursingRecordAttachments.id, id));
+
+      if (!attachment) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      // Verify access through nursing record
+      const nursingRecord = await storage.getNursingRecord(attachment.nursingRecordId!);
+      if (!nursingRecord || nursingRecord.facilityId !== req.user.facilityId) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      // Update caption
+      const [updatedAttachment] = await db.update(nursingRecordAttachments)
+        .set({ caption: caption || null })
+        .where(eq(nursingRecordAttachments.id, id))
+        .returning();
+
+      res.json(updatedAttachment);
+
+    } catch (error) {
+      console.error("Update attachment caption error:", error);
+      res.status(500).json({ error: "キャプションの更新に失敗しました" });
     }
   });
 
