@@ -97,11 +97,11 @@ export function PatientDetail() {
   // Prepare chart data
   const chartData = useMemo(() => {
     return filteredRecords
-      .filter(record => record.visitTime) // Only records with visit time
-      .sort((a, b) => new Date(a.visitTime!).getTime() - new Date(b.visitTime!).getTime())
+      .filter(record => record.actualStartTime) // Only records with actual start time
+      .sort((a, b) => new Date(a.actualStartTime!).getTime() - new Date(b.actualStartTime!).getTime())
       .map(record => ({
-        date: new Date(record.visitTime!).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }),
-        fullDate: record.visitTime,
+        date: new Date(record.actualStartTime!).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }),
+        fullDate: record.actualStartTime,
         temperature: record.temperature ? parseFloat(record.temperature) : null,
         systolic: record.bloodPressureSystolic || null,
         diastolic: record.bloodPressureDiastolic || null,
@@ -346,9 +346,9 @@ export function PatientDetail() {
                                   weekday: 'short'
                                 })}
                               </p>
-                              {record.visitTime && (
+                              {record.actualStartTime && (
                                 <span className="text-sm text-muted-foreground">
-                                  {new Date(record.visitTime).toLocaleTimeString('ja-JP', {
+                                  {new Date(record.actualStartTime).toLocaleTimeString('ja-JP', {
                                     hour: '2-digit',
                                     minute: '2-digit'
                                   })}
@@ -365,9 +365,6 @@ export function PatientDetail() {
                                  record.status === 'reviewed' ? '確認済み' :
                                  record.status === 'draft' ? '下書き' : record.status}
                               </Badge>
-                              {record.visitTypeCategory && (
-                                <Badge variant="outline">{record.visitTypeCategory}</Badge>
-                              )}
                             </div>
                             {record.observations && (
                               <p className="text-sm text-muted-foreground line-clamp-2">

@@ -34,6 +34,7 @@ import {
   Trash2
 } from "lucide-react"
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useToast } from "@/hooks/use-toast"
 
 import type { Patient, NursingRecord, PaginatedResult } from "@shared/schema"
 
@@ -200,6 +201,7 @@ export function NursingRecords() {
   const queryClient = useQueryClient()
   const searchParams = useSearch()
   const { data: currentUser } = useCurrentUser()
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
@@ -448,11 +450,18 @@ export function NursingRecords() {
 
       // Refresh the records list
       queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
-      alert('記録を削除しました')
+      toast({
+        title: "削除完了",
+        description: "記録を削除しました",
+      })
       setRecordToDelete(null)
     } catch (error) {
       console.error('Delete error:', error)
-      alert('削除中にエラーが発生しました')
+      toast({
+        title: "エラー",
+        description: "削除中にエラーが発生しました",
+        variant: "destructive",
+      })
     } finally {
       setIsDeleting(false)
     }
@@ -489,7 +498,10 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
-      alert('下書きとして保存しました')
+      toast({
+        title: "保存完了",
+        description: "下書きとして保存しました",
+      })
       setFormData(getInitialFormData()) // Reset form after successful save
       setIsCreating(false)
       setSelectedRecord(null)
@@ -538,7 +550,10 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
-      alert(isEditing ? '記録を更新しました' : '記録を完成しました')
+      toast({
+        title: "保存完了",
+        description: isEditing ? '記録を更新しました' : '記録を完成しました',
+      })
       setFormData(getInitialFormData()) // Reset form after successful save
       setIsCreating(false)
       setIsEditing(false)
@@ -586,7 +601,10 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
-      alert('記録を更新しました')
+      toast({
+        title: "更新完了",
+        description: "記録を更新しました",
+      })
       setFormData(getInitialFormData())
       setIsEditing(false)
       setSelectedRecord(null)
@@ -1211,10 +1229,10 @@ export function NursingRecords() {
                           <Calendar className="h-3 w-3" />
                           {new Date(record.recordDate).toLocaleDateString('ja-JP')}
                         </div>
-                        {record.visitTime && (
+                        {record.actualStartTime && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {new Date(record.visitTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(record.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         )}
                         <div className="flex items-center gap-1">
@@ -1222,7 +1240,6 @@ export function NursingRecords() {
                           {record.nurseName}
                         </div>
                       </div>
-                      {record.visitTypeCategory && <p>訪問種別: {record.visitTypeCategory}</p>}
                       {record.observations && <p className="truncate max-w-md">観察: {record.observations}</p>}
                     </div>
                   </div>
@@ -1288,8 +1305,10 @@ export function NursingRecords() {
                   <p>以下の記録を削除します。この操作は取り消せません。</p>
                   <div className="bg-muted p-3 rounded-md text-sm space-y-1">
                     <p><span className="font-medium">患者名:</span> {recordToDelete.patientName}</p>
-                    <p><span className="font-medium">訪問日時:</span> {recordToDelete.visitTime ? new Date(recordToDelete.visitTime).toLocaleString('ja-JP') : '未設定'}</p>
-                    <p><span className="font-medium">訪問理由:</span> {recordToDelete.visitTypeCategory || '未設定'}</p>
+                    <p><span className="font-medium">記録日:</span> {new Date(recordToDelete.recordDate).toLocaleString('ja-JP')}</p>
+                    {recordToDelete.actualStartTime && (
+                      <p><span className="font-medium">訪問開始:</span> {new Date(recordToDelete.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                    )}
                   </div>
                 </div>
               )}

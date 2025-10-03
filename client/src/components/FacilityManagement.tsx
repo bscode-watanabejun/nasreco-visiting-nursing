@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { facilityApi, type CreateFacilityRequest } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { useToast } from "@/hooks/use-toast";
 import type { Facility } from "@shared/schema";
 
 interface FacilityFormData {
@@ -52,6 +53,7 @@ const initialFormData: FacilityFormData = {
 };
 
 export function FacilityManagement() {
+  const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState<FacilityFormData>(initialFormData);
@@ -101,9 +103,17 @@ export function FacilityManagement() {
       setIsCreateDialogOpen(false);
       setFormData(initialFormData);
       refetch();
+      toast({
+        title: "登録完了",
+        description: "施設を登録しました",
+      });
     } catch (error) {
       console.error('Failed to create facility:', error);
-      // TODO: Show error toast
+      toast({
+        title: "エラー",
+        description: "施設の登録に失敗しました",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -139,9 +149,17 @@ export function FacilityManagement() {
       setSelectedFacility(null);
       setFormData(initialFormData);
       refetch();
+      toast({
+        title: "更新完了",
+        description: "施設情報を更新しました",
+      });
     } catch (error) {
       console.error('Failed to update facility:', error);
-      // TODO: Show error toast
+      toast({
+        title: "エラー",
+        description: "施設情報の更新に失敗しました",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }

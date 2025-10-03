@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { AlertCircle, CheckCircle, XCircle } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import type { Patient, Schedule, PaginatedResult } from "@shared/schema"
 
 interface VisitRecordDialogProps {
@@ -72,6 +73,7 @@ const getInitialFormData = (schedule?: Schedule | null): FormData => ({
 
 export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordDialogProps) {
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("basic")
   const [formData, setFormData] = useState<FormData>(getInitialFormData(schedule))
   const [isSaving, setIsSaving] = useState(false)
@@ -249,7 +251,10 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
       await queryClient.invalidateQueries({ queryKey: ["schedules"] })
-      alert('下書きとして保存しました')
+      toast({
+        title: "保存完了",
+        description: "下書きとして保存しました",
+      })
       setFormData(getInitialFormData())
       onOpenChange(false)
 
@@ -347,7 +352,10 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
       await queryClient.invalidateQueries({ queryKey: ["schedules"] })
-      alert('訪問記録を保存しました')
+      toast({
+        title: "保存完了",
+        description: "訪問記録を保存しました",
+      })
       setFormData(getInitialFormData())
       onOpenChange(false)
 

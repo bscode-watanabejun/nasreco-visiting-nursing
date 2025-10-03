@@ -184,8 +184,6 @@ export const nursingRecords = pgTable("nursing_records", {
   status: recordStatusEnum("status").notNull().default("draft"),
 
   // Visit information
-  visitTime: timestamp("visit_time", { withTimezone: true }),
-  visitTypeCategory: text("visit_type_category"), // "定期訪問" or "緊急訪問"
   visitStatusRecord: visitStatusRecordEnum("visit_status_record"), // 訪問ステータス
   actualStartTime: timestamp("actual_start_time", { withTimezone: true }), // 実際の開始時間
   actualEndTime: timestamp("actual_end_time", { withTimezone: true }), // 実際の終了時間
