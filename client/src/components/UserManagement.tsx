@@ -21,6 +21,7 @@ import {
   Loader2
 } from "lucide-react"
 import { useUsersQuery, useCreateUserMutation, useUpdateUserMutation } from '@/hooks/useUsers'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 import type { User as ApiUser } from '@shared/schema'
 import type { CreateUserRequest, UpdateUserRequest } from '@/lib/api'
 
@@ -104,6 +105,7 @@ export function UserManagement() {
 
   // Fetch users data
   const { data: usersResponse, isLoading, error } = useUsersQuery(currentPage, 20)
+  const { data: currentUser } = useCurrentUser()
   const createUserMutation = useCreateUserMutation()
   const updateUserMutation = useUpdateUserMutation()
 
@@ -264,6 +266,7 @@ export function UserManagement() {
                     <Select
                       value={formData.role || 'nurse'}
                       onValueChange={(value) => updateFormData('role', value)}
+                      disabled={!isCreating && selectedUser?.id === currentUser?.id}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="役職を選択" />
