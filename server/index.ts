@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { subdomainMiddleware } from "./middleware/subdomain";
 
+// Server initialization
 const app = express();
 
 // Trust proxy in production (for HTTPS cookies behind reverse proxy)

@@ -33,6 +33,7 @@ import {
   ChevronDown,
   Trash2
 } from "lucide-react"
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 
 import type { Patient, NursingRecord, PaginatedResult } from "@shared/schema"
 
@@ -44,7 +45,7 @@ interface NursingRecordDisplay extends NursingRecord {
 
 interface FormData {
   patientId: string
-  visitStatusRecord: "completed" | "cancelled" | "rescheduled"
+  visitStatusRecord: "pending" | "completed" | "no_show" | "refused" | "cancelled" | "rescheduled"
   actualStartTime: string
   actualEndTime: string
   observations: string
@@ -176,7 +177,7 @@ const getStatusText = (status: string) => {
 // Helper function to get initial form data (unified with VisitRecordDialog)
 const getInitialFormData = (): FormData => ({
   patientId: '',
-  visitStatusRecord: 'completed',
+  visitStatusRecord: 'pending',
   actualStartTime: new Date().toTimeString().slice(0, 5),
   actualEndTime: new Date().toTimeString().slice(0, 5),
   observations: '',
@@ -198,6 +199,7 @@ const getInitialFormData = (): FormData => ({
 export function NursingRecords() {
   const queryClient = useQueryClient()
   const searchParams = useSearch()
+  const { data: currentUser } = useCurrentUser()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
@@ -235,8 +237,21 @@ export function NursingRecords() {
     },
   })
 
+  // Fetch users data for nurse names
+  const { data: usersData } = useQuery<PaginatedResult<any>>({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const response = await fetch("/api/users")
+      if (!response.ok) {
+        throw new Error("ユーザーデータの取得に失敗しました")
+      }
+      return response.json()
+    },
+  })
+
   const patients = patientsData?.data || []
   const rawRecords = recordsData?.data || []
+  const users = usersData?.data || []
 
   // Fetch today's schedules for the selected patient
   const { data: patientSchedulesData } = useQuery({
@@ -319,11 +334,12 @@ export function NursingRecords() {
   const records: NursingRecordDisplay[] = rawRecords.map(record => {
     const patient = patients.find(p => p.id === record.patientId)
     const patientName = patient ? `${patient.lastName} ${patient.firstName}` : '不明'
+    const nurse = users.find(u => u.id === record.nurseId)
 
     return {
       ...record,
       patientName,
-      nurseName: '看護師名' // TODO: Fetch nurse names from users API
+      nurseName: nurse?.fullName || '担当者不明'
     }
   })
 
@@ -656,7 +672,7 @@ export function NursingRecords() {
               <div className="space-y-2">
                 <Label>担当者</Label>
                 <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
-                  <span className="text-sm">ログインユーザー</span>
+                  <span className="text-sm">{currentUser?.fullName || 'ログインユーザー'}</span>
                 </div>
               </div>
 
@@ -706,7 +722,7 @@ export function NursingRecords() {
                 <Label htmlFor="visit-status">訪問ステータス</Label>
                 <Select
                   value={formData.visitStatusRecord}
-                  onValueChange={(value: "completed" | "cancelled" | "rescheduled") =>
+                  onValueChange={(value: "pending" | "completed" | "no_show" | "refused" | "cancelled" | "rescheduled") =>
                     setFormData(prev => ({ ...prev, visitStatusRecord: value }))
                   }
                 >
@@ -714,7 +730,10 @@ export function NursingRecords() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="pending">未実施</SelectItem>
                     <SelectItem value="completed">完了</SelectItem>
+                    <SelectItem value="no_show">不在（患者不在）</SelectItem>
+                    <SelectItem value="refused">拒否（患者拒否）</SelectItem>
                     <SelectItem value="cancelled">キャンセル</SelectItem>
                     <SelectItem value="rescheduled">日程変更</SelectItem>
                   </SelectContent>
@@ -1000,7 +1019,7 @@ export function NursingRecords() {
         ) : (
           // View-only mode
           <div className="space-y-6">
-            {renderPreviewContent(formData, selectedPatient)}
+            {renderDetailContent(selectedRecord, formData, selectedPatient, users, currentUser)}
           </div>
         )}
 
@@ -1293,106 +1312,174 @@ export function NursingRecords() {
 }
 
 // Helper function to render preview content
-function renderPreviewContent(formData: FormData, selectedPatient: Patient | undefined) {
+function renderDetailContent(
+  record: NursingRecordDisplay | null,
+  formData: FormData,
+  selectedPatient: Patient | undefined,
+  users: any[],
+  currentUser: any
+) {
+  const nurse = record ? users.find(u => u.id === record.nurseId) : null
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'draft': return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">下書き</Badge>
+      case 'completed': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">完成</Badge>
+      case 'reviewed': return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">承認済み</Badge>
+      default: return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-xl font-bold">記録プレビュー</CardTitle>
-        <CardDescription>作成した記録のプレビューです</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Patient Information */}
-        <div className="space-y-2">
-          <h3 className="font-semibold text-base">患者情報</h3>
-          <p className="text-muted-foreground">
-            {selectedPatient ? getFullName(selectedPatient) : '患者未選択'}
-          </p>
-        </div>
-
-        {/* Basic Information */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-base">基本情報</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="font-medium">訪問ステータス:</span>
-              <span className="ml-2">{formData.visitStatusRecord === 'completed' ? '完了' : formData.visitStatusRecord === 'cancelled' ? 'キャンセル' : '日程変更'}</span>
-            </div>
-            <div>
-              <span className="font-medium">開始時間:</span>
-              <span className="ml-2">{formData.actualStartTime || '未入力'}</span>
-            </div>
-            <div>
-              <span className="font-medium">終了時間:</span>
-              <span className="ml-2">{formData.actualEndTime || '未入力'}</span>
-            </div>
-            <div>
-              <span className="font-medium">2回目以降の訪問:</span>
-              <span className="ml-2">{formData.isSecondVisit ? 'はい' : 'いいえ'}</span>
-            </div>
+    <div className="space-y-4">
+      {/* Status Header */}
+      {record && (
+        <div className="flex items-center justify-between pb-4 border-b">
+          <div className="flex items-center gap-3">
+            {getStatusBadge(record.status)}
+            <span className="text-sm text-muted-foreground">
+              作成日時: {record.createdAt ? new Date(record.createdAt).toLocaleString('ja-JP') : '不明'}
+            </span>
           </div>
         </div>
+      )}
 
-        {/* Vital Signs */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-base">バイタルサイン</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+      {/* Basic Information Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">基本情報</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="font-medium">体温:</span>
-              <span className="ml-2">{formData.temperature || '未入力'}</span>
+              <span className="font-medium text-muted-foreground">患者名:</span>
+              <p className="mt-1">{selectedPatient ? getFullName(selectedPatient) : '患者未選択'}</p>
             </div>
             <div>
-              <span className="font-medium">脈拍:</span>
-              <span className="ml-2">{formData.heartRate || '未入力'}</span>
+              <span className="font-medium text-muted-foreground">担当看護師:</span>
+              <p className="mt-1">{nurse?.fullName || currentUser?.fullName || '不明'}</p>
             </div>
             <div>
-              <span className="font-medium">血圧（収縮期）:</span>
-              <span className="ml-2">{formData.bloodPressureSystolic || '未入力'}</span>
-            </div>
-            <div>
-              <span className="font-medium">血圧（拡張期）:</span>
-              <span className="ml-2">{formData.bloodPressureDiastolic || '未入力'}</span>
-            </div>
-            <div>
-              <span className="font-medium">SpO2:</span>
-              <span className="ml-2">{formData.oxygenSaturation || '未入力'}</span>
-            </div>
-            <div>
-              <span className="font-medium">呼吸数:</span>
-              <span className="ml-2">{formData.respiratoryRate || '未入力'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Nursing Records */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-base">看護記録</h3>
-          <div className="space-y-4">
-            <div>
-              <span className="font-medium block mb-1">観察事項:</span>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap border-l-2 border-gray-200 pl-3">
-                {formData.observations || '未入力'}
+              <span className="font-medium text-muted-foreground">訪問ステータス:</span>
+              <p className="mt-1">
+                {formData.visitStatusRecord === 'pending' ? '未実施' :
+                 formData.visitStatusRecord === 'completed' ? '完了' :
+                 formData.visitStatusRecord === 'no_show' ? '不在（患者不在）' :
+                 formData.visitStatusRecord === 'refused' ? '拒否（患者拒否）' :
+                 formData.visitStatusRecord === 'cancelled' ? 'キャンセル' : '日程変更'}
               </p>
             </div>
             <div>
-              <span className="font-medium block mb-1">実施したケア:</span>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap border-l-2 border-gray-200 pl-3">
-                {formData.careProvided || '未入力'}
-              </p>
+              <span className="font-medium text-muted-foreground">2回目以降の訪問:</span>
+              <p className="mt-1">{formData.isSecondVisit ? 'はい' : 'いいえ'}</p>
             </div>
             <div>
-              <span className="font-medium block mb-1">次回訪問時の申し送り:</span>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap border-l-2 border-gray-200 pl-3">
-                {formData.nextVisitNotes || '未入力'}
-              </p>
+              <span className="font-medium text-muted-foreground">訪問開始時間:</span>
+              <p className="mt-1">{formData.actualStartTime || '未入力'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground">訪問終了時間:</span>
+              <p className="mt-1">{formData.actualEndTime || '未入力'}</p>
             </div>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Disclaimer */}
-        <div className="text-xs text-muted-foreground pt-4 border-t">
-          <p>※ このプレビューは作成中の記録です。「記録完成」ボタンを押して保存してください。</p>
-        </div>
-      </CardContent>
-    </Card>
+      {/* Vital Signs Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">バイタルサイン</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
+            <div>
+              <span className="font-medium text-muted-foreground block mb-1">体温</span>
+              <p className="text-lg">{formData.temperature ? `${formData.temperature}°C` : '―'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground block mb-1">脈拍</span>
+              <p className="text-lg">{formData.heartRate ? `${formData.heartRate}回/分` : '―'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground block mb-1">収縮期血圧</span>
+              <p className="text-lg">{formData.bloodPressureSystolic ? `${formData.bloodPressureSystolic}mmHg` : '―'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground block mb-1">拡張期血圧</span>
+              <p className="text-lg">{formData.bloodPressureDiastolic ? `${formData.bloodPressureDiastolic}mmHg` : '―'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground block mb-1">SpO2</span>
+              <p className="text-lg">{formData.oxygenSaturation ? `${formData.oxygenSaturation}%` : '―'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-muted-foreground block mb-1">呼吸数</span>
+              <p className="text-lg">{formData.respiratoryRate ? `${formData.respiratoryRate}回/分` : '―'}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Nursing Records Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">看護記録</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <span className="font-medium text-muted-foreground block mb-2">観察事項</span>
+            <div className="bg-gray-50 rounded-md p-3 min-h-[60px]">
+              <p className="text-sm whitespace-pre-wrap">{formData.observations || '記載なし'}</p>
+            </div>
+          </div>
+          <div>
+            <span className="font-medium text-muted-foreground block mb-2">実施したケア内容</span>
+            <div className="bg-gray-50 rounded-md p-3 min-h-[60px]">
+              <p className="text-sm whitespace-pre-wrap">{formData.careProvided || '記載なし'}</p>
+            </div>
+          </div>
+          <div>
+            <span className="font-medium text-muted-foreground block mb-2">次回訪問時の申し送り</span>
+            <div className="bg-gray-50 rounded-md p-3 min-h-[60px]">
+              <p className="text-sm whitespace-pre-wrap">{formData.nextVisitNotes || '記載なし'}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Special Management Records Card */}
+      {(formData.multipleVisitReason || formData.emergencyVisitReason || formData.longVisitReason) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">特別管理加算記録</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formData.multipleVisitReason && (
+              <div>
+                <span className="font-medium text-muted-foreground block mb-2">複数回訪問加算の理由</span>
+                <div className="bg-gray-50 rounded-md p-3">
+                  <p className="text-sm whitespace-pre-wrap">{formData.multipleVisitReason}</p>
+                </div>
+              </div>
+            )}
+            {formData.emergencyVisitReason && (
+              <div>
+                <span className="font-medium text-muted-foreground block mb-2">緊急訪問看護加算の理由</span>
+                <div className="bg-gray-50 rounded-md p-3">
+                  <p className="text-sm whitespace-pre-wrap">{formData.emergencyVisitReason}</p>
+                </div>
+              </div>
+            )}
+            {formData.longVisitReason && (
+              <div>
+                <span className="font-medium text-muted-foreground block mb-2">長時間訪問看護加算の理由</span>
+                <div className="bg-gray-50 rounded-md p-3">
+                  <p className="text-sm whitespace-pre-wrap">{formData.longVisitReason}</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 }

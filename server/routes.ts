@@ -945,12 +945,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/nursing-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const recordData = insertNursingRecordSchema.parse(req.body);
-      
+
       // Pass facility ID and nurse ID separately
       const record = await storage.createNursingRecord(recordData, req.user.facilityId, req.user.id);
       res.status(201).json(record);
-      
+
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error("Nursing record validation error:", error.errors);
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
       console.error("Create nursing record error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
