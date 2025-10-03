@@ -10,3 +10,6 @@ vite.config.ts.*
 
 # Design attachments
 design_attachments/uploads/
+
+# Nursing record attachments
+uploads/
