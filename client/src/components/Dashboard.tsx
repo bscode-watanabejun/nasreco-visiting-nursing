@@ -1,10 +1,10 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useLocation } from "wouter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { VisitRecordDialog } from "@/components/VisitRecordDialog"
 import {
   Users,
   Calendar,
@@ -70,8 +70,7 @@ const getStatusText = (status: string) => {
 
 export function Dashboard() {
   const queryClient = useQueryClient()
-  const [isVisitRecordDialogOpen, setIsVisitRecordDialogOpen] = useState(false)
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
+  const [, setLocation] = useLocation()
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: 'long',
@@ -163,8 +162,13 @@ export function Dashboard() {
   }
 
   const handleCompleteVisit = (scheduleId: string) => {
-    setSelectedScheduleId(scheduleId)
-    setIsVisitRecordDialogOpen(true)
+    // Navigate to nursing records page with schedule ID
+    setLocation(`/records?mode=create&scheduleId=${scheduleId}`)
+  }
+
+  const handleCreateNewRecord = () => {
+    // Navigate to nursing records page for new record
+    setLocation('/records?mode=create')
   }
 
   const completedVisits = visits.filter(v => v.status === 'completed').length
@@ -189,7 +193,7 @@ export function Dashboard() {
             <Button
               className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white border-orange-600"
               data-testid="button-new-record"
-              onClick={() => setIsVisitRecordDialogOpen(true)}
+              onClick={handleCreateNewRecord}
             >
               <Plus className="mr-2 h-4 w-4" />
               新規記録登録
@@ -230,7 +234,7 @@ export function Dashboard() {
             size="sm"
             className="ml-auto bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5"
             data-testid="button-new-record"
-            onClick={() => setIsVisitRecordDialogOpen(true)}
+            onClick={handleCreateNewRecord}
           >
             <Plus className="mr-1 h-4 w-4" />
             新規記録登録
@@ -557,13 +561,6 @@ export function Dashboard() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* 訪問記録ダイアログ */}
-      <VisitRecordDialog
-        open={isVisitRecordDialogOpen}
-        onOpenChange={setIsVisitRecordDialogOpen}
-        schedule={selectedScheduleId ? schedules.find(s => s.id === selectedScheduleId) : null}
-      />
     </div>
   )
 }

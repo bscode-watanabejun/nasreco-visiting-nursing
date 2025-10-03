@@ -1,5 +1,6 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSearch } from "wouter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -196,6 +197,7 @@ const getInitialFormData = (): FormData => ({
 
 export function NursingRecords() {
   const queryClient = useQueryClient()
+  const searchParams = useSearch()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
@@ -207,6 +209,7 @@ export function NursingRecords() {
   const [formData, setFormData] = useState<FormData>(getInitialFormData())
   const [recordToDelete, setRecordToDelete] = useState<NursingRecordDisplay | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [cameFromUrl, setCameFromUrl] = useState(false)
 
   // Fetch patients from API
   const { data: patientsData, isLoading: isPatientsLoading } = useQuery<PaginatedResult<Patient>>({
@@ -260,6 +263,57 @@ export function NursingRecords() {
 
   const patientSchedules = (patientSchedulesData?.data || []) as any[]
   const selectedSchedule = patientSchedules.find((s: any) => s.id === formData.selectedScheduleId)
+
+  // Fetch schedule data if scheduleId is in URL
+  const urlParams = new URLSearchParams(searchParams)
+  const scheduleIdFromUrl = urlParams.get('scheduleId')
+  const modeFromUrl = urlParams.get('mode')
+
+  const { data: scheduleFromUrl } = useQuery({
+    queryKey: ["schedule", scheduleIdFromUrl],
+    queryFn: async () => {
+      if (!scheduleIdFromUrl) return null
+      const response = await fetch(`/api/schedules/${scheduleIdFromUrl}`)
+      if (!response.ok) return null
+      return response.json()
+    },
+    enabled: !!scheduleIdFromUrl,
+  })
+
+  // Handle URL parameters for creating/editing from Dashboard
+  useEffect(() => {
+    if (scheduleIdFromUrl && scheduleFromUrl && modeFromUrl === 'create') {
+      // Create new record from schedule (with schedule data)
+      const schedule = scheduleFromUrl
+      const startTime = schedule.scheduledStartTime ? new Date(schedule.scheduledStartTime) : new Date()
+      const endTime = schedule.scheduledEndTime ? new Date(schedule.scheduledEndTime) : new Date()
+
+      setCameFromUrl(true) // Mark that we came from URL
+      setIsCreating(true)
+      setSelectedRecord(null)
+      setFormData({
+        ...getInitialFormData(),
+        patientId: schedule.patientId || '',
+        actualStartTime: startTime.toTimeString().slice(0, 5),
+        actualEndTime: endTime.toTimeString().slice(0, 5),
+        selectedScheduleId: scheduleIdFromUrl
+      })
+      setSaveError(null)
+
+      // Clear URL parameters by replacing current history entry
+      window.history.replaceState({}, '', '/records')
+    } else if (modeFromUrl === 'create' && !scheduleIdFromUrl) {
+      // Create new record without schedule (from Dashboard new record button)
+      setCameFromUrl(true) // Mark that we came from URL
+      setIsCreating(true)
+      setSelectedRecord(null)
+      setFormData(getInitialFormData())
+      setSaveError(null)
+
+      // Clear URL parameters by replacing current history entry
+      window.history.replaceState({}, '', '/records')
+    }
+  }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl])
 
   // Transform records to include patient and nurse names
   const records: NursingRecordDisplay[] = rawRecords.map(record => {
@@ -537,7 +591,7 @@ export function NursingRecords() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">
-              {isCreating ? '新規訪問記録登録' : '訪問記録詳細'}
+              {isCreating ? '新規訪問記録登録' : isEditing ? '訪問記録編集' : '訪問記録詳細'}
             </h1>
             <p className="text-sm sm:text-base text-muted-foreground">
               {isCreating ? '新しい訪問記録を登録' : `${selectedRecord?.patientName}さんの記録`}
@@ -546,14 +600,21 @@ export function NursingRecords() {
           <Button
             variant="outline"
             onClick={() => {
-              setIsCreating(false)
-              setIsEditing(false)
-              setSelectedRecord(null)
-              setSaveError(null)
+              if (cameFromUrl) {
+                // Came from URL (Dashboard or other page) - use browser history
+                window.history.back()
+              } else {
+                // Came from within this page - reset state to show list
+                setIsCreating(false)
+                setIsEditing(false)
+                setSelectedRecord(null)
+                setSaveError(null)
+                setCameFromUrl(false)
+              }
             }}
             className="w-full sm:w-auto flex-shrink-0"
           >
-            一覧に戻る
+            戻る
           </Button>
         </div>
 
