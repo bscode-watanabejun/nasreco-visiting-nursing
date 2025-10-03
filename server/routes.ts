@@ -61,13 +61,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log("User lookup result:", user ? "Found" : "Not found");
       if (!user) {
-        return res.status(401).json({ error: "認証に失敗しました" });
+        return res.status(401).json({ error: "メールアドレスまたはパスワードが正しくありません" });
       }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
       console.log("Password validation:", { isValidPassword });
       if (!isValidPassword) {
-        return res.status(401).json({ error: "認証に失敗しました" });
+        return res.status(401).json({ error: "メールアドレスまたはパスワードが正しくありません" });
       }
 
       if (!user.isActive) {

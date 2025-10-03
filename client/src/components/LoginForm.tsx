@@ -25,26 +25,18 @@ export function LoginForm({
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
 
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email)
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // Reset errors
     setEmailError('')
     setPasswordError('')
-    
+
     // Validation
     let hasErrors = false
-    
+
     if (!email) {
-      setEmailError('メールアドレスを入力してください')
-      hasErrors = true
-    } else if (!validateEmail(email)) {
-      setEmailError('正しいメールアドレスを入力してください')
+      setEmailError('ユーザー名またはメールアドレスを入力してください')
       hasErrors = true
     }
     
@@ -86,11 +78,11 @@ export function LoginForm({
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">メールアドレス</Label>
+              <Label htmlFor="email" className="text-sm font-medium">ユーザー名またはメールアドレス</Label>
               <Input
                 id="email"
-                type="email"
-                placeholder="example@healthcare.com"
+                type="text"
+                placeholder="ユーザー名 または example@healthcare.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 data-testid="input-email"

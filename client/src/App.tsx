@@ -53,6 +53,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 function MainLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginError, setLoginError] = useState<string | undefined>(undefined);
   const { facility, company, isLoading: tenantLoading } = useTenant();
   const isHeadquarters = useIsHeadquarters();
   const isUserBasedHeadquarters = useUserBasedHeadquarters();
@@ -101,7 +102,8 @@ function MainLayout() {
   const handleLogin = async (email: string, password: string) => {
     try {
       console.log('ログイン試行 for user:', email);
-      
+      setLoginError(undefined); // Clear previous errors
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -109,19 +111,21 @@ function MainLayout() {
         },
         body: JSON.stringify({ username: email, password }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         // Invalidate user query to refetch user data after login
         queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+        setLoginError(undefined); // Clear error on success
         console.log('ログイン成功:', data);
       } else {
         const errorData = await response.json();
         console.error('ログイン失敗:', errorData);
-        // ここでエラーメッセージを表示する機能を追加することも可能
+        setLoginError(errorData.error || 'ログインに失敗しました');
       }
     } catch (error) {
       console.error('ログインエラー:', error);
+      setLoginError('ネットワークエラーが発生しました');
     }
   };
 
@@ -177,7 +181,7 @@ function MainLayout() {
           onLogin={handleLogin}
           onForgotPassword={handleForgotPassword}
           loading={false}
-          error={undefined}
+          error={loginError}
         />
       </div>
     );
