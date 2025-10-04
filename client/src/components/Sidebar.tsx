@@ -25,7 +25,9 @@ import {
   Heart,
   Hospital,
   UserCog,
-  CreditCard
+  CreditCard,
+  FileEdit,
+  FileCheck
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
@@ -78,6 +80,18 @@ const facilityNavigationItems = [
     title: "保険証管理",
     href: "/insurance-cards",
     icon: CreditCard,
+    badge: null,
+  },
+  {
+    title: "訪問看護計画書",
+    href: "/care-plans",
+    icon: FileEdit,
+    badge: null,
+  },
+  {
+    title: "訪問看護報告書",
+    href: "/care-reports",
+    icon: FileCheck,
     badge: null,
   },
   {

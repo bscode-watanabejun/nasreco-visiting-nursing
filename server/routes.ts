@@ -19,6 +19,8 @@ import {
   insertCareManagerSchema,
   insertDoctorOrderSchema,
   insertInsuranceCardSchema,
+  insertCarePlanSchema,
+  insertCareReportSchema,
   updateUserSelfSchema,
   updateUserAdminSchema,
   updatePatientSchema,
@@ -30,11 +32,15 @@ import {
   updateCareManagerSchema,
   updateDoctorOrderSchema,
   updateInsuranceCardSchema,
+  updateCarePlanSchema,
+  updateCareReportSchema,
   nursingRecordAttachments,
   medicalInstitutions,
   careManagers,
   doctorOrders,
   insuranceCards,
+  carePlans,
+  careReports,
   patients,
   users,
   schedules,
@@ -2251,6 +2257,320 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.send('\uFEFF' + csv);
     } catch (error) {
       console.error("Export monthly statistics error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Care Plans API (訪問看護計画書) ==========
+
+  // Get all care plans with optional patient filter
+  app.get("/api/care-plans", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { patientId } = req.query;
+
+      const whereConditions = [
+        eq(carePlans.facilityId, facilityId!),
+        eq(carePlans.isActive, true)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(carePlans.patientId, patientId));
+      }
+
+      const plans = await db.query.carePlans.findMany({
+        where: and(...whereConditions),
+        with: {
+          patient: true,
+          doctorOrder: true,
+          createdBy: true,
+          approvedBy: true,
+        },
+        orderBy: (carePlans, { desc }) => [desc(carePlans.planDate)]
+      });
+
+      res.json(plans);
+    } catch (error) {
+      console.error("Get care plans error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single care plan
+  app.get("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const plan = await db.query.carePlans.findFirst({
+        where: and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!)
+        ),
+        with: {
+          patient: true,
+          doctorOrder: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      if (!plan) {
+        return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
+      }
+
+      res.json(plan);
+    } catch (error) {
+      console.error("Get care plan error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create care plan
+  app.post("/api/care-plans", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const userId = req.session.userId;
+
+      if (!facilityId || !userId) {
+        return res.status(401).json({ error: "認証情報が見つかりません" });
+      }
+
+      const validatedData = insertCarePlanSchema.parse(req.body);
+
+      const [plan] = await db.insert(carePlans).values({
+        ...validatedData,
+        facilityId,
+        createdBy: userId,
+      }).returning();
+
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create care plan error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update care plan
+  app.put("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateCarePlanSchema.parse(req.body);
+
+      const [plan] = await db.update(carePlans)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!plan) {
+        return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
+      }
+
+      res.json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update care plan error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) care plan
+  app.delete("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [plan] = await db.update(carePlans)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!plan) {
+        return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
+      }
+
+      res.json({ message: "訪問看護計画書を削除しました" });
+    } catch (error) {
+      console.error("Delete care plan error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Care Reports API (訪問看護報告書) ==========
+
+  // Get all care reports with optional patient filter
+  app.get("/api/care-reports", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { patientId } = req.query;
+
+      const whereConditions = [
+        eq(careReports.facilityId, facilityId!),
+        eq(careReports.isActive, true)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(careReports.patientId, patientId));
+      }
+
+      const reports = await db.query.careReports.findMany({
+        where: and(...whereConditions),
+        with: {
+          patient: true,
+          carePlan: true,
+          createdBy: true,
+          approvedBy: true,
+        },
+        orderBy: (careReports, { desc }) => [desc(careReports.reportDate)]
+      });
+
+      res.json(reports);
+    } catch (error) {
+      console.error("Get care reports error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single care report
+  app.get("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const report = await db.query.careReports.findFirst({
+        where: and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!)
+        ),
+        with: {
+          patient: true,
+          carePlan: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      if (!report) {
+        return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error("Get care report error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create care report
+  app.post("/api/care-reports", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const userId = req.session.userId;
+
+      if (!facilityId || !userId) {
+        return res.status(401).json({ error: "認証情報が見つかりません" });
+      }
+
+      const validatedData = insertCareReportSchema.parse(req.body);
+
+      const [report] = await db.insert(careReports).values({
+        ...validatedData,
+        facilityId,
+        createdBy: userId,
+      }).returning();
+
+      res.status(201).json(report);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create care report error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update care report
+  app.put("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateCareReportSchema.parse(req.body);
+
+      const [report] = await db.update(careReports)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!report) {
+        return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
+      }
+
+      res.json(report);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update care report error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) care report
+  app.delete("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [report] = await db.update(careReports)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!report) {
+        return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
+      }
+
+      res.json({ message: "訪問看護報告書を削除しました" });
+    } catch (error) {
+      console.error("Delete care report error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

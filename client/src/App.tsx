@@ -26,6 +26,8 @@ import MedicalInstitutionManagement from "@/components/MedicalInstitutionManagem
 import CareManagerManagement from "@/components/CareManagerManagement";
 import InsuranceCardManagement from "@/components/InsuranceCardManagement";
 import MonthlyStatistics from "@/components/MonthlyStatistics";
+import CarePlanManagement from "@/components/CarePlanManagement";
+import CareReportManagement from "@/components/CareReportManagement";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -256,6 +258,8 @@ function MainLayout() {
                   <Route path="/care-managers" component={CareManagerManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
                   <Route path="/statistics/monthly" component={MonthlyStatistics} />
+                  <Route path="/care-plans" component={CarePlanManagement} />
+                  <Route path="/care-reports" component={CareReportManagement} />
                 </>
               ) : (
                 /* Facility-specific routes */
@@ -271,6 +275,8 @@ function MainLayout() {
                   <Route path="/care-managers" component={CareManagerManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
                   <Route path="/statistics/monthly" component={MonthlyStatistics} />
+                  <Route path="/care-plans" component={CarePlanManagement} />
+                  <Route path="/care-reports" component={CareReportManagement} />
                 </>
               )}
               <Route component={NotFound} />
