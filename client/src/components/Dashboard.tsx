@@ -116,9 +116,29 @@ export function Dashboard() {
     },
   })
 
+  // Fetch schedules without records (last 7 days)
+  const { data: schedulesWithoutRecords } = useQuery<any[]>({
+    queryKey: ["/api/schedules/without-records"],
+    queryFn: async () => {
+      const today = new Date();
+      const sevenDaysAgo = new Date(today);
+      sevenDaysAgo.setDate(today.getDate() - 7);
+
+      const params = new URLSearchParams({
+        startDate: sevenDaysAgo.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0]
+      });
+
+      const response = await fetch(`/api/schedules/without-records?${params}`)
+      if (!response.ok) throw new Error("記録未作成スケジュールの取得に失敗しました")
+      return response.json()
+    },
+  })
+
   const schedules = schedulesData?.data || []
   const patients = patientsData?.data || []
   const users = usersData?.data || []
+  const pendingRecordsCount = schedulesWithoutRecords?.length || 0
 
   // Mutation for updating schedule status
   const updateStatusMutation = useMutation({
@@ -173,8 +193,6 @@ export function Dashboard() {
 
   const completedVisits = visits.filter(v => v.status === 'completed').length
   const totalVisits = visits.length
-  const pendingRecords = 3 // TODO: Get from backend
-  const criticalAlerts = 2 // TODO: Get from backend
 
   return (
     <div className="space-y-4 p-4">
@@ -298,10 +316,10 @@ export function Dashboard() {
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="sm:pt-0">
-              <div className="text-2xl font-bold">{pendingRecords}件</div>
+              <div className="text-2xl font-bold">{pendingRecordsCount}件</div>
               <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                <span className="sm:hidden">24時間以内</span>
-                <span className="hidden sm:inline">24時間以内に入力が必要</span>
+                <span className="sm:hidden">過去7日間</span>
+                <span className="hidden sm:inline">過去7日間の記録未作成</span>
               </p>
             </CardContent>
           </div>
@@ -318,9 +336,11 @@ export function Dashboard() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent className="sm:pt-0">
-              <div className="text-2xl font-bold text-orange-500 sm:text-destructive">{criticalAlerts}件</div>
+              <div className="text-2xl font-bold text-orange-500 sm:text-destructive">
+                {pendingRecordsCount > 0 ? pendingRecordsCount : 0}件
+              </div>
               <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                確認が必要です
+                記録未作成アラート
               </p>
             </CardContent>
           </div>

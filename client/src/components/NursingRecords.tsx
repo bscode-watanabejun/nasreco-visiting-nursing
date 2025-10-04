@@ -54,6 +54,8 @@ interface NursingRecordDisplay extends NursingRecord {
 
 interface FormData {
   patientId: string
+  recordType: "vital_signs" | "medication" | "wound_care" | "general_care" | "assessment"
+  visitDate: string // 訪問日 (YYYY-MM-DD format)
   visitStatusRecord: "pending" | "completed" | "no_show" | "refused" | "cancelled" | "rescheduled"
   actualStartTime: string
   actualEndTime: string
@@ -83,19 +85,20 @@ const getFullName = (patient: Patient): string => {
 // Helper function to convert FormData to API format (unified with VisitRecordDialog)
 const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'completed') => {
   const currentDateTime = new Date()
-  const today = currentDateTime.toISOString().split('T')[0]
+  const visitDate = formData.visitDate // Use the visit date from form
 
   // 時間をISO文字列に変換
-  const startDateTime = new Date(`${today}T${formData.actualStartTime}:00`)
-  const endDateTime = new Date(`${today}T${formData.actualEndTime}:00`)
+  const startDateTime = new Date(`${visitDate}T${formData.actualStartTime}:00`)
+  const endDateTime = new Date(`${visitDate}T${formData.actualEndTime}:00`)
 
   const apiData: any = {
     patientId: formData.patientId,
-    recordType: 'general_care' as const,
+    recordType: formData.recordType,
     recordDate: currentDateTime.toISOString(),
+    visitDate: visitDate, // Add visit date
     status,
-    title: `訪問記録 - ${today}`,
-    content: `訪問日時: ${today}\n開始時間: ${formData.actualStartTime}\n終了時間: ${formData.actualEndTime}\n訪問ステータス: ${formData.visitStatusRecord}\n\n観察事項:\n${formData.observations}\n\n実施したケア:\n${formData.careProvided}\n\n次回訪問時の申し送り:\n${formData.nextVisitNotes}`,
+    title: `訪問記録 - ${visitDate}`,
+    content: `訪問日時: ${visitDate}\n開始時間: ${formData.actualStartTime}\n終了時間: ${formData.actualEndTime}\n訪問ステータス: ${formData.visitStatusRecord}\n\n観察事項:\n${formData.observations}\n\n実施したケア:\n${formData.careProvided}\n\n次回訪問時の申し送り:\n${formData.nextVisitNotes}`,
 
     // 新規フィールド
     visitStatusRecord: formData.visitStatusRecord,
@@ -186,6 +189,8 @@ const getStatusText = (status: string) => {
 // Helper function to get initial form data (unified with VisitRecordDialog)
 const getInitialFormData = (): FormData => ({
   patientId: '',
+  recordType: 'general_care',
+  visitDate: new Date().toISOString().split('T')[0], // Default to today
   visitStatusRecord: 'pending',
   actualStartTime: new Date().toTimeString().slice(0, 5),
   actualEndTime: new Date().toTimeString().slice(0, 5),
@@ -276,6 +281,22 @@ export function NursingRecords() {
   const rawRecords = recordsData?.data || []
   const users = usersData?.data || []
 
+  // Fetch schedule data if scheduleId is in URL
+  const urlParams = new URLSearchParams(searchParams)
+  const scheduleIdFromUrl = urlParams.get('scheduleId')
+  const modeFromUrl = urlParams.get('mode')
+
+  const { data: scheduleFromUrl } = useQuery({
+    queryKey: ["schedule", scheduleIdFromUrl],
+    queryFn: async () => {
+      if (!scheduleIdFromUrl) return null
+      const response = await fetch(`/api/schedules/${scheduleIdFromUrl}`)
+      if (!response.ok) return null
+      return response.json()
+    },
+    enabled: !!scheduleIdFromUrl,
+  })
+
   // Fetch today's schedules for the selected patient
   const { data: patientSchedulesData } = useQuery({
     queryKey: ["patientSchedules", formData.patientId],
@@ -300,23 +321,25 @@ export function NursingRecords() {
   })
 
   const patientSchedules = (patientSchedulesData?.data || []) as any[]
-  const selectedSchedule = patientSchedules.find((s: any) => s.id === formData.selectedScheduleId)
 
-  // Fetch schedule data if scheduleId is in URL
-  const urlParams = new URLSearchParams(searchParams)
-  const scheduleIdFromUrl = urlParams.get('scheduleId')
-  const modeFromUrl = urlParams.get('mode')
-
-  const { data: scheduleFromUrl } = useQuery({
-    queryKey: ["schedule", scheduleIdFromUrl],
+  // Fetch the selected schedule if it exists and is not in patientSchedules
+  const { data: selectedScheduleData } = useQuery({
+    queryKey: ["selectedSchedule", formData.selectedScheduleId],
     queryFn: async () => {
-      if (!scheduleIdFromUrl) return null
-      const response = await fetch(`/api/schedules/${scheduleIdFromUrl}`)
+      if (!formData.selectedScheduleId) return null
+      const response = await fetch(`/api/schedules/${formData.selectedScheduleId}`)
       if (!response.ok) return null
       return response.json()
     },
-    enabled: !!scheduleIdFromUrl,
+    enabled: !!formData.selectedScheduleId && !patientSchedules.find((s: any) => s.id === formData.selectedScheduleId),
   })
+
+  // Combine schedules: if we have selectedScheduleData and it's not in patientSchedules, add it
+  const allSchedules = selectedScheduleData && !patientSchedules.find((s: any) => s.id === selectedScheduleData.id)
+    ? [selectedScheduleData, ...patientSchedules]
+    : patientSchedules
+
+  const selectedSchedule = allSchedules.find((s: any) => s.id === formData.selectedScheduleId)
 
   // Fetch attachments for selected record
   const { data: attachments = [], isLoading: isLoadingAttachments } = useQuery<NursingRecordAttachment[]>({
@@ -337,6 +360,7 @@ export function NursingRecords() {
       const schedule = scheduleFromUrl
       const startTime = schedule.scheduledStartTime ? new Date(schedule.scheduledStartTime) : new Date()
       const endTime = schedule.scheduledEndTime ? new Date(schedule.scheduledEndTime) : new Date()
+      const visitDate = schedule.scheduledDate ? new Date(schedule.scheduledDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
 
       setCameFromUrl(true) // Mark that we came from URL
       setIsCreating(true)
@@ -344,6 +368,7 @@ export function NursingRecords() {
       setFormData({
         ...getInitialFormData(),
         patientId: schedule.patientId || '',
+        visitDate: visitDate, // Set visit date from schedule
         actualStartTime: startTime.toTimeString().slice(0, 5),
         actualEndTime: endTime.toTimeString().slice(0, 5),
         selectedScheduleId: scheduleIdFromUrl
@@ -414,6 +439,8 @@ export function NursingRecords() {
 
     setFormData({
       patientId: record.patientId,
+      recordType: (record.recordType as 'vital_signs' | 'medication' | 'wound_care' | 'general_care' | 'assessment') || 'general_care',
+      visitDate: record.visitDate || new Date().toISOString().split('T')[0],
       visitStatusRecord: (record.visitStatusRecord as 'completed' | 'cancelled' | 'rescheduled') || 'completed',
       actualStartTime: startTime.toTimeString().slice(0, 5),
       actualEndTime: endTime.toTimeString().slice(0, 5),
@@ -447,6 +474,8 @@ export function NursingRecords() {
 
     setFormData({
       patientId: record.patientId,
+      recordType: (record.recordType as 'vital_signs' | 'medication' | 'wound_care' | 'general_care' | 'assessment') || 'general_care',
+      visitDate: record.visitDate || new Date().toISOString().split('T')[0],
       visitStatusRecord: (record.visitStatusRecord as 'completed' | 'cancelled' | 'rescheduled') || 'completed',
       actualStartTime: startTime.toTimeString().slice(0, 5),
       actualEndTime: endTime.toTimeString().slice(0, 5),
@@ -736,7 +765,20 @@ export function NursingRecords() {
               {isCreating ? '新規訪問記録登録' : isEditing ? '訪問記録編集' : '訪問記録詳細'}
             </h1>
             <p className="text-sm sm:text-base text-muted-foreground">
-              {isCreating ? '新しい訪問記録を登録' : `${selectedRecord?.patientName}さんの記録`}
+              {isCreating ? (
+                formData.selectedScheduleId ? (
+                  <span className="flex items-center gap-2">
+                    新しい訪問記録を登録
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      スケジュール連携
+                    </Badge>
+                  </span>
+                ) : (
+                  '新しい訪問記録を登録'
+                )
+              ) : (
+                `${selectedRecord?.patientName}さんの記録`
+              )}
             </p>
           </div>
           <Button
@@ -802,6 +844,18 @@ export function NursingRecords() {
                 </div>
               </div>
 
+              {/* 訪問日 */}
+              <div className="space-y-2">
+                <Label htmlFor="visitDate">訪問日 <span className="text-red-500">*</span></Label>
+                <Input
+                  id="visitDate"
+                  type="date"
+                  value={formData.visitDate}
+                  onChange={(e) => setFormData(prev => ({ ...prev, visitDate: e.target.value }))}
+                  disabled={!isCreating && !isEditing}
+                />
+              </div>
+
               {/* 予定時間 */}
               <div className="space-y-2">
                 <Label>予定時間</Label>
@@ -809,37 +863,51 @@ export function NursingRecords() {
                   <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
                     <span className="text-sm text-muted-foreground">患者を選択してください</span>
                   </div>
-                ) : patientSchedules.length === 0 ? (
+                ) : allSchedules.length === 0 ? (
                   <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
                     <span className="text-sm text-muted-foreground">予定なし（予定外訪問）</span>
                   </div>
-                ) : patientSchedules.length === 1 ? (
-                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
-                    <span className="text-sm">
-                      {patientSchedules[0].scheduledStartTime && patientSchedules[0].scheduledEndTime
-                        ? `${new Date(patientSchedules[0].scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(patientSchedules[0].scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
-                        : '予定時間未設定'}
-                    </span>
+                ) : allSchedules.length === 1 ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                      <span className="text-sm">
+                        {allSchedules[0].scheduledStartTime && allSchedules[0].scheduledEndTime
+                          ? `${new Date(allSchedules[0].scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(allSchedules[0].scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+                          : '予定時間未設定'}
+                      </span>
+                    </div>
+                    {formData.selectedScheduleId && (
+                      <p className="text-xs text-blue-600">
+                        ✓ スケジュールID: {formData.selectedScheduleId}
+                      </p>
+                    )}
                   </div>
                 ) : (
-                  <Select
-                    value={formData.selectedScheduleId}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, selectedScheduleId: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="予定を選択してください" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {patientSchedules.map((sched: any) => (
-                        <SelectItem key={sched.id} value={sched.id}>
-                          {sched.scheduledStartTime && sched.scheduledEndTime
-                            ? `${new Date(sched.scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(sched.scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
-                            : '予定時間未設定'}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="none">予定なし（予定外訪問）</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-1">
+                    <Select
+                      value={formData.selectedScheduleId}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, selectedScheduleId: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="予定を選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allSchedules.map((sched: any) => (
+                          <SelectItem key={sched.id} value={sched.id}>
+                            {sched.scheduledStartTime && sched.scheduledEndTime
+                              ? `${new Date(sched.scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(sched.scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+                              : '予定時間未設定'}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="none">予定なし（予定外訪問）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formData.selectedScheduleId && formData.selectedScheduleId !== 'none' && (
+                      <p className="text-xs text-blue-600">
+                        ✓ スケジュールID: {formData.selectedScheduleId}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -862,6 +930,27 @@ export function NursingRecords() {
                     <SelectItem value="refused">拒否（患者拒否）</SelectItem>
                     <SelectItem value="cancelled">キャンセル</SelectItem>
                     <SelectItem value="rescheduled">日程変更</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 記録タイプ */}
+              <div className="space-y-2">
+                <Label htmlFor="recordType">記録タイプ <span className="text-red-500">*</span></Label>
+                <Select
+                  value={formData.recordType}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, recordType: value as any }))}
+                  disabled={!isCreating && !isEditing}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="記録タイプを選択してください" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general_care">一般ケア</SelectItem>
+                    <SelectItem value="vital_signs">バイタルサイン測定</SelectItem>
+                    <SelectItem value="medication">服薬管理</SelectItem>
+                    <SelectItem value="wound_care">創傷処置</SelectItem>
+                    <SelectItem value="assessment">アセスメント</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -902,6 +991,318 @@ export function NursingRecords() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Detail View (Read-only) */}
+        {!isCreating && !isEditing && selectedRecord && (
+          <div className="space-y-6">
+            {/* Basic Information Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>基本情報</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">患者名</p>
+                    <p className="text-lg font-semibold">{selectedRecord.patientName}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">担当看護師</p>
+                    <p className="text-lg font-semibold">{selectedRecord.nurseName}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">訪問日</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {selectedRecord.visitDate ? new Date(selectedRecord.visitDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) : new Date(selectedRecord.recordDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">訪問ステータス</p>
+                    <Badge className="text-sm">
+                      {selectedRecord.visitStatusRecord === 'completed' ? '完了' :
+                       selectedRecord.visitStatusRecord === 'no_show' ? '不在' :
+                       selectedRecord.visitStatusRecord === 'refused' ? '拒否' :
+                       selectedRecord.visitStatusRecord === 'cancelled' ? 'キャンセル' :
+                       selectedRecord.visitStatusRecord === 'rescheduled' ? '日程変更' :
+                       '保留中'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">記録タイプ</p>
+                    <p className="text-base">
+                      {selectedRecord.recordType === 'vital_signs' ? 'バイタルサイン' :
+                       selectedRecord.recordType === 'medication' ? '服薬管理' :
+                       selectedRecord.recordType === 'wound_care' ? '創傷ケア' :
+                       selectedRecord.recordType === 'assessment' ? 'アセスメント' :
+                       '一般ケア'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">記録ステータス</p>
+                    <Badge className={getStatusColor(selectedRecord.status)}>
+                      {getStatusText(selectedRecord.status)}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">記録作成日時</p>
+                    <p className="text-base">{new Date(selectedRecord.recordDate).toLocaleString('ja-JP')}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">最終更新日時</p>
+                    <p className="text-base">{selectedRecord.updatedAt ? new Date(selectedRecord.updatedAt).toLocaleString('ja-JP') : '―'}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Visit Time Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>訪問時間</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {selectedRecord.scheduleId && (
+                    <div className="md:col-span-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar className="h-4 w-4 text-blue-600" />
+                        <p className="text-sm font-medium text-blue-600">予定時間（スケジュール連携）</p>
+                      </div>
+                      <p className="text-lg text-muted-foreground">
+                        {/* Schedule time will be fetched if needed */}
+                        スケジュール連携あり
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="h-4 w-4 text-green-600" />
+                      <p className="text-sm font-medium text-green-600">実際の訪問開始時間</p>
+                    </div>
+                    <p className="text-2xl font-bold">
+                      {selectedRecord.actualStartTime ? new Date(selectedRecord.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '未設定'}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="h-4 w-4 text-orange-600" />
+                      <p className="text-sm font-medium text-orange-600">実際の訪問終了時間</p>
+                    </div>
+                    <p className="text-2xl font-bold">
+                      {selectedRecord.actualEndTime ? new Date(selectedRecord.actualEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '未設定'}
+                    </p>
+                  </div>
+                  {selectedRecord.isSecondVisit && (
+                    <div className="md:col-span-2">
+                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                        本日2回目以降の訪問
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Vital Signs Card */}
+            {(selectedRecord.bloodPressureSystolic || selectedRecord.heartRate || (selectedRecord.temperature as any)) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>バイタルサイン</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {selectedRecord.bloodPressureSystolic && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">血圧</p>
+                        <p className="text-lg font-semibold">{selectedRecord.bloodPressureSystolic}/{selectedRecord.bloodPressureDiastolic} mmHg</p>
+                      </div>
+                    )}
+                    {selectedRecord.heartRate && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">心拍数</p>
+                        <p className="text-lg font-semibold">{selectedRecord.heartRate} bpm</p>
+                      </div>
+                    )}
+                    {selectedRecord.temperature && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">体温</p>
+                        <p className="text-lg font-semibold">{String(selectedRecord.temperature)} ℃</p>
+                      </div>
+                    )}
+                    {selectedRecord.respiratoryRate && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">呼吸数</p>
+                        <p className="text-lg font-semibold">{selectedRecord.respiratoryRate} /分</p>
+                      </div>
+                    )}
+                    {selectedRecord.oxygenSaturation && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">SpO2</p>
+                        <p className="text-lg font-semibold">{selectedRecord.oxygenSaturation} %</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Record Content Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>記録内容</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {selectedRecord.observations && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">観察事項</p>
+                    <p className="text-base whitespace-pre-wrap">{selectedRecord.observations}</p>
+                  </div>
+                )}
+                {selectedRecord.interventions && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">実施したケア</p>
+                    <p className="text-base whitespace-pre-wrap">{selectedRecord.interventions}</p>
+                  </div>
+                )}
+                {selectedRecord.evaluation && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">評価</p>
+                    <p className="text-base whitespace-pre-wrap">{selectedRecord.evaluation}</p>
+                  </div>
+                )}
+                {selectedRecord.patientFamilyResponse && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">次回訪問時の申し送り</p>
+                    <p className="text-base whitespace-pre-wrap">{selectedRecord.patientFamilyResponse}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Billing and Points Information Card */}
+            {(selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.calculatedPoints || selectedRecord.appliedBonuses) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>加算・算定情報</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {selectedRecord.calculatedPoints && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                      <p className="text-sm font-medium text-blue-900 mb-1">算定点数</p>
+                      <p className="text-2xl font-bold text-blue-700">{selectedRecord.calculatedPoints} 点</p>
+                    </div>
+                  )}
+                  {(selectedRecord.appliedBonuses as any) && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">適用加算</p>
+                      <div className="bg-gray-50 rounded-md p-3">
+                        {typeof selectedRecord.appliedBonuses === 'string' ? (
+                          <p className="text-sm">{selectedRecord.appliedBonuses}</p>
+                        ) : Array.isArray(selectedRecord.appliedBonuses) ? (
+                          <ul className="list-disc list-inside space-y-1">
+                            {(selectedRecord.appliedBonuses as any[]).map((bonus: any, index: number) => (
+                              <li key={index} className="text-sm">
+                                {typeof bonus === 'string' ? bonus : bonus.name || JSON.stringify(bonus)}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(selectedRecord.appliedBonuses, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {selectedRecord.multipleVisitReason && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">複数回訪問加算の理由</p>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                        <p className="text-sm whitespace-pre-wrap">{selectedRecord.multipleVisitReason}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selectedRecord.emergencyVisitReason && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">緊急訪問看護加算の理由</p>
+                      <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                        <p className="text-sm whitespace-pre-wrap">{selectedRecord.emergencyVisitReason}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selectedRecord.longVisitReason && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">長時間訪問看護加算の理由</p>
+                      <div className="bg-orange-50 border border-orange-200 rounded-md p-3">
+                        <p className="text-sm whitespace-pre-wrap">{selectedRecord.longVisitReason}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selectedRecord.hasAdditionalPaymentAlert && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-md p-3 flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-amber-900">加算未入力アラート</p>
+                        <p className="text-xs text-amber-700 mt-1">この記録には未入力の加算情報がある可能性があります</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Attachments Card */}
+            {attachments.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>添付ファイル</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {attachments.map((attachment) => (
+                      <div key={attachment.id} className="relative border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                        {attachment.fileType?.startsWith('image/') ? (
+                          <img
+                            src={`/api/attachments/${attachment.id}`}
+                            alt={attachment.caption || 'Attachment'}
+                            className="w-full h-40 object-cover cursor-pointer"
+                            onClick={() => window.open(`/api/attachments/${attachment.id}`, '_blank')}
+                          />
+                        ) : (
+                          <div className="w-full h-40 flex items-center justify-center bg-gray-100 cursor-pointer"
+                            onClick={() => window.open(`/api/attachments/${attachment.id}`, '_blank')}
+                          >
+                            <FileText className="h-12 w-12 text-gray-400" />
+                          </div>
+                        )}
+                        {attachment.caption && (
+                          <div className="p-2 bg-white">
+                            <p className="text-xs text-gray-600 truncate">{attachment.caption}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 justify-end">
+              {selectedRecord.status === 'draft' && (
+                <Button onClick={() => handleEditRecord(selectedRecord)}>
+                  <Edit className="mr-1 h-4 w-4" />
+                  編集
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => {
+                setSelectedRecord(null)
+                setIsCreating(false)
+                setIsEditing(false)
+              }}>
+                閉じる
+              </Button>
+            </div>
           </div>
         )}
 
@@ -1380,77 +1781,50 @@ export function NursingRecords() {
               </div>
             </TabsContent>
           </Tabs>
-        ) : (
-          // View-only mode
-          <div className="space-y-6">
-            {renderDetailContent(selectedRecord, formData, selectedPatient, users, currentUser, attachments, (attachment, index) => {
-              setLightboxImage(attachment)
-              setLightboxIndex(index)
-              setLightboxOpen(true)
-            })}
-          </div>
-        )}
+        ) : null}
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-6 border-t">
-          {isCreating ? (
-            <>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={handleSaveDraft}
-                disabled={isSaving}
-              >
-                {isSaving ? '保存中...' : '下書き保存'}
-              </Button>
-              <Button
-                className="w-full sm:w-auto"
-                onClick={handleCompleteRecord}
-                disabled={isSaving}
-              >
-                {isSaving ? '保存中...' : '記録完成'}
-              </Button>
-            </>
-          ) : isEditing ? (
-            <>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => handleUpdateRecord('draft')}
-                disabled={isSaving}
-              >
-                {isSaving ? '保存中...' : '下書きとして保存'}
-              </Button>
-              <Button
-                className="w-full sm:w-auto"
-                onClick={() => handleUpdateRecord('completed')}
-                disabled={isSaving}
-              >
-                {isSaving ? '保存中...' : '完成として保存'}
-              </Button>
-            </>
-          ) : (
-            <>
-              {selectedRecord?.status === 'draft' && (
+        {(isCreating || isEditing) && (
+          <div className="flex flex-col sm:flex-row justify-end gap-2 pt-6 border-t">
+            {isCreating ? (
+              <>
                 <Button
+                  variant="outline"
                   className="w-full sm:w-auto"
-                  onClick={() => handleEditRecord(selectedRecord)}
-                >
-                  編集
-                </Button>
-              )}
-              {selectedRecord?.status === 'completed' && (
-                <Button
-                  className="w-full sm:w-auto"
-                  onClick={() => handleUpdateRecord('reviewed')}
+                  onClick={handleSaveDraft}
                   disabled={isSaving}
                 >
-                  {isSaving ? '処理中...' : '確認済みにする'}
+                  {isSaving ? '保存中...' : '下書き保存'}
                 </Button>
-              )}
-            </>
-          )}
-        </div>
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={handleCompleteRecord}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '保存中...' : '記録完成'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => handleUpdateRecord('draft')}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '保存中...' : '下書きとして保存'}
+                </Button>
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={() => handleUpdateRecord('completed')}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '保存中...' : '完成として保存'}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Image Lightbox - Custom Modal */}
         {lightboxOpen && lightboxImage && (
@@ -1670,23 +2044,26 @@ export function NursingRecords() {
                       </Badge>
                     </div>
                     <div className="text-sm text-muted-foreground space-y-1">
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {new Date(record.recordDate).toLocaleDateString('ja-JP')}
+                          <span className="font-medium">訪問日:</span>
+                          {record.visitDate ? new Date(record.visitDate).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }) : new Date(record.recordDate).toLocaleDateString('ja-JP')}
                         </div>
-                        {record.actualStartTime && (
+                        {record.actualStartTime && record.actualEndTime && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {new Date(record.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                            <span className="font-medium">訪問時間:</span>
+                            {new Date(record.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - {new Date(record.actualEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         )}
                         <div className="flex items-center gap-1">
                           <User className="h-3 w-3" />
+                          <span className="font-medium">担当:</span>
                           {record.nurseName}
                         </div>
                       </div>
-                      {record.observations && <p className="truncate max-w-md">観察: {record.observations}</p>}
+                      {record.observations && <p className="truncate max-w-md">📋 {record.observations}</p>}
                     </div>
                   </div>
                   
@@ -1778,270 +2155,3 @@ export function NursingRecords() {
   )
 }
 
-// Helper function to render preview content
-function renderDetailContent(
-  record: NursingRecordDisplay | null,
-  formData: FormData,
-  selectedPatient: Patient | undefined,
-  users: any[],
-  currentUser: any,
-  attachments: NursingRecordAttachment[] = [],
-  onImageClick?: (attachment: NursingRecordAttachment, index: number) => void
-) {
-  const nurse = record ? users.find(u => u.id === record.nurseId) : null
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'draft': return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">下書き</Badge>
-      case 'completed': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">完成</Badge>
-      case 'reviewed': return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">承認済み</Badge>
-      default: return <Badge variant="outline">{status}</Badge>
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Status Header */}
-      {record && (
-        <div className="flex items-center justify-between pb-4 border-b">
-          <div className="flex items-center gap-3">
-            {getStatusBadge(record.status)}
-            <span className="text-sm text-muted-foreground">
-              作成日時: {record.createdAt ? new Date(record.createdAt).toLocaleString('ja-JP') : '不明'}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Basic Information Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">基本情報</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="font-medium text-muted-foreground">患者名:</span>
-              <p className="mt-1">{selectedPatient ? getFullName(selectedPatient) : '患者未選択'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">担当看護師:</span>
-              <p className="mt-1">{nurse?.fullName || currentUser?.fullName || '不明'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">訪問ステータス:</span>
-              <p className="mt-1">
-                {formData.visitStatusRecord === 'pending' ? '未実施' :
-                 formData.visitStatusRecord === 'completed' ? '完了' :
-                 formData.visitStatusRecord === 'no_show' ? '不在（患者不在）' :
-                 formData.visitStatusRecord === 'refused' ? '拒否（患者拒否）' :
-                 formData.visitStatusRecord === 'cancelled' ? 'キャンセル' : '日程変更'}
-              </p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">2回目以降の訪問:</span>
-              <p className="mt-1">{formData.isSecondVisit ? 'はい' : 'いいえ'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">訪問開始時間:</span>
-              <p className="mt-1">{formData.actualStartTime || '未入力'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground">訪問終了時間:</span>
-              <p className="mt-1">{formData.actualEndTime || '未入力'}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Vital Signs Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">バイタルサイン</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
-            <div>
-              <span className="font-medium text-muted-foreground block mb-1">体温</span>
-              <p className="text-lg">{formData.temperature ? `${formData.temperature}°C` : '―'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground block mb-1">脈拍</span>
-              <p className="text-lg">{formData.heartRate ? `${formData.heartRate}回/分` : '―'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground block mb-1">収縮期血圧</span>
-              <p className="text-lg">{formData.bloodPressureSystolic ? `${formData.bloodPressureSystolic}mmHg` : '―'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground block mb-1">拡張期血圧</span>
-              <p className="text-lg">{formData.bloodPressureDiastolic ? `${formData.bloodPressureDiastolic}mmHg` : '―'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground block mb-1">SpO2</span>
-              <p className="text-lg">{formData.oxygenSaturation ? `${formData.oxygenSaturation}%` : '―'}</p>
-            </div>
-            <div>
-              <span className="font-medium text-muted-foreground block mb-1">呼吸数</span>
-              <p className="text-lg">{formData.respiratoryRate ? `${formData.respiratoryRate}回/分` : '―'}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Nursing Records Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">看護記録</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <span className="font-medium text-muted-foreground block mb-2">観察事項</span>
-            <div className="bg-gray-50 rounded-md p-3 min-h-[60px]">
-              <p className="text-sm whitespace-pre-wrap">{formData.observations || '記載なし'}</p>
-            </div>
-          </div>
-          <div>
-            <span className="font-medium text-muted-foreground block mb-2">実施したケア内容</span>
-            <div className="bg-gray-50 rounded-md p-3 min-h-[60px]">
-              <p className="text-sm whitespace-pre-wrap">{formData.careProvided || '記載なし'}</p>
-            </div>
-          </div>
-          <div>
-            <span className="font-medium text-muted-foreground block mb-2">次回訪問時の申し送り</span>
-            <div className="bg-gray-50 rounded-md p-3 min-h-[60px]">
-              <p className="text-sm whitespace-pre-wrap">{formData.nextVisitNotes || '記載なし'}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Special Management Records Card */}
-      {(formData.multipleVisitReason || formData.emergencyVisitReason || formData.longVisitReason) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">特別管理加算記録</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {formData.multipleVisitReason && (
-              <div>
-                <span className="font-medium text-muted-foreground block mb-2">複数回訪問加算の理由</span>
-                <div className="bg-gray-50 rounded-md p-3">
-                  <p className="text-sm whitespace-pre-wrap">{formData.multipleVisitReason}</p>
-                </div>
-              </div>
-            )}
-            {formData.emergencyVisitReason && (
-              <div>
-                <span className="font-medium text-muted-foreground block mb-2">緊急訪問看護加算の理由</span>
-                <div className="bg-gray-50 rounded-md p-3">
-                  <p className="text-sm whitespace-pre-wrap">{formData.emergencyVisitReason}</p>
-                </div>
-              </div>
-            )}
-            {formData.longVisitReason && (
-              <div>
-                <span className="font-medium text-muted-foreground block mb-2">長時間訪問看護加算の理由</span>
-                <div className="bg-gray-50 rounded-md p-3">
-                  <p className="text-sm whitespace-pre-wrap">{formData.longVisitReason}</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Attachments Section */}
-      {attachments && attachments.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">添付ファイル ({attachments.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {attachments.map((attachment, index) => {
-                const imageAttachments = attachments.filter(a => a.fileType.startsWith('image/'))
-                const imageIndex = imageAttachments.findIndex(a => a.id === attachment.id)
-
-                return (
-                  <div key={attachment.id} className="space-y-2">
-                    {attachment.fileType.startsWith('image/') ? (
-                      <div
-                        className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer group"
-                        onClick={() => {
-                          onImageClick?.(attachment, imageIndex)
-                        }}
-                      >
-                        <img
-                          src={`/api/attachments/${attachment.id}`}
-                          alt={attachment.originalFileName}
-                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                          <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
-                        <FileText className="h-12 w-12 text-gray-400" />
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium truncate" title={attachment.originalFileName}>
-                        {attachment.originalFileName}
-                      </p>
-                      {attachment.caption && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {attachment.caption}
-                        </p>
-                      )}
-                      <div className="flex gap-1">
-                        {attachment.fileType.startsWith('image/') ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs flex-1"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onImageClick?.(attachment, imageIndex)
-                            }}
-                          >
-                            <ZoomIn className="h-3 w-3 mr-1" />
-                            拡大
-                          </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs flex-1"
-                          onClick={() => window.open(`/api/attachments/${attachment.id}`, '_blank')}
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          開く
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          const link = document.createElement('a')
-                          link.href = `/api/attachments/${attachment.id}`
-                          link.download = attachment.originalFileName
-                          link.click()
-                        }}
-                      >
-                        <Download className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}

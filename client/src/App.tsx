@@ -28,6 +28,8 @@ import InsuranceCardManagement from "@/components/InsuranceCardManagement";
 import MonthlyStatistics from "@/components/MonthlyStatistics";
 import CarePlanManagement from "@/components/CarePlanManagement";
 import CareReportManagement from "@/components/CareReportManagement";
+import ContractManagement from "@/components/ContractManagement";
+import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -260,6 +262,8 @@ function MainLayout() {
                   <Route path="/statistics/monthly" component={MonthlyStatistics} />
                   <Route path="/care-plans" component={CarePlanManagement} />
                   <Route path="/care-reports" component={CareReportManagement} />
+                  <Route path="/contracts" component={ContractManagement} />
+                  <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                 </>
               ) : (
                 /* Facility-specific routes */
@@ -277,6 +281,8 @@ function MainLayout() {
                   <Route path="/statistics/monthly" component={MonthlyStatistics} />
                   <Route path="/care-plans" component={CarePlanManagement} />
                   <Route path="/care-reports" component={CareReportManagement} />
+                  <Route path="/contracts" component={ContractManagement} />
+                  <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                 </>
               )}
               <Route component={NotFound} />

@@ -34,6 +34,8 @@ import {
   updateInsuranceCardSchema,
   updateCarePlanSchema,
   updateCareReportSchema,
+  insertContractSchema,
+  updateContractSchema,
   nursingRecordAttachments,
   medicalInstitutions,
   careManagers,
@@ -41,6 +43,7 @@ import {
   insuranceCards,
   carePlans,
   careReports,
+  contracts,
   patients,
   users,
   schedules,
@@ -54,7 +57,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNotNull } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -839,6 +842,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get schedules without records - MUST be before /:id route
+  app.get("/api/schedules/without-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { startDate, endDate } = req.query;
+
+      console.log("=== 記録未作成スケジュール検索 ===");
+      console.log("検索期間:", startDate, "～", endDate);
+
+      // Build query conditions
+      const whereConditions = [
+        eq(schedules.facilityId, facilityId!),
+        eq(schedules.status, "completed" as any), // Only check completed schedules
+      ];
+
+      if (startDate && typeof startDate === 'string') {
+        whereConditions.push(gte(schedules.scheduledDate, new Date(startDate)));
+      }
+
+      if (endDate && typeof endDate === 'string') {
+        whereConditions.push(lte(schedules.scheduledDate, new Date(endDate)));
+      }
+
+      // Get all completed schedules in the date range
+      const allSchedules = await db.query.schedules.findMany({
+        where: and(...whereConditions),
+        with: {
+          patient: {
+            columns: {
+              id: true,
+              lastName: true,
+              firstName: true,
+            }
+          },
+          nurse: {
+            columns: {
+              id: true,
+              fullName: true,
+            }
+          }
+        },
+        orderBy: (schedules, { desc }) => [desc(schedules.scheduledDate)]
+      });
+
+      console.log(`完了状態のスケジュール数: ${allSchedules.length}`);
+      allSchedules.forEach(s => {
+        console.log(`  - ID: ${s.id}, 日付: ${s.scheduledDate}, ステータス: ${s.status}`);
+      });
+
+      // Get all nursing records with scheduleId
+      const schedulesWithRecords = await db.query.nursingRecords.findMany({
+        where: and(
+          eq(nursingRecords.facilityId, facilityId!),
+          isNotNull(nursingRecords.scheduleId)
+        ),
+        columns: {
+          scheduleId: true,
+        }
+      });
+
+      console.log(`記録が紐づいているスケジュール数: ${schedulesWithRecords.length}`);
+      schedulesWithRecords.forEach(r => {
+        console.log(`  - scheduleId: ${r.scheduleId}`);
+      });
+
+      // Create a Set of schedule IDs that have records
+      const recordedScheduleIds = new Set(
+        schedulesWithRecords.map(record => record.scheduleId).filter(Boolean)
+      );
+
+      // Filter schedules that don't have records
+      const schedulesWithoutRecords = allSchedules.filter(
+        schedule => !recordedScheduleIds.has(schedule.id)
+      );
+
+      console.log(`記録未作成のスケジュール数: ${schedulesWithoutRecords.length}`);
+      console.log("===============================");
+
+      res.json(schedulesWithoutRecords);
+    } catch (error) {
+      console.error("Get schedules without records error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Get single schedule
   app.get("/api/schedules/:id", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -982,6 +1070,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate recurring schedules
+  app.post("/api/schedules/:id/generate-recurring", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.user.facilityId;
+
+      // Get the master schedule
+      const masterSchedule = await storage.getScheduleById(id);
+      if (!masterSchedule) {
+        return res.status(404).json({ error: "スケジュールが見つかりません" });
+      }
+
+      if (masterSchedule.facilityId !== facilityId && !req.isCorporateAdmin) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      if (!masterSchedule.isRecurring || !masterSchedule.recurrencePattern || masterSchedule.recurrencePattern === 'none') {
+        return res.status(400).json({ error: "繰り返しスケジュールではありません" });
+      }
+
+      // Calculate end date (default to 3 months if not specified)
+      const endDate = masterSchedule.recurrenceEndDate
+        ? new Date(masterSchedule.recurrenceEndDate)
+        : new Date(new Date().setMonth(new Date().getMonth() + 3));
+
+      const generatedSchedules = [];
+      let currentDate = new Date(masterSchedule.scheduledDate);
+
+      // Generate schedules based on pattern
+      while (currentDate <= endDate) {
+        // Skip the original date
+        if (currentDate.getTime() !== new Date(masterSchedule.scheduledDate).getTime()) {
+          const scheduledStartTime = new Date(currentDate);
+          scheduledStartTime.setHours(new Date(masterSchedule.scheduledStartTime).getHours());
+          scheduledStartTime.setMinutes(new Date(masterSchedule.scheduledStartTime).getMinutes());
+
+          const scheduledEndTime = new Date(currentDate);
+          scheduledEndTime.setHours(new Date(masterSchedule.scheduledEndTime).getHours());
+          scheduledEndTime.setMinutes(new Date(masterSchedule.scheduledEndTime).getMinutes());
+
+          const newSchedule = await storage.createSchedule({
+            facilityId: masterSchedule.facilityId,
+            patientId: masterSchedule.patientId,
+            nurseId: masterSchedule.nurseId,
+            scheduledDate: currentDate,
+            scheduledStartTime,
+            scheduledEndTime,
+            duration: masterSchedule.duration,
+            purpose: masterSchedule.purpose,
+            visitType: masterSchedule.visitType,
+            notes: masterSchedule.notes,
+            isRecurring: false, // Generated schedules are not recurring themselves
+            recurrencePattern: 'none',
+          });
+
+          generatedSchedules.push(newSchedule);
+        }
+
+        // Move to next occurrence based on pattern
+        switch (masterSchedule.recurrencePattern) {
+          case 'daily':
+            currentDate.setDate(currentDate.getDate() + 1);
+            break;
+          case 'weekly_monday':
+          case 'weekly_tuesday':
+          case 'weekly_wednesday':
+          case 'weekly_thursday':
+          case 'weekly_friday':
+          case 'weekly_saturday':
+          case 'weekly_sunday':
+            currentDate.setDate(currentDate.getDate() + 7);
+            break;
+          case 'biweekly':
+            currentDate.setDate(currentDate.getDate() + 14);
+            break;
+          case 'monthly':
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            break;
+          default:
+            // Unknown pattern, stop
+            break;
+        }
+      }
+
+      res.json({
+        message: `${generatedSchedules.length}件のスケジュールを生成しました`,
+        count: generatedSchedules.length,
+        schedules: generatedSchedules
+      });
+    } catch (error) {
+      console.error("Generate recurring schedules error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Nursing Records Routes ==========
 
   // Get nursing records
@@ -1018,6 +1201,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/nursing-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const recordData = insertNursingRecordSchema.parse(req.body);
+
+      // If scheduleId is provided, auto-fill schedule information
+      if (recordData.scheduleId) {
+        const schedule = await storage.getScheduleById(recordData.scheduleId);
+        if (schedule && schedule.facilityId === req.user.facilityId) {
+          // Auto-fill from schedule if not already provided
+          if (!recordData.patientId) {
+            recordData.patientId = schedule.patientId;
+          }
+          if (!recordData.actualStartTime && schedule.actualStartTime) {
+            recordData.actualStartTime = schedule.actualStartTime;
+          }
+          if (!recordData.actualEndTime && schedule.actualEndTime) {
+            recordData.actualEndTime = schedule.actualEndTime;
+          }
+        }
+      }
 
       // Pass facility ID and nurse ID separately
       const record = await storage.createNursingRecord(recordData, req.user.facilityId, req.user.id);
@@ -2617,6 +2817,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "訪問看護報告書を削除しました" });
     } catch (error) {
       console.error("Delete care report error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Contracts API (契約書・同意書) ==========
+
+  // Get all contracts (with optional patient filter)
+  app.get("/api/contracts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { patientId } = req.query;
+
+      const whereConditions = [
+        eq(contracts.facilityId, facilityId!),
+        eq(contracts.isActive, true)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(contracts.patientId, patientId));
+      }
+
+      const allContracts = await db.query.contracts.findMany({
+        where: and(...whereConditions),
+        with: {
+          patient: true,
+          witnessedBy: {
+            columns: {
+              fullName: true
+            }
+          }
+        },
+        orderBy: (contracts, { desc }) => [desc(contracts.contractDate)]
+      });
+
+      res.json(allContracts);
+    } catch (error) {
+      console.error("Get contracts error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create new contract
+  app.post("/api/contracts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const validatedData = insertContractSchema.parse(req.body);
+
+      const [contract] = await db.insert(contracts)
+        .values({
+          ...validatedData,
+          facilityId: facilityId!,
+        })
+        .returning();
+
+      // Fetch the contract with relations
+      const contractWithRelations = await db.query.contracts.findFirst({
+        where: eq(contracts.id, contract.id),
+        with: {
+          patient: true,
+          witnessedBy: {
+            columns: {
+              fullName: true
+            }
+          }
+        }
+      });
+
+      res.status(201).json(contractWithRelations);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error("Contract validation error:", error.errors);
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create contract error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update contract
+  app.put("/api/contracts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+      const validatedData = updateContractSchema.parse(req.body);
+
+      const [contract] = await db.update(contracts)
+        .set({ ...validatedData, updatedAt: new Date() })
+        .where(and(
+          eq(contracts.id, id),
+          eq(contracts.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!contract) {
+        return res.status(404).json({ error: "契約書が見つかりません" });
+      }
+
+      // Fetch the contract with relations
+      const contractWithRelations = await db.query.contracts.findFirst({
+        where: eq(contracts.id, contract.id),
+        with: {
+          patient: true,
+          witnessedBy: {
+            columns: {
+              fullName: true
+            }
+          }
+        }
+      });
+
+      res.json(contractWithRelations);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update contract error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) contract
+  app.delete("/api/contracts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [contract] = await db.update(contracts)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(contracts.id, id),
+          eq(contracts.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!contract) {
+        return res.status(404).json({ error: "契約書が見つかりません" });
+      }
+
+      res.json({ message: "契約書を削除しました" });
+    } catch (error) {
+      console.error("Delete contract error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

@@ -27,7 +27,9 @@ import {
   UserCog,
   CreditCard,
   FileEdit,
-  FileCheck
+  FileCheck,
+  FileSignature,
+  AlertTriangle
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
@@ -56,6 +58,12 @@ const facilityNavigationItems = [
     title: "訪問スケジュール",
     href: "/schedule",
     icon: Calendar,
+    badge: null,
+  },
+  {
+    title: "記録未作成一覧",
+    href: "/schedules-without-records",
+    icon: AlertTriangle,
     badge: null,
   },
   {
@@ -92,6 +100,12 @@ const facilityNavigationItems = [
     title: "訪問看護報告書",
     href: "/care-reports",
     icon: FileCheck,
+    badge: null,
+  },
+  {
+    title: "契約書・同意書",
+    href: "/contracts",
+    icon: FileSignature,
     badge: null,
   },
   {

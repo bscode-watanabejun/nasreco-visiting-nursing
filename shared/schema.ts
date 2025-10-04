@@ -183,8 +183,10 @@ export const nursingRecords = pgTable("nursing_records", {
   patientId: varchar("patient_id").notNull().references(() => patients.id),
   nurseId: varchar("nurse_id").notNull().references(() => users.id),
   visitId: varchar("visit_id").references(() => visits.id),
+  scheduleId: varchar("schedule_id").references(() => schedules.id), // Schedule reference for tracking
   recordType: recordTypeEnum("record_type").notNull(),
   recordDate: timestamp("record_date", { withTimezone: true }).notNull(),
+  visitDate: date("visit_date").notNull().default(sql`CURRENT_DATE`), // 訪問日（実際の訪問が行われた日付）
 
   // Record status
   status: recordStatusEnum("status").notNull().default("draft"),
@@ -220,7 +222,6 @@ export const nursingRecords = pgTable("nursing_records", {
   hasAdditionalPaymentAlert: boolean("has_additional_payment_alert").default(false), // 加算未入力アラート
 
   // Phase 1: Bonus calculation fields (加算計算フィールド)
-  scheduleId: varchar("schedule_id").references(() => schedules.id), // スケジュールとの紐付け
   calculatedPoints: integer("calculated_points"), // 算定点数
   appliedBonuses: json("applied_bonuses"), // 適用加算の詳細（JSON配列）
 
@@ -386,6 +387,34 @@ export const careReports = pgTable("care_reports", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Contracts Table (契約書・同意書) ==========
+export const contractTypeEnum = pgEnum("contract_type", [
+  "service_agreement", // サービス利用契約書
+  "important_matters", // 重要事項説明書
+  "personal_info_consent", // 個人情報利用同意書
+  "medical_consent", // 医療行為同意書
+  "other" // その他
+]);
+
+export const contracts = pgTable("contracts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  contractType: contractTypeEnum("contract_type").notNull(),
+  contractDate: date("contract_date").notNull(), // 契約日
+  startDate: date("start_date").notNull(), // 有効開始日
+  endDate: date("end_date"), // 有効終了日（nullの場合は無期限）
+  title: text("title").notNull(), // 契約書タイトル
+  description: text("description"), // 説明・備考
+  filePath: text("file_path"), // PDF/画像ファイルパス
+  fileName: text("file_name"), // ファイル名
+  signedBy: text("signed_by"), // 署名者（利用者または代理人）
+  witnessedBy: varchar("witnessed_by").references(() => users.id), // 立会人（スタッフ）
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // ========== Insert Schemas ==========
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
@@ -521,6 +550,14 @@ export const insertCareReportSchema = createInsertSchema(careReports).omit({
   updatedAt: true,
 });
 
+export const insertContractSchema = createInsertSchema(contracts).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -572,6 +609,8 @@ export const updateInsuranceCardSchema = insertInsuranceCardSchema.partial();
 export const updateCarePlanSchema = insertCarePlanSchema.partial();
 
 export const updateCareReportSchema = insertCareReportSchema.partial();
+
+export const updateContractSchema = insertContractSchema.partial();
 
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
@@ -625,6 +664,9 @@ export type CarePlan = typeof carePlans.$inferSelect;
 export type InsertCareReport = z.infer<typeof insertCareReportSchema>;
 export type CareReport = typeof careReports.$inferSelect;
 
+export type InsertContract = z.infer<typeof insertContractSchema>;
+export type Contract = typeof contracts.$inferSelect;
+
 // Update Types
 export type UpdateUserSelf = z.infer<typeof updateUserSelfSchema>;
 export type UpdateUserAdmin = z.infer<typeof updateUserAdminSchema>;
@@ -640,6 +682,9 @@ export type UpdateMedicalInstitution = z.infer<typeof updateMedicalInstitutionSc
 export type UpdateCareManager = z.infer<typeof updateCareManagerSchema>;
 export type UpdateDoctorOrder = z.infer<typeof updateDoctorOrderSchema>;
 export type UpdateInsuranceCard = z.infer<typeof updateInsuranceCardSchema>;
+export type UpdateCarePlan = z.infer<typeof updateCarePlanSchema>;
+export type UpdateCareReport = z.infer<typeof updateCareReportSchema>;
+export type UpdateContract = z.infer<typeof updateContractSchema>;
 
 // Pagination Types
 export interface PaginationOptions {
@@ -768,6 +813,21 @@ export const careReportsRelations = relations(careReports, ({ one }) => ({
   }),
   approvedBy: one(users, {
     fields: [careReports.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const schedulesRelations = relations(schedules, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [schedules.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [schedules.patientId],
+    references: [patients.id],
+  }),
+  nurse: one(users, {
+    fields: [schedules.nurseId],
     references: [users.id],
   }),
 }));
