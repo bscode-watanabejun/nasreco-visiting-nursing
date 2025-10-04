@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import {
@@ -1043,6 +1044,212 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedSchedule);
     } catch (error) {
       console.error("Update schedule status error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Generate recurring schedules
+  app.post("/api/schedules/generate-recurring", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const {
+        patientId,
+        nurseId,
+        demoStaffName,
+        startTime, // HH:MM format
+        endTime, // HH:MM format
+        duration,
+        purpose,
+        recurrencePattern, // "weekly", "biweekly", "monthly"
+        recurrenceDays, // Array of day numbers [0-6] where 0=Sunday
+        startDate, // YYYY-MM-DD
+        endDate, // YYYY-MM-DD
+        visitType,
+        notes
+      } = req.body;
+
+      const facilityId = req.user.facilityId;
+
+      // Validate required fields
+      if (!patientId || !startTime || !endTime || !purpose || !recurrencePattern || !recurrenceDays || !startDate || !endDate) {
+        return res.status(400).json({ error: "必須フィールドが不足しています" });
+      }
+
+      // Validate dates
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (start > end) {
+        return res.status(400).json({ error: "開始日は終了日より前である必要があります" });
+      }
+
+      // Calculate date difference limit (e.g., max 6 months)
+      const maxDays = 180;
+      const daysDiff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > maxDays) {
+        return res.status(400).json({ error: `生成期間は最大${maxDays}日までです` });
+      }
+
+      // Generate parent schedule ID
+      const parentScheduleId = crypto.randomUUID();
+
+      // Generate schedule dates based on pattern
+      const scheduleDates: Date[] = [];
+      const currentDate = new Date(start);
+
+      while (currentDate <= end) {
+        const dayOfWeek = currentDate.getDay(); // 0=Sunday, 6=Saturday
+
+        // Check if this day matches recurrence pattern
+        if (recurrenceDays.includes(dayOfWeek)) {
+          scheduleDates.push(new Date(currentDate));
+        }
+
+        // Increment based on pattern
+        if (recurrencePattern === "weekly") {
+          currentDate.setDate(currentDate.getDate() + 1);
+        } else if (recurrencePattern === "biweekly") {
+          // For biweekly, we still check daily but track weeks
+          currentDate.setDate(currentDate.getDate() + 1);
+        } else if (recurrencePattern === "monthly") {
+          currentDate.setDate(currentDate.getDate() + 1);
+        } else {
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+      }
+
+      // Apply biweekly filter (every other week)
+      let filteredDates = scheduleDates;
+      if (recurrencePattern === "biweekly") {
+        filteredDates = scheduleDates.filter((date, index) => {
+          const weekNumber = Math.floor((date.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+          return weekNumber % 2 === 0;
+        });
+      }
+
+      // Limit number of schedules
+      const maxSchedules = 100;
+      if (filteredDates.length > maxSchedules) {
+        return res.status(400).json({
+          error: `生成されるスケジュール数が多すぎます（${filteredDates.length}件）。最大${maxSchedules}件までです。期間を短縮してください。`
+        });
+      }
+
+      // Create schedules
+      const createdSchedules = [];
+      for (const scheduleDate of filteredDates) {
+        // Combine date with time
+        const [startHour, startMinute] = startTime.split(':').map(Number);
+        const [endHour, endMinute] = endTime.split(':').map(Number);
+
+        const scheduledStartTime = new Date(scheduleDate);
+        scheduledStartTime.setHours(startHour, startMinute, 0, 0);
+
+        const scheduledEndTime = new Date(scheduleDate);
+        scheduledEndTime.setHours(endHour, endMinute, 0, 0);
+
+        const scheduleData = {
+          facilityId,
+          patientId,
+          nurseId: nurseId || null,
+          demoStaffName: demoStaffName || null,
+          scheduledDate: scheduleDate,
+          scheduledStartTime,
+          scheduledEndTime,
+          duration: duration || 60,
+          purpose,
+          status: "scheduled" as const,
+          isRecurring: true,
+          recurrencePattern: (recurrencePattern === "weekly" ? "weekly_monday" :
+                           recurrencePattern === "biweekly" ? "biweekly" :
+                           recurrencePattern === "monthly" ? "monthly" : "none") as "weekly_monday" | "biweekly" | "monthly" | "none",
+          recurrenceEndDate: endDate,
+          recurrenceDays: JSON.stringify(recurrenceDays),
+          parentScheduleId,
+          visitType: visitType || null,
+          notes: notes || null,
+        };
+
+        const newSchedule = await storage.createSchedule(scheduleData);
+        createdSchedules.push(newSchedule);
+      }
+
+      res.status(201).json({
+        message: `${createdSchedules.length}件のスケジュールを作成しました`,
+        count: createdSchedules.length,
+        parentScheduleId,
+        schedules: createdSchedules
+      });
+    } catch (error) {
+      console.error("Generate recurring schedules error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Bulk update recurring schedules
+  app.put("/api/schedules/recurring/:parentId", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { parentId } = req.params;
+      const updateData = req.body;
+
+      // Find all schedules with this parentScheduleId
+      const recurringSchedules = await db
+        .select()
+        .from(schedules)
+        .where(and(
+          eq(schedules.parentScheduleId, parentId),
+          eq(schedules.facilityId, req.user.facilityId)
+        ));
+
+      if (recurringSchedules.length === 0) {
+        return res.status(404).json({ error: "繰り返しスケジュールが見つかりません" });
+      }
+
+      // Update all schedules in the series
+      const updatedSchedules = [];
+      for (const schedule of recurringSchedules) {
+        const updated = await storage.updateSchedule(schedule.id, updateData);
+        updatedSchedules.push(updated);
+      }
+
+      res.json({
+        message: `${updatedSchedules.length}件のスケジュールを更新しました`,
+        count: updatedSchedules.length,
+        schedules: updatedSchedules
+      });
+    } catch (error) {
+      console.error("Bulk update recurring schedules error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Bulk delete recurring schedules
+  app.delete("/api/schedules/recurring/:parentId", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { parentId } = req.params;
+
+      // Find all schedules with this parentScheduleId
+      const recurringSchedules = await db
+        .select()
+        .from(schedules)
+        .where(and(
+          eq(schedules.parentScheduleId, parentId),
+          eq(schedules.facilityId, req.user.facilityId)
+        ));
+
+      if (recurringSchedules.length === 0) {
+        return res.status(404).json({ error: "繰り返しスケジュールが見つかりません" });
+      }
+
+      // Delete all schedules in the series
+      for (const schedule of recurringSchedules) {
+        await storage.deleteSchedule(schedule.id);
+      }
+
+      res.json({
+        message: `${recurringSchedules.length}件のスケジュールを削除しました`,
+        count: recurringSchedules.length
+      });
+    } catch (error) {
+      console.error("Bulk delete recurring schedules error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

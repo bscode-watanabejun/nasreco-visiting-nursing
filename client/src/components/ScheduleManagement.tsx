@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import {
   Plus,
   Calendar as CalendarIcon,
@@ -16,7 +18,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit,
-  Trash2
+  Trash2,
+  CheckCircle,
+  Play,
+  XCircle,
+  Repeat,
+  AlertCircle
 } from "lucide-react"
 import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
 
@@ -57,7 +64,10 @@ export function ScheduleManagement() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isRecurringDialogOpen, setIsRecurringDialogOpen] = useState(false)
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
+  const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false)
+  const [selectedParentScheduleId, setSelectedParentScheduleId] = useState<string | null>(null)
 
   // Fetch patients
   const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
@@ -127,6 +137,23 @@ export function ScheduleManagement() {
     },
   })
 
+  // Update status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const response = await fetch(`/api/schedules/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      if (!response.ok) throw new Error("ステータス更新に失敗しました")
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] })
+      queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+    },
+  })
+
   // Update schedule mutation
   const updateScheduleMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
@@ -170,6 +197,26 @@ export function ScheduleManagement() {
     },
   })
 
+  // Bulk delete recurring schedules mutation
+  const deleteRecurringMutation = useMutation({
+    mutationFn: async (parentId: string) => {
+      const response = await fetch(`/api/schedules/recurring/${parentId}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "繰り返しスケジュールの削除に失敗しました")
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] })
+      queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      setDeleteRecurringDialogOpen(false)
+      setSelectedParentScheduleId(null)
+    },
+  })
+
   const handlePrevious = () => {
     const newDate = new Date(currentDate)
     if (viewMode === 'week') {
@@ -200,6 +247,11 @@ export function ScheduleManagement() {
     }
   }
 
+  const handleDeleteRecurringSeries = (parentId: string) => {
+    setSelectedParentScheduleId(parentId)
+    setDeleteRecurringDialogOpen(true)
+  }
+
   const weekDates = viewMode === 'week' ? getWeekDates(currentDate) : [currentDate]
 
   return (
@@ -214,14 +266,24 @@ export function ScheduleManagement() {
             訪問予定の登録と管理
           </p>
         </div>
-        <Button
-          onClick={() => setIsCreateDialogOpen(true)}
-          className="w-full sm:w-auto flex-shrink-0"
-          data-testid="button-add-schedule"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          新規スケジュール登録
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button
+            onClick={() => setIsCreateDialogOpen(true)}
+            className="flex-1 sm:flex-none"
+            data-testid="button-add-schedule"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            新規登録
+          </Button>
+          <Button
+            onClick={() => setIsRecurringDialogOpen(true)}
+            variant="outline"
+            className="flex-1 sm:flex-none"
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            繰り返し作成
+          </Button>
+        </div>
       </div>
 
       {/* View Controls */}
@@ -311,6 +373,12 @@ export function ScheduleManagement() {
                                     <span className="text-sm font-medium">
                                       {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
                                     </span>
+                                    {schedule.isRecurring && schedule.parentScheduleId && (
+                                      <Badge variant="outline" className="text-xs">
+                                        <Repeat className="h-3 w-3 mr-1" />
+                                        繰り返し
+                                      </Badge>
+                                    )}
                                   </div>
                                   <div className="text-sm text-muted-foreground truncate">
                                     {patient ? getFullName(patient) : '患者不明'} / {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
@@ -318,6 +386,17 @@ export function ScheduleManagement() {
                                   <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                 </div>
                                 <div className="flex gap-1 flex-shrink-0">
+                                  {schedule.isRecurring && schedule.parentScheduleId && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleDeleteRecurringSeries(schedule.parentScheduleId!)}
+                                      title="シリーズ全体を削除"
+                                    >
+                                      <Repeat className="h-3 w-3 mr-1" />
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
                                   <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
                                     <Edit className="h-3 w-3" />
                                   </Button>
@@ -376,20 +455,68 @@ export function ScheduleManagement() {
                               {schedule.notes && (
                                 <div className="text-sm text-muted-foreground">備考: {schedule.notes}</div>
                               )}
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs font-medium">ステータス:</span>
+                                {schedule.status === 'completed' && (
+                                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">完了</span>
+                                )}
+                                {schedule.status === 'in_progress' && (
+                                  <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">実施中</span>
+                                )}
+                                {schedule.status === 'scheduled' && (
+                                  <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">予定</span>
+                                )}
+                                {schedule.status === 'cancelled' && (
+                                  <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded">キャンセル</span>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex gap-2 flex-shrink-0">
-                              <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>
-                                <Edit className="mr-1 h-3 w-3" />
-                                編集
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeleteSchedule(schedule)}
-                              >
-                                <Trash2 className="mr-1 h-3 w-3" />
-                                削除
-                              </Button>
+                            <div className="flex flex-col gap-2 flex-shrink-0">
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => updateStatusMutation.mutate({ id: schedule.id, status: 'in_progress' })}
+                                  disabled={schedule.status === 'in_progress'}
+                                  title="開始"
+                                >
+                                  <Play className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-green-600 hover:text-green-700"
+                                  onClick={() => updateStatusMutation.mutate({ id: schedule.id, status: 'completed' })}
+                                  disabled={schedule.status === 'completed'}
+                                  title="完了"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 hover:text-red-700"
+                                  onClick={() => updateStatusMutation.mutate({ id: schedule.id, status: 'cancelled' })}
+                                  disabled={schedule.status === 'cancelled'}
+                                  title="キャンセル"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <div className="flex gap-1">
+                                <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>
+                                  <Edit className="mr-1 h-3 w-3" />
+                                  編集
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteSchedule(schedule)}
+                                >
+                                  <Trash2 className="mr-1 h-3 w-3" />
+                                  削除
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -428,6 +555,42 @@ export function ScheduleManagement() {
           }
         }}
       />
+
+      {/* Recurring Schedule Dialog */}
+      <RecurringScheduleDialog
+        open={isRecurringDialogOpen}
+        onOpenChange={setIsRecurringDialogOpen}
+        patients={patients}
+        nurses={users}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['schedules'] })
+        }}
+      />
+
+      {/* Delete Recurring Series Confirmation Dialog */}
+      <AlertDialog open={deleteRecurringDialogOpen} onOpenChange={setDeleteRecurringDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>繰り返しスケジュールを全て削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              このシリーズに含まれる全てのスケジュールが削除されます。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (selectedParentScheduleId) {
+                  deleteRecurringMutation.mutate(selectedParentScheduleId)
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              全て削除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -679,6 +842,331 @@ function ScheduleDialog({ open, onOpenChange, schedule, patients, users, onSave 
             disabled={!formData.patientId || !formData.purpose}
           >
             {schedule ? '更新' : '登録'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Recurring Schedule Dialog Component
+function RecurringScheduleDialog({
+  open,
+  onOpenChange,
+  patients,
+  nurses,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  patients: Patient[]
+  nurses: UserType[]
+  onSuccess: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [formData, setFormData] = useState({
+    patientId: '',
+    nurseId: '',
+    demoStaffName: '',
+    startTime: '09:00',
+    endTime: '10:00',
+    duration: 60,
+    purpose: '',
+    recurrencePattern: 'weekly',
+    recurrenceDays: [] as number[],
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: '',
+    visitType: '',
+    notes: '',
+  })
+
+  const [previewCount, setPreviewCount] = useState(0)
+  const selectedPatient = patients.find(p => p.id === formData.patientId)
+
+  // Calculate preview count when form changes
+  useEffect(() => {
+    if (!formData.startDate || !formData.endDate || formData.recurrenceDays.length === 0) {
+      setPreviewCount(0)
+      return
+    }
+
+    const start = new Date(formData.startDate)
+    const end = new Date(formData.endDate)
+    if (start > end) {
+      setPreviewCount(0)
+      return
+    }
+
+    let count = 0
+    const currentDate = new Date(start)
+
+    while (currentDate <= end) {
+      if (formData.recurrenceDays.includes(currentDate.getDay())) {
+        count++
+      }
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    if (formData.recurrencePattern === 'biweekly') {
+      count = Math.floor(count / 2)
+    }
+
+    setPreviewCount(count)
+  }, [formData.startDate, formData.endDate, formData.recurrenceDays, formData.recurrencePattern])
+
+  const createRecurringMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const response = await fetch('/api/schedules/generate-recurring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'スケジュールの作成に失敗しました')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      onSuccess()
+      onOpenChange(false)
+      // Reset form
+      setFormData({
+        patientId: '',
+        nurseId: '',
+        demoStaffName: '',
+        startTime: '09:00',
+        endTime: '10:00',
+        duration: 60,
+        purpose: '',
+        recurrencePattern: 'weekly',
+        recurrenceDays: [],
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: '',
+        visitType: '',
+        notes: '',
+      })
+    },
+  })
+
+  const handleSubmit = () => {
+    if (!formData.patientId || !formData.purpose || formData.recurrenceDays.length === 0 || !formData.endDate) {
+      alert('必須項目を入力してください')
+      return
+    }
+
+    if (previewCount > 100) {
+      alert('生成されるスケジュール数が多すぎます（最大100件）。期間を短縮してください。')
+      return
+    }
+
+    createRecurringMutation.mutate(formData)
+  }
+
+  const toggleDay = (day: number) => {
+    if (formData.recurrenceDays.includes(day)) {
+      setFormData({
+        ...formData,
+        recurrenceDays: formData.recurrenceDays.filter(d => d !== day)
+      })
+    } else {
+      setFormData({
+        ...formData,
+        recurrenceDays: [...formData.recurrenceDays, day].sort()
+      })
+    }
+  }
+
+  const dayNames = ['日', '月', '火', '水', '木', '金', '土']
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>繰り返しスケジュール作成</DialogTitle>
+          <DialogDescription>定期的な訪問スケジュールを一括で作成します</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-6 py-4">
+          {/* Patient Selection */}
+          <div className="grid gap-2">
+            <Label>患者 <span className="text-red-500">*</span></Label>
+            <Select value={formData.patientId} onValueChange={(value) => setFormData({ ...formData, patientId: value })}>
+              <SelectTrigger>
+                <SelectValue placeholder="患者を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                {patients.map((patient) => (
+                  <SelectItem key={patient.id} value={patient.id}>
+                    {getFullName(patient)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Patient Status Warning */}
+          {selectedPatient && (selectedPatient.isInHospital || selectedPatient.isInShortStay) && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-yellow-900">患者ステータス注意</p>
+                  <p className="text-yellow-800 mt-1">
+                    {selectedPatient.isInHospital && '現在入院中です。'}
+                    {selectedPatient.isInShortStay && '現在ショートステイ中です。'}
+                    訪問予定の登録に問題がないか確認してください。
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Nurse Selection */}
+          <div className="grid gap-2">
+            <Label>担当看護師</Label>
+            <Select value={formData.nurseId} onValueChange={(value) => setFormData({ ...formData, nurseId: value })}>
+              <SelectTrigger>
+                <SelectValue placeholder="担当看護師を選択（任意）" />
+              </SelectTrigger>
+              <SelectContent>
+                {nurses.map((nurse) => (
+                  <SelectItem key={nurse.id} value={nurse.id}>
+                    {nurse.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Time and Duration */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-2">
+              <Label>開始時間</Label>
+              <Input
+                type="time"
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>終了時間</Label>
+              <Input
+                type="time"
+                value={formData.endTime}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>所要時間（分）</Label>
+              <Input
+                type="number"
+                value={formData.duration}
+                onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                min="15"
+                step="15"
+              />
+            </div>
+          </div>
+
+          {/* Purpose */}
+          <div className="grid gap-2">
+            <Label>訪問目的 <span className="text-red-500">*</span></Label>
+            <Input
+              value={formData.purpose}
+              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+              placeholder="訪問の目的を入力してください"
+            />
+          </div>
+
+          {/* Recurrence Pattern */}
+          <div className="grid gap-2">
+            <Label>繰り返しパターン <span className="text-red-500">*</span></Label>
+            <Select value={formData.recurrencePattern} onValueChange={(value) => setFormData({ ...formData, recurrencePattern: value })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="weekly">毎週</SelectItem>
+                <SelectItem value="biweekly">隔週</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Recurrence Days */}
+          <div className="grid gap-2">
+            <Label>曜日 <span className="text-red-500">*</span></Label>
+            <div className="flex gap-2">
+              {dayNames.map((day, index) => (
+                <Button
+                  key={index}
+                  type="button"
+                  variant={formData.recurrenceDays.includes(index) ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => toggleDay(index)}
+                >
+                  {day}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Date Range */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label>開始日 <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>終了日 <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Preview */}
+          {previewCount > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <p className="text-sm font-medium text-blue-900">
+                作成されるスケジュール数: <span className="text-lg font-bold">{previewCount}件</span>
+              </p>
+              {previewCount > 100 && (
+                <p className="text-sm text-red-600 mt-1">
+                  ⚠ 最大100件までです。期間を短縮してください。
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Notes */}
+          <div className="grid gap-2">
+            <Label>備考</Label>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="特記事項があれば記入してください"
+              rows={3}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            キャンセル
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!formData.patientId || !formData.purpose || formData.recurrenceDays.length === 0 || !formData.endDate || previewCount > 100 || createRecurringMutation.isPending}
+          >
+            {createRecurringMutation.isPending ? '作成中...' : `${previewCount}件のスケジュールを作成`}
           </Button>
         </DialogFooter>
       </DialogContent>

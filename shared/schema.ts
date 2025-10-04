@@ -156,6 +156,8 @@ export const schedules = pgTable("schedules", {
   isRecurring: boolean("is_recurring").notNull().default(false),
   recurrencePattern: recurrencePatternEnum("recurrence_pattern").default("none"),
   recurrenceEndDate: date("recurrence_end_date"),
+  recurrenceDays: text("recurrence_days"), // JSON array of days [0-6] where 0=Sunday, 1=Monday, etc. e.g., "[1,3,5]" for Mon/Wed/Fri
+  parentScheduleId: varchar("parent_schedule_id"), // Groups recurring schedules together (references schedules.id but not FK to allow deletion)
   visitType: text("visit_type"), // "定期訪問", "緊急訪問", etc.
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
