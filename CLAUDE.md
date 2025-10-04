@@ -130,3 +130,9 @@ npm run db:push     # Drizzleでデータベーススキーマ変更をPostgreSQ
 - `/shared/`経由でクライアント・サーバー間で型共有
 - drizzle-zodでDrizzleテーブルからZodスキーマ生成
 - API入力の実行時バリデーション
+
+## 📋 実装ロードマップ
+
+訪問看護アプリとして実運用可能にするための必須機能実装計画は [/docs/implementation-roadmap.md](/docs/implementation-roadmap.md) を参照してください。
+
+**現在のステータス**: Phase 1（法令遵守・保険請求の最低限実装）準備中

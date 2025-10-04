@@ -1,7 +1,7 @@
 import React, { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
 import { z } from "zod"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
@@ -21,7 +21,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 
-import type { Patient, InsertPatient, UpdatePatient } from "@shared/schema"
+import type { Patient, InsertPatient, UpdatePatient, MedicalInstitution, CareManager } from "@shared/schema"
 
 // Form validation schema based on the database schema
 const patientFormSchema = z.object({
@@ -45,6 +45,8 @@ const patientFormSchema = z.object({
   careNotes: z.string().optional(),
   isActive: z.boolean().default(true),
   isCritical: z.boolean().default(false),
+  medicalInstitutionId: z.string().optional(),
+  careManagerId: z.string().optional(),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -60,6 +62,17 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+
+  // Fetch medical institutions and care managers
+  const { data: medicalInstitutions = [] } = useQuery<MedicalInstitution[]>({
+    queryKey: ["/api/medical-institutions"],
+    enabled: isOpen,
+  });
+
+  const { data: careManagers = [] } = useQuery<CareManager[]>({
+    queryKey: ["/api/care-managers"],
+    enabled: isOpen,
+  });
 
   // Debug: Check if form is being rendered
   React.useEffect(() => {
@@ -109,6 +122,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       careNotes: "",
       isActive: true,
       isCritical: false,
+      medicalInstitutionId: undefined,
+      careManagerId: undefined,
     },
   })
 
@@ -135,6 +150,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           careNotes: patient.careNotes || "",
           isActive: patient.isActive ?? true,
           isCritical: patient.isCritical ?? false,
+          medicalInstitutionId: patient.medicalInstitutionId || "",
+          careManagerId: patient.careManagerId || "",
         })
       } else if (mode === 'create') {
         console.log("Resetting form for create mode")
@@ -156,6 +173,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           careNotes: "",
           isActive: true,
           isCritical: false,
+          medicalInstitutionId: "",
+          careManagerId: "",
         })
       }
     }
@@ -499,6 +518,66 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                         <FormControl>
                           <Input placeholder="例: 090-1234-5678" {...field} />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 医療機関・ケアマネ情報 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">医療機関・ケアマネ情報</CardTitle>
+                <CardDescription>主治医・医療機関、ケアマネージャー情報を選択してください</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="medicalInstitutionId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>主治医・医療機関</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="医療機関を選択" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {medicalInstitutions.map((institution) => (
+                              <SelectItem key={institution.id} value={institution.id}>
+                                {institution.name} - {institution.doctorName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="careManagerId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ケアマネージャー</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || undefined}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="ケアマネを選択" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {careManagers.map((manager) => (
+                              <SelectItem key={manager.id} value={manager.id}>
+                                {manager.officeName} - {manager.managerName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}

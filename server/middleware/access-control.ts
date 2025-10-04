@@ -6,6 +6,9 @@ interface AuthenticatedRequest extends Request {
   user?: any;
   accessibleFacilities?: string[];
   isCorporateAdmin?: boolean;
+  company?: any;
+  facility?: any;
+  isHeadquarters?: boolean;
 }
 
 /**

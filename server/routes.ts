@@ -15,6 +15,10 @@ import {
   insertFacilitySchema,
   insertCompanySchema,
   insertScheduleSchema,
+  insertMedicalInstitutionSchema,
+  insertCareManagerSchema,
+  insertDoctorOrderSchema,
+  insertInsuranceCardSchema,
   updateUserSelfSchema,
   updateUserAdminSchema,
   updatePatientSchema,
@@ -22,12 +26,29 @@ import {
   updateNursingRecordSchema,
   updateMedicationSchema,
   updateScheduleSchema,
+  updateMedicalInstitutionSchema,
+  updateCareManagerSchema,
+  updateDoctorOrderSchema,
+  updateInsuranceCardSchema,
   nursingRecordAttachments,
-  type NursingRecordAttachment
+  medicalInstitutions,
+  careManagers,
+  doctorOrders,
+  insuranceCards,
+  patients,
+  users,
+  schedules,
+  nursingRecords,
+  buildings,
+  type NursingRecordAttachment,
+  type MedicalInstitution,
+  type CareManager,
+  type DoctorOrder,
+  type InsuranceCard
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -1365,6 +1386,655 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       console.error("Update medication error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Medical Institutions API (医療機関マスタ) ==========
+
+  // Get all medical institutions for the facility
+  app.get("/api/medical-institutions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const institutions = await db.query.medicalInstitutions.findMany({
+        where: and(
+          eq(medicalInstitutions.facilityId, facilityId),
+          eq(medicalInstitutions.isActive, true)
+        ),
+        orderBy: (medicalInstitutions, { asc }) => [asc(medicalInstitutions.name)]
+      });
+
+      res.json(institutions);
+    } catch (error) {
+      console.error("Get medical institutions error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single medical institution
+  app.get("/api/medical-institutions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const institution = await db.query.medicalInstitutions.findFirst({
+        where: and(
+          eq(medicalInstitutions.id, id),
+          eq(medicalInstitutions.facilityId, facilityId!)
+        )
+      });
+
+      if (!institution) {
+        return res.status(404).json({ error: "医療機関が見つかりません" });
+      }
+
+      res.json(institution);
+    } catch (error) {
+      console.error("Get medical institution error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create medical institution
+  app.post("/api/medical-institutions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const validatedData = insertMedicalInstitutionSchema.parse(req.body);
+
+      const [institution] = await db.insert(medicalInstitutions).values({
+        ...validatedData,
+        facilityId
+      }).returning();
+
+      res.status(201).json(institution);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create medical institution error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update medical institution
+  app.put("/api/medical-institutions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateMedicalInstitutionSchema.parse(req.body);
+
+      const [institution] = await db.update(medicalInstitutions)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(medicalInstitutions.id, id),
+          eq(medicalInstitutions.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!institution) {
+        return res.status(404).json({ error: "医療機関が見つかりません" });
+      }
+
+      res.json(institution);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update medical institution error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) medical institution
+  app.delete("/api/medical-institutions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [institution] = await db.update(medicalInstitutions)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(medicalInstitutions.id, id),
+          eq(medicalInstitutions.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!institution) {
+        return res.status(404).json({ error: "医療機関が見つかりません" });
+      }
+
+      res.json({ message: "医療機関を削除しました" });
+    } catch (error) {
+      console.error("Delete medical institution error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Care Managers API (ケアマネージャーマスタ) ==========
+
+  // Get all care managers for the facility
+  app.get("/api/care-managers", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const managers = await db.query.careManagers.findMany({
+        where: and(
+          eq(careManagers.facilityId, facilityId),
+          eq(careManagers.isActive, true)
+        ),
+        orderBy: (careManagers, { asc }) => [asc(careManagers.officeName)]
+      });
+
+      res.json(managers);
+    } catch (error) {
+      console.error("Get care managers error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single care manager
+  app.get("/api/care-managers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const manager = await db.query.careManagers.findFirst({
+        where: and(
+          eq(careManagers.id, id),
+          eq(careManagers.facilityId, facilityId!)
+        )
+      });
+
+      if (!manager) {
+        return res.status(404).json({ error: "ケアマネージャーが見つかりません" });
+      }
+
+      res.json(manager);
+    } catch (error) {
+      console.error("Get care manager error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create care manager
+  app.post("/api/care-managers", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const validatedData = insertCareManagerSchema.parse(req.body);
+
+      const [manager] = await db.insert(careManagers).values({
+        ...validatedData,
+        facilityId
+      }).returning();
+
+      res.status(201).json(manager);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create care manager error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update care manager
+  app.put("/api/care-managers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateCareManagerSchema.parse(req.body);
+
+      const [manager] = await db.update(careManagers)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(careManagers.id, id),
+          eq(careManagers.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!manager) {
+        return res.status(404).json({ error: "ケアマネージャーが見つかりません" });
+      }
+
+      res.json(manager);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update care manager error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) care manager
+  app.delete("/api/care-managers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [manager] = await db.update(careManagers)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(careManagers.id, id),
+          eq(careManagers.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!manager) {
+        return res.status(404).json({ error: "ケアマネージャーが見つかりません" });
+      }
+
+      res.json({ message: "ケアマネージャーを削除しました" });
+    } catch (error) {
+      console.error("Delete care manager error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Doctor Orders API (訪問看護指示書) ==========
+
+  // Get all doctor orders (with optional patient filter)
+  app.get("/api/doctor-orders", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { patientId } = req.query;
+
+      const whereConditions = [
+        eq(doctorOrders.facilityId, facilityId!),
+        eq(doctorOrders.isActive, true)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(doctorOrders.patientId, patientId));
+      }
+
+      const orders = await db.query.doctorOrders.findMany({
+        where: and(...whereConditions),
+        with: {
+          medicalInstitution: true
+        },
+        orderBy: (doctorOrders, { desc }) => [desc(doctorOrders.startDate)]
+      });
+
+      res.json(orders);
+    } catch (error) {
+      console.error("Get doctor orders error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get all doctor orders for a patient
+  app.get("/api/doctor-orders/patient/:patientId", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { patientId } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const orders = await db.query.doctorOrders.findMany({
+        where: and(
+          eq(doctorOrders.patientId, patientId),
+          eq(doctorOrders.facilityId, facilityId!),
+          eq(doctorOrders.isActive, true)
+        ),
+        with: {
+          medicalInstitution: true
+        },
+        orderBy: (doctorOrders, { desc }) => [desc(doctorOrders.startDate)]
+      });
+
+      res.json(orders);
+    } catch (error) {
+      console.error("Get doctor orders error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get expiring doctor orders (within 30 days)
+  app.get("/api/doctor-orders/expiring", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+      const orders = await db.query.doctorOrders.findMany({
+        where: and(
+          eq(doctorOrders.facilityId, facilityId!),
+          eq(doctorOrders.isActive, true),
+          lte(doctorOrders.endDate, thirtyDaysFromNow.toISOString().split('T')[0]),
+          gte(doctorOrders.endDate, today.toISOString().split('T')[0])
+        ),
+        with: {
+          patient: true,
+          medicalInstitution: true
+        },
+        orderBy: (doctorOrders, { asc }) => [asc(doctorOrders.endDate)]
+      });
+
+      res.json(orders);
+    } catch (error) {
+      console.error("Get expiring doctor orders error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single doctor order
+  app.get("/api/doctor-orders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const order = await db.query.doctorOrders.findFirst({
+        where: and(
+          eq(doctorOrders.id, id),
+          eq(doctorOrders.facilityId, facilityId!)
+        ),
+        with: {
+          patient: true,
+          medicalInstitution: true
+        }
+      });
+
+      if (!order) {
+        return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
+      }
+
+      res.json(order);
+    } catch (error) {
+      console.error("Get doctor order error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create doctor order
+  app.post("/api/doctor-orders", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const validatedData = insertDoctorOrderSchema.parse(req.body);
+
+      const [order] = await db.insert(doctorOrders).values({
+        ...validatedData,
+        facilityId
+      }).returning();
+
+      res.status(201).json(order);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create doctor order error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update doctor order
+  app.put("/api/doctor-orders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateDoctorOrderSchema.parse(req.body);
+
+      const [order] = await db.update(doctorOrders)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(doctorOrders.id, id),
+          eq(doctorOrders.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!order) {
+        return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
+      }
+
+      res.json(order);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update doctor order error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) doctor order
+  app.delete("/api/doctor-orders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [order] = await db.update(doctorOrders)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(doctorOrders.id, id),
+          eq(doctorOrders.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!order) {
+        return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
+      }
+
+      res.json({ message: "訪問看護指示書を削除しました" });
+    } catch (error) {
+      console.error("Delete doctor order error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Insurance Cards API (保険証情報) ==========
+
+  // Get all insurance cards (with optional patient filter)
+  app.get("/api/insurance-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { patientId } = req.query;
+
+      const whereConditions = [
+        eq(insuranceCards.facilityId, facilityId!),
+        eq(insuranceCards.isActive, true)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(insuranceCards.patientId, patientId));
+      }
+
+      const cards = await db.query.insuranceCards.findMany({
+        where: and(...whereConditions),
+        orderBy: (insuranceCards, { desc }) => [desc(insuranceCards.validFrom)]
+      });
+
+      res.json(cards);
+    } catch (error) {
+      console.error("Get insurance cards error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get all insurance cards for a patient
+  app.get("/api/insurance-cards/patient/:patientId", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { patientId } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const cards = await db.query.insuranceCards.findMany({
+        where: and(
+          eq(insuranceCards.patientId, patientId),
+          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.isActive, true)
+        ),
+        orderBy: (insuranceCards, { desc }) => [desc(insuranceCards.validFrom)]
+      });
+
+      res.json(cards);
+    } catch (error) {
+      console.error("Get insurance cards error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single insurance card
+  app.get("/api/insurance-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const card = await db.query.insuranceCards.findFirst({
+        where: and(
+          eq(insuranceCards.id, id),
+          eq(insuranceCards.facilityId, facilityId!)
+        )
+      });
+
+      if (!card) {
+        return res.status(404).json({ error: "保険証情報が見つかりません" });
+      }
+
+      res.json(card);
+    } catch (error) {
+      console.error("Get insurance card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create insurance card
+  app.post("/api/insurance-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const validatedData = insertInsuranceCardSchema.parse(req.body);
+
+      const [card] = await db.insert(insuranceCards).values({
+        ...validatedData,
+        facilityId
+      }).returning();
+
+      res.status(201).json(card);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create insurance card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update insurance card
+  app.put("/api/insurance-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateInsuranceCardSchema.parse(req.body);
+
+      const [card] = await db.update(insuranceCards)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(insuranceCards.id, id),
+          eq(insuranceCards.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!card) {
+        return res.status(404).json({ error: "保険証情報が見つかりません" });
+      }
+
+      res.json(card);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update insurance card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete (soft delete) insurance card
+  app.delete("/api/insurance-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [card] = await db.update(insuranceCards)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(insuranceCards.id, id),
+          eq(insuranceCards.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!card) {
+        return res.status(404).json({ error: "保険証情報が見つかりません" });
+      }
+
+      res.json({ message: "保険証情報を削除しました" });
+    } catch (error) {
+      console.error("Delete insurance card error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

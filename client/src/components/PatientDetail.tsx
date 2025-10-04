@@ -16,9 +16,12 @@ import {
   Heart,
   Activity,
   FileText,
-  ClipboardList
+  ClipboardList,
+  FilePlus,
+  AlertCircle,
+  CreditCard
 } from "lucide-react"
-import type { Patient, NursingRecord, PaginatedResult } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard } from "@shared/schema"
 
 // Helper function to calculate age
 const calculateAge = (birthDate: Date | string | null): number => {
@@ -61,6 +64,32 @@ export function PatientDetail() {
       const response = await fetch(`/api/nursing-records?patientId=${id}`)
       if (!response.ok) {
         throw new Error("訪問記録の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!id,
+  })
+
+  // Fetch doctor orders for this patient
+  const { data: doctorOrders = [], isLoading: isOrdersLoading } = useQuery<DoctorOrder[]>({
+    queryKey: ["doctor-orders", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/doctor-orders?patientId=${id}`)
+      if (!response.ok) {
+        throw new Error("訪問看護指示書の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!id,
+  })
+
+  // Fetch insurance cards for this patient
+  const { data: insuranceCards = [], isLoading: isCardsLoading } = useQuery<InsuranceCard[]>({
+    queryKey: ["insurance-cards", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/insurance-cards?patientId=${id}`)
+      if (!response.ok) {
+        throw new Error("保険証の取得に失敗しました")
       }
       return response.json()
     },
@@ -131,7 +160,7 @@ export function PatientDetail() {
   }, [chartData])
 
   // Early returns after all hooks to maintain hook order
-  if (isPatientLoading || isRecordsLoading) {
+  if (isPatientLoading || isRecordsLoading || isOrdersLoading || isCardsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -304,6 +333,221 @@ export function PatientDetail() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Doctor Orders Section */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    訪問看護指示書
+                  </CardTitle>
+                  <CardDescription>主治医からの訪問看護指示書</CardDescription>
+                </div>
+                <Button size="sm" variant="outline">
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  新規登録
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isOrdersLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">指示書を読み込んでいます...</p>
+                </div>
+              ) : doctorOrders.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">訪問看護指示書が登録されていません</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {doctorOrders
+                    .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+                    .map((order) => {
+                      const isActive = new Date(order.endDate) >= new Date()
+                      const daysUntilExpiry = Math.ceil(
+                        (new Date(order.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                      )
+                      const isExpiringSoon = isActive && daysUntilExpiry <= 14
+
+                      return (
+                        <div
+                          key={order.id}
+                          className={`border rounded-lg p-4 ${
+                            isActive ? 'bg-background' : 'bg-muted/50 opacity-75'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-3 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant={isActive ? 'default' : 'secondary'}>
+                                  {isActive ? '有効' : '期限切れ'}
+                                </Badge>
+                                {isExpiringSoon && (
+                                  <Badge variant="destructive" className="flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3" />
+                                    期限間近（残り{daysUntilExpiry}日）
+                                  </Badge>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <p className="text-sm text-muted-foreground">指示日</p>
+                                  <p className="font-medium">
+                                    {new Date(order.orderDate).toLocaleDateString('ja-JP')}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">指示期間</p>
+                                  <p className="font-medium">
+                                    {new Date(order.startDate).toLocaleDateString('ja-JP')} 〜 {new Date(order.endDate).toLocaleDateString('ja-JP')}
+                                  </p>
+                                </div>
+                                {order.diagnosis && (
+                                  <div className="md:col-span-2">
+                                    <p className="text-sm text-muted-foreground">病名・主たる傷病名</p>
+                                    <p className="font-medium whitespace-pre-wrap">{order.diagnosis}</p>
+                                  </div>
+                                )}
+                                {order.orderContent && (
+                                  <div className="md:col-span-2">
+                                    <p className="text-sm text-muted-foreground">指示内容</p>
+                                    <p className="font-medium whitespace-pre-wrap">{order.orderContent}</p>
+                                  </div>
+                                )}
+                                {order.weeklyVisitLimit && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">週の訪問回数上限</p>
+                                    <p className="font-medium">{order.weeklyVisitLimit}回/週</p>
+                                  </div>
+                                )}
+                                {order.notes && (
+                                  <div className="md:col-span-2">
+                                    <p className="text-sm text-muted-foreground">備考</p>
+                                    <p className="font-medium whitespace-pre-wrap">{order.notes}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Insurance Cards Section */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5" />
+                    保険証情報
+                  </CardTitle>
+                  <CardDescription>医療保険・介護保険証の情報</CardDescription>
+                </div>
+                <Button size="sm" variant="outline">
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  新規登録
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isCardsLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">保険証を読み込んでいます...</p>
+                </div>
+              ) : insuranceCards.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">保険証が登録されていません</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {insuranceCards
+                    .sort((a, b) => {
+                      // Active cards first
+                      const aValid = !a.validUntil || new Date(a.validUntil) >= new Date();
+                      const bValid = !b.validUntil || new Date(b.validUntil) >= new Date();
+                      if (aValid && !bValid) return -1;
+                      if (!aValid && bValid) return 1;
+                      // Then by card type (medical first)
+                      if (a.cardType === 'medical' && b.cardType !== 'medical') return -1;
+                      if (a.cardType !== 'medical' && b.cardType === 'medical') return 1;
+                      return 0;
+                    })
+                    .map((card) => {
+                      const isValid = !card.validUntil || new Date(card.validUntil) >= new Date();
+
+                      return (
+                        <div
+                          key={card.id}
+                          className={`border rounded-lg p-4 ${
+                            isValid ? 'bg-background' : 'bg-muted/50 opacity-75'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-3 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant={card.cardType === 'medical' ? 'default' : 'secondary'}>
+                                  {card.cardType === 'medical' ? '医療保険' : '介護保険'}
+                                </Badge>
+                                {!isValid && (
+                                  <Badge variant="destructive">期限切れ</Badge>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <p className="text-sm text-muted-foreground">保険者番号</p>
+                                  <p className="font-medium">{card.insurerNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">被保険者番号</p>
+                                  <p className="font-medium">{card.insuredNumber}</p>
+                                </div>
+                                {card.insuredSymbol && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">記号</p>
+                                    <p className="font-medium">{card.insuredSymbol}</p>
+                                  </div>
+                                )}
+                                {card.insuredCardNumber && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">番号</p>
+                                    <p className="font-medium">{card.insuredCardNumber}</p>
+                                  </div>
+                                )}
+                                {card.copaymentRate && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">負担割合</p>
+                                    <p className="font-medium">{card.copaymentRate}割</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-sm text-muted-foreground">有効期間</p>
+                                  <p className="font-medium">
+                                    {new Date(card.validFrom).toLocaleDateString('ja-JP')}
+                                    {' 〜 '}
+                                    {card.validUntil ? new Date(card.validUntil).toLocaleDateString('ja-JP') : '無期限'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

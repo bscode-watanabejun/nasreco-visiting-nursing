@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -16,6 +16,8 @@ export const careLevelEnum = pgEnum("care_level", ["support1", "support2", "care
 export const specialCareTypeEnum = pgEnum("special_care_type", ["bedsore", "rare_disease", "mental", "none"]);
 export const recurrencePatternEnum = pgEnum("recurrence_pattern", ["none", "daily", "weekly_monday", "weekly_tuesday", "weekly_wednesday", "weekly_thursday", "weekly_friday", "weekly_saturday", "weekly_sunday", "biweekly", "monthly"]);
 export const scheduleStatusEnum = pgEnum("schedule_status", ["scheduled", "in_progress", "completed", "cancelled"]);
+export const insuranceCardTypeEnum = pgEnum("insurance_card_type", ["medical", "long_term_care"]);
+export const copaymentRateEnum = pgEnum("copayment_rate", ["10", "20", "30"]);
 
 // ========== Session Table (express-session store) ==========
 // Note: This table is managed by connect-pg-simple, but we define it here to prevent drizzle-kit from deleting it
@@ -110,6 +112,10 @@ export const patients = pgTable("patients", {
   buildingId: varchar("building_id").references(() => buildings.id), // 同一建物管理
   isInHospital: boolean("is_in_hospital").notNull().default(false), // 入院中
   isInShortStay: boolean("is_in_short_stay").notNull().default(false), // ショートステイ中
+
+  // Medical institution and care manager references (Phase 1 addition)
+  medicalInstitutionId: varchar("medical_institution_id").references(() => medicalInstitutions.id), // 主治医
+  careManagerId: varchar("care_manager_id").references(() => careManagers.id), // ケアマネージャー
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -213,6 +219,11 @@ export const nursingRecords = pgTable("nursing_records", {
   longVisitReason: text("long_visit_reason"), // 長時間訪問理由
   hasAdditionalPaymentAlert: boolean("has_additional_payment_alert").default(false), // 加算未入力アラート
 
+  // Phase 1: Bonus calculation fields (加算計算フィールド)
+  scheduleId: varchar("schedule_id").references(() => schedules.id), // スケジュールとの紐付け
+  calculatedPoints: integer("calculated_points"), // 算定点数
+  appliedBonuses: json("applied_bonuses"), // 適用加算の詳細（JSON配列）
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -248,6 +259,80 @@ export const nursingRecordAttachments = pgTable("nursing_record_attachments", {
   filePath: text("file_path").notNull(), // relative path from uploads directory
   caption: text("caption"), // メモ・説明
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Medical Institutions Table (医療機関マスタ) ==========
+export const medicalInstitutions = pgTable("medical_institutions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  name: text("name").notNull(), // 病院名・診療所名
+  department: text("department"), // 診療科
+  doctorName: text("doctor_name").notNull(), // 医師名
+  postalCode: text("postal_code"), // 郵便番号
+  address: text("address"), // 住所
+  phone: text("phone"), // 電話番号
+  fax: text("fax"), // FAX番号
+  email: text("email"), // メールアドレス
+  notes: text("notes"), // 備考
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Care Managers Table (ケアマネージャーマスタ) ==========
+export const careManagers = pgTable("care_managers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  officeName: text("office_name").notNull(), // 事業所名
+  managerName: text("manager_name").notNull(), // ケアマネージャー名
+  postalCode: text("postal_code"), // 郵便番号
+  address: text("address"), // 住所
+  phone: text("phone"), // 電話番号
+  fax: text("fax"), // FAX番号
+  email: text("email"), // メールアドレス
+  notes: text("notes"), // 備考
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Doctor Orders Table (訪問看護指示書) ==========
+export const doctorOrders = pgTable("doctor_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  medicalInstitutionId: varchar("medical_institution_id").notNull().references(() => medicalInstitutions.id),
+  orderDate: date("order_date").notNull(), // 指示日
+  startDate: date("start_date").notNull(), // 指示期間開始日
+  endDate: date("end_date").notNull(), // 指示期間終了日
+  diagnosis: text("diagnosis").notNull(), // 病名・主たる傷病名
+  orderContent: text("order_content").notNull(), // 指示内容
+  weeklyVisitLimit: integer("weekly_visit_limit"), // 週の訪問回数上限
+  filePath: text("file_path"), // PDF/画像ファイルパス
+  notes: text("notes"), // 備考
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Insurance Cards Table (保険証情報) ==========
+export const insuranceCards = pgTable("insurance_cards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  cardType: insuranceCardTypeEnum("card_type").notNull(), // 保険証種別（医療保険・介護保険）
+  insurerNumber: text("insurer_number").notNull(), // 保険者番号
+  insuredNumber: text("insured_number").notNull(), // 被保険者番号
+  insuredSymbol: text("insured_symbol"), // 記号（医療保険のみ）
+  insuredCardNumber: text("insured_card_number"), // 番号（医療保険のみ）
+  copaymentRate: copaymentRateEnum("copayment_rate"), // 負担割合（1割・2割・3割）
+  validFrom: date("valid_from").notNull(), // 有効期間開始日
+  validUntil: date("valid_until"), // 有効期限（nullの場合は無期限）
+  certificationDate: date("certification_date"), // 認定日（介護保険のみ）
+  notes: text("notes"), // 備考
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 // ========== Insert Schemas ==========
@@ -333,6 +418,34 @@ export const insertNursingRecordAttachmentSchema = createInsertSchema(nursingRec
   createdAt: true,
 });
 
+export const insertMedicalInstitutionSchema = createInsertSchema(medicalInstitutions).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCareManagerSchema = createInsertSchema(careManagers).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDoctorOrderSchema = createInsertSchema(doctorOrders).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertInsuranceCardSchema = createInsertSchema(insuranceCards).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -373,6 +486,14 @@ export const updateAdditionalPaymentSchema = insertAdditionalPaymentSchema.parti
 
 export const updateNursingRecordAttachmentSchema = insertNursingRecordAttachmentSchema.partial();
 
+export const updateMedicalInstitutionSchema = insertMedicalInstitutionSchema.partial();
+
+export const updateCareManagerSchema = insertCareManagerSchema.partial();
+
+export const updateDoctorOrderSchema = insertDoctorOrderSchema.partial();
+
+export const updateInsuranceCardSchema = insertInsuranceCardSchema.partial();
+
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
@@ -407,6 +528,18 @@ export type AdditionalPayment = typeof additionalPayments.$inferSelect;
 export type InsertNursingRecordAttachment = z.infer<typeof insertNursingRecordAttachmentSchema>;
 export type NursingRecordAttachment = typeof nursingRecordAttachments.$inferSelect;
 
+export type InsertMedicalInstitution = z.infer<typeof insertMedicalInstitutionSchema>;
+export type MedicalInstitution = typeof medicalInstitutions.$inferSelect;
+
+export type InsertCareManager = z.infer<typeof insertCareManagerSchema>;
+export type CareManager = typeof careManagers.$inferSelect;
+
+export type InsertDoctorOrder = z.infer<typeof insertDoctorOrderSchema>;
+export type DoctorOrder = typeof doctorOrders.$inferSelect;
+
+export type InsertInsuranceCard = z.infer<typeof insertInsuranceCardSchema>;
+export type InsuranceCard = typeof insuranceCards.$inferSelect;
+
 // Update Types
 export type UpdateUserSelf = z.infer<typeof updateUserSelfSchema>;
 export type UpdateUserAdmin = z.infer<typeof updateUserAdminSchema>;
@@ -418,6 +551,10 @@ export type UpdateBuilding = z.infer<typeof updateBuildingSchema>;
 export type UpdateSchedule = z.infer<typeof updateScheduleSchema>;
 export type UpdateAdditionalPayment = z.infer<typeof updateAdditionalPaymentSchema>;
 export type UpdateNursingRecordAttachment = z.infer<typeof updateNursingRecordAttachmentSchema>;
+export type UpdateMedicalInstitution = z.infer<typeof updateMedicalInstitutionSchema>;
+export type UpdateCareManager = z.infer<typeof updateCareManagerSchema>;
+export type UpdateDoctorOrder = z.infer<typeof updateDoctorOrderSchema>;
+export type UpdateInsuranceCard = z.infer<typeof updateInsuranceCardSchema>;
 
 // Pagination Types
 export interface PaginationOptions {
@@ -436,3 +573,89 @@ export interface PaginatedResult<T> {
     hasPrev: boolean;
   };
 }
+
+// ========== Relations ==========
+
+export const patientsRelations = relations(patients, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [patients.facilityId],
+    references: [facilities.id],
+  }),
+  medicalInstitution: one(medicalInstitutions, {
+    fields: [patients.medicalInstitutionId],
+    references: [medicalInstitutions.id],
+  }),
+  careManager: one(careManagers, {
+    fields: [patients.careManagerId],
+    references: [careManagers.id],
+  }),
+  building: one(buildings, {
+    fields: [patients.buildingId],
+    references: [buildings.id],
+  }),
+  doctorOrders: many(doctorOrders),
+  insuranceCards: many(insuranceCards),
+  nursingRecords: many(nursingRecords),
+}));
+
+export const medicalInstitutionsRelations = relations(medicalInstitutions, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [medicalInstitutions.facilityId],
+    references: [facilities.id],
+  }),
+  patients: many(patients),
+  doctorOrders: many(doctorOrders),
+}));
+
+export const careManagersRelations = relations(careManagers, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [careManagers.facilityId],
+    references: [facilities.id],
+  }),
+  patients: many(patients),
+}));
+
+export const doctorOrdersRelations = relations(doctorOrders, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [doctorOrders.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [doctorOrders.patientId],
+    references: [patients.id],
+  }),
+  medicalInstitution: one(medicalInstitutions, {
+    fields: [doctorOrders.medicalInstitutionId],
+    references: [medicalInstitutions.id],
+  }),
+}));
+
+export const insuranceCardsRelations = relations(insuranceCards, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [insuranceCards.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [insuranceCards.patientId],
+    references: [patients.id],
+  }),
+}));
+
+export const nursingRecordsRelations = relations(nursingRecords, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [nursingRecords.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [nursingRecords.patientId],
+    references: [patients.id],
+  }),
+  nurse: one(users, {
+    fields: [nursingRecords.nurseId],
+    references: [users.id],
+  }),
+  schedule: one(schedules, {
+    fields: [nursingRecords.scheduleId],
+    references: [schedules.id],
+  }),
+}));

@@ -1,16 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 
-// Extend Express Request to include subdomain and tenant info
-declare module "express-serve-static-core" {
-  interface Request {
-    subdomain?: string;
-    company?: any;
-    facility?: any;
-    isHeadquarters?: boolean;
-  }
-}
-
 /**
  * Middleware to extract and resolve subdomain to facility information
  * Supports both development (localhost) and production (custom domain) environments

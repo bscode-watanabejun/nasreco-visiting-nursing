@@ -22,6 +22,9 @@ import { AppSidebar } from "@/components/Sidebar";
 import { HeadquartersDashboard } from "@/components/HeadquartersDashboard";
 import { FacilityManagement } from "@/components/FacilityManagement";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
+import MedicalInstitutionManagement from "@/components/MedicalInstitutionManagement";
+import CareManagerManagement from "@/components/CareManagerManagement";
+import InsuranceCardManagement from "@/components/InsuranceCardManagement";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -248,6 +251,9 @@ function MainLayout() {
                   <Route path="/records" component={NursingRecords} />
                   <Route path="/schedule" component={ScheduleManagement} />
                   <Route path="/users" component={UserManagement} />
+                  <Route path="/medical-institutions" component={MedicalInstitutionManagement} />
+                  <Route path="/care-managers" component={CareManagerManagement} />
+                  <Route path="/insurance-cards" component={InsuranceCardManagement} />
                 </>
               ) : (
                 /* Facility-specific routes */
@@ -259,6 +265,9 @@ function MainLayout() {
                   <Route path="/records" component={NursingRecords} />
                   <Route path="/schedule" component={ScheduleManagement} />
                   <Route path="/users" component={UserManagement} />
+                  <Route path="/medical-institutions" component={MedicalInstitutionManagement} />
+                  <Route path="/care-managers" component={CareManagerManagement} />
+                  <Route path="/insurance-cards" component={InsuranceCardManagement} />
                 </>
               )}
               <Route component={NotFound} />

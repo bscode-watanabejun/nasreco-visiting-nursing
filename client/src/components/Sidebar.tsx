@@ -22,7 +22,10 @@ import {
   Shield,
   Building2,
   BarChart3,
-  Heart
+  Heart,
+  Hospital,
+  UserCog,
+  CreditCard
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
@@ -57,6 +60,24 @@ const facilityNavigationItems = [
     title: "出勤管理",
     href: "/attendance",
     icon: UserCheck,
+    badge: null,
+  },
+  {
+    title: "医療機関マスタ",
+    href: "/medical-institutions",
+    icon: Hospital,
+    badge: null,
+  },
+  {
+    title: "ケアマネマスタ",
+    href: "/care-managers",
+    icon: UserCog,
+    badge: null,
+  },
+  {
+    title: "保険証管理",
+    href: "/insurance-cards",
+    icon: CreditCard,
     badge: null,
   },
   {
