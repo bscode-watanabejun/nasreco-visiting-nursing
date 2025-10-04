@@ -87,6 +87,12 @@ const facilityNavigationItems = [
     badge: null,
   },
   {
+    title: "月次実績",
+    href: "/statistics/monthly",
+    icon: BarChart3,
+    badge: null,
+  },
+  {
     title: "レポート",
     href: "/reports",
     icon: FileText,

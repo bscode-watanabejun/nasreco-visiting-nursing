@@ -25,6 +25,7 @@ import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import MedicalInstitutionManagement from "@/components/MedicalInstitutionManagement";
 import CareManagerManagement from "@/components/CareManagerManagement";
 import InsuranceCardManagement from "@/components/InsuranceCardManagement";
+import MonthlyStatistics from "@/components/MonthlyStatistics";
 import NotFound from "@/pages/not-found";
 
 // Theme provider for dark/light mode
@@ -254,6 +255,7 @@ function MainLayout() {
                   <Route path="/medical-institutions" component={MedicalInstitutionManagement} />
                   <Route path="/care-managers" component={CareManagerManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
+                  <Route path="/statistics/monthly" component={MonthlyStatistics} />
                 </>
               ) : (
                 /* Facility-specific routes */
@@ -268,6 +270,7 @@ function MainLayout() {
                   <Route path="/medical-institutions" component={MedicalInstitutionManagement} />
                   <Route path="/care-managers" component={CareManagerManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
+                  <Route path="/statistics/monthly" component={MonthlyStatistics} />
                 </>
               )}
               <Route component={NotFound} />

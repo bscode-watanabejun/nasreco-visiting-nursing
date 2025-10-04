@@ -2039,6 +2039,222 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Monthly Statistics API (月次実績集計) ==========
+
+  // Get monthly visit statistics for billing
+  app.get("/api/statistics/monthly/:year/:month", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { year, month } = req.params;
+      const { patientId } = req.query;
+
+      // Calculate start and end dates for the month
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(month), 0); // Last day of month
+
+      // Build where conditions
+      const whereConditions = [
+        eq(nursingRecords.facilityId, facilityId!),
+        gte(nursingRecords.recordDate, startDate),
+        lte(nursingRecords.recordDate, endDate)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(nursingRecords.patientId, patientId));
+      }
+
+      // Fetch all nursing records for the period
+      const records = await db.query.nursingRecords.findMany({
+        where: and(...whereConditions),
+        with: {
+          patient: true,
+          nurse: true,
+        },
+        orderBy: (nursingRecords, { asc }) => [
+          asc(nursingRecords.patientId),
+          asc(nursingRecords.recordDate)
+        ]
+      });
+
+      // Group records by patient
+      const patientStats = new Map<string, {
+        patientId: string;
+        patientName: string;
+        visitCount: number;
+        totalMinutes: number;
+        records: typeof records;
+        calculatedPoints: number;
+        appliedBonuses: any[];
+      }>();
+
+      for (const record of records) {
+        const patientId = record.patientId;
+        if (!patientStats.has(patientId)) {
+          patientStats.set(patientId, {
+            patientId,
+            patientName: record.patient ? `${record.patient.lastName} ${record.patient.firstName}` : '不明',
+            visitCount: 0,
+            totalMinutes: 0,
+            records: [],
+            calculatedPoints: 0,
+            appliedBonuses: []
+          });
+        }
+
+        const stats = patientStats.get(patientId)!;
+        stats.visitCount++;
+
+        // Calculate duration if available
+        if (record.actualStartTime && record.actualEndTime) {
+          const start = new Date(record.actualStartTime);
+          const end = new Date(record.actualEndTime);
+          const minutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+          stats.totalMinutes += minutes;
+        }
+
+        stats.records.push(record);
+
+        // Aggregate calculated points and bonuses
+        if (record.calculatedPoints) {
+          stats.calculatedPoints += record.calculatedPoints;
+        }
+        if (record.appliedBonuses) {
+          stats.appliedBonuses.push(record.appliedBonuses);
+        }
+      }
+
+      // Convert to array
+      const statistics = Array.from(patientStats.values()).map(stat => ({
+        patientId: stat.patientId,
+        patientName: stat.patientName,
+        visitCount: stat.visitCount,
+        totalMinutes: stat.totalMinutes,
+        averageMinutes: stat.visitCount > 0 ? Math.round(stat.totalMinutes / stat.visitCount) : 0,
+        calculatedPoints: stat.calculatedPoints,
+        appliedBonuses: stat.appliedBonuses,
+        estimatedCost: stat.calculatedPoints * 10, // 1点 = 10円
+      }));
+
+      res.json({
+        year: parseInt(year),
+        month: parseInt(month),
+        totalPatients: statistics.length,
+        totalVisits: records.length,
+        statistics
+      });
+    } catch (error) {
+      console.error("Get monthly statistics error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Export monthly statistics as CSV for billing
+  app.get("/api/statistics/monthly/:year/:month/export", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { year, month } = req.params;
+
+      // Calculate start and end dates for the month
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(month), 0);
+
+      // Fetch all nursing records for the period with patient and insurance info
+      const records = await db.query.nursingRecords.findMany({
+        where: and(
+          eq(nursingRecords.facilityId, facilityId!),
+          gte(nursingRecords.recordDate, startDate),
+          lte(nursingRecords.recordDate, endDate)
+        ),
+        with: {
+          patient: true,
+          nurse: true,
+        },
+        orderBy: (nursingRecords, { asc }) => [
+          asc(nursingRecords.patientId),
+          asc(nursingRecords.recordDate)
+        ]
+      });
+
+      // Get insurance cards for all patients
+      const patientIds = Array.from(new Set(records.map(r => r.patientId)));
+      const allInsuranceCards = await db.query.insuranceCards.findMany({
+        where: and(
+          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.isActive, true)
+        )
+      });
+
+      // Create CSV header
+      const csvRows: string[] = [];
+      csvRows.push([
+        '利用者ID',
+        '利用者名',
+        '保険者番号',
+        '被保険者番号',
+        '負担割合',
+        '訪問日',
+        '開始時刻',
+        '終了時刻',
+        '訪問時間（分）',
+        '担当看護師',
+        '算定点数',
+        '適用加算',
+        '金額（円）'
+      ].join(','));
+
+      // Add data rows
+      for (const record of records) {
+        const patient = record.patient;
+        if (!patient) continue;
+
+        // Find patient's insurance card
+        const insuranceCard = allInsuranceCards.find(card => card.patientId === patient.id);
+
+        // Calculate visit duration
+        let duration = '';
+        if (record.actualStartTime && record.actualEndTime) {
+          const start = new Date(record.actualStartTime);
+          const end = new Date(record.actualEndTime);
+          const minutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+          duration = minutes.toString();
+        }
+
+        // Format bonuses
+        const bonuses = record.appliedBonuses
+          ? JSON.stringify(record.appliedBonuses).replace(/,/g, '；') // Replace commas to avoid CSV issues
+          : '';
+
+        csvRows.push([
+          patient.patientNumber || patient.id,
+          `${patient.lastName} ${patient.firstName}`,
+          insuranceCard?.insurerNumber || '',
+          insuranceCard?.insuredNumber || '',
+          insuranceCard?.copaymentRate ? `${insuranceCard.copaymentRate}割` : '',
+          new Date(record.recordDate).toLocaleDateString('ja-JP'),
+          record.actualStartTime ? new Date(record.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '',
+          record.actualEndTime ? new Date(record.actualEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '',
+          duration,
+          record.nurse?.fullName || '',
+          (record.calculatedPoints || 0).toString(),
+          bonuses,
+          ((record.calculatedPoints || 0) * 10).toString()
+        ].map(field => `"${field}"`).join(','));
+      }
+
+      const csv = csvRows.join('\n');
+
+      // Set response headers for file download
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="receipt_${year}_${month}.csv"`);
+
+      // Add BOM for Excel UTF-8 support
+      res.send('\uFEFF' + csv);
+    } catch (error) {
+      console.error("Export monthly statistics error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

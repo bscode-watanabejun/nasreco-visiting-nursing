@@ -335,6 +335,57 @@ export const insuranceCards = pgTable("insurance_cards", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Care Plans Table (訪問看護計画書) ==========
+export const carePlans = pgTable("care_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  doctorOrderId: varchar("doctor_order_id").references(() => doctorOrders.id), // 関連する訪問看護指示書
+  planNumber: text("plan_number"), // 計画書番号
+  planDate: date("plan_date").notNull(), // 計画作成日
+  planPeriodStart: date("plan_period_start").notNull(), // 計画期間開始日
+  planPeriodEnd: date("plan_period_end").notNull(), // 計画期間終了日
+  nursingGoals: text("nursing_goals"), // 看護目標
+  problemList: json("problem_list"), // 課題リスト（JSON配列）
+  nursingPlan: text("nursing_plan"), // 看護計画
+  weeklyVisitPlan: text("weekly_visit_plan"), // 週間訪問計画（例：月・水・金）
+  remarks: text("remarks"), // 備考
+  createdBy: varchar("created_by").notNull().references(() => users.id), // 作成者
+  approvedBy: varchar("approved_by").references(() => users.id), // 承認者
+  approvedAt: timestamp("approved_at", { withTimezone: true }), // 承認日時
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Care Reports Table (訪問看護報告書) ==========
+export const careReports = pgTable("care_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  carePlanId: varchar("care_plan_id").references(() => carePlans.id), // 関連する訪問看護計画書
+  reportNumber: text("report_number"), // 報告書番号
+  reportDate: date("report_date").notNull(), // 報告日
+  reportPeriodStart: date("report_period_start").notNull(), // 報告期間開始日
+  reportPeriodEnd: date("report_period_end").notNull(), // 報告期間終了日
+  visitCount: integer("visit_count"), // 訪問回数
+  patientCondition: text("patient_condition"), // 利用者の状態
+  nursingOutcomes: text("nursing_outcomes"), // 看護実施内容・成果
+  problemsAndActions: text("problems_and_actions"), // 今後の課題と対応
+  familySupport: text("family_support"), // 家族支援の状況
+  communicationWithDoctor: text("communication_with_doctor"), // 主治医との連携内容
+  communicationWithCareManager: text("communication_with_care_manager"), // ケアマネとの連携内容
+  remarks: text("remarks"), // 特記事項
+  createdBy: varchar("created_by").notNull().references(() => users.id), // 作成者
+  approvedBy: varchar("approved_by").references(() => users.id), // 承認者
+  approvedAt: timestamp("approved_at", { withTimezone: true }), // 承認日時
+  sentToDoctorAt: timestamp("sent_to_doctor_at", { withTimezone: true }), // 医師への提出日時
+  sentToCareManagerAt: timestamp("sent_to_care_manager_at", { withTimezone: true }), // ケアマネへの提出日時
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // ========== Insert Schemas ==========
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
@@ -446,6 +497,20 @@ export const insertInsuranceCardSchema = createInsertSchema(insuranceCards).omit
   updatedAt: true,
 });
 
+export const insertCarePlanSchema = createInsertSchema(carePlans).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCareReportSchema = createInsertSchema(careReports).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -494,6 +559,10 @@ export const updateDoctorOrderSchema = insertDoctorOrderSchema.partial();
 
 export const updateInsuranceCardSchema = insertInsuranceCardSchema.partial();
 
+export const updateCarePlanSchema = insertCarePlanSchema.partial();
+
+export const updateCareReportSchema = insertCareReportSchema.partial();
+
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
@@ -539,6 +608,12 @@ export type DoctorOrder = typeof doctorOrders.$inferSelect;
 
 export type InsertInsuranceCard = z.infer<typeof insertInsuranceCardSchema>;
 export type InsuranceCard = typeof insuranceCards.$inferSelect;
+
+export type InsertCarePlan = z.infer<typeof insertCarePlanSchema>;
+export type CarePlan = typeof carePlans.$inferSelect;
+
+export type InsertCareReport = z.infer<typeof insertCareReportSchema>;
+export type CareReport = typeof careReports.$inferSelect;
 
 // Update Types
 export type UpdateUserSelf = z.infer<typeof updateUserSelfSchema>;
@@ -638,6 +713,52 @@ export const insuranceCardsRelations = relations(insuranceCards, ({ one }) => ({
   patient: one(patients, {
     fields: [insuranceCards.patientId],
     references: [patients.id],
+  }),
+}));
+
+export const carePlansRelations = relations(carePlans, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [carePlans.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [carePlans.patientId],
+    references: [patients.id],
+  }),
+  doctorOrder: one(doctorOrders, {
+    fields: [carePlans.doctorOrderId],
+    references: [doctorOrders.id],
+  }),
+  createdBy: one(users, {
+    fields: [carePlans.createdBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [carePlans.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const careReportsRelations = relations(careReports, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [careReports.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [careReports.patientId],
+    references: [patients.id],
+  }),
+  carePlan: one(carePlans, {
+    fields: [careReports.carePlanId],
+    references: [carePlans.id],
+  }),
+  createdBy: one(users, {
+    fields: [careReports.createdBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [careReports.approvedBy],
+    references: [users.id],
   }),
 }));
 
