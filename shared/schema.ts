@@ -500,6 +500,10 @@ export const insertInsuranceCardSchema = createInsertSchema(insuranceCards).omit
 export const insertCarePlanSchema = createInsertSchema(carePlans).omit({
   id: true,
   facilityId: true, // Set by server from user session
+  createdBy: true, // Set by server from user session
+  approvedBy: true, // Set separately when approved
+  approvedAt: true,
+  isActive: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -507,6 +511,12 @@ export const insertCarePlanSchema = createInsertSchema(carePlans).omit({
 export const insertCareReportSchema = createInsertSchema(careReports).omit({
   id: true,
   facilityId: true, // Set by server from user session
+  createdBy: true, // Set by server from user session
+  approvedBy: true, // Set separately when approved
+  approvedAt: true,
+  sentToDoctorAt: true,
+  sentToCareManagerAt: true,
+  isActive: true,
   createdAt: true,
   updatedAt: true,
 });

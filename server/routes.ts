@@ -2336,6 +2336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "認証情報が見つかりません" });
       }
 
+      console.log("Received care plan data:", req.body);
       const validatedData = insertCarePlanSchema.parse(req.body);
 
       const [plan] = await db.insert(carePlans).values({
@@ -2344,9 +2345,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
       }).returning();
 
-      res.status(201).json(plan);
+      // Fetch the plan with relations
+      const planWithRelations = await db.query.carePlans.findFirst({
+        where: eq(carePlans.id, plan.id),
+        with: {
+          patient: true,
+          doctorOrder: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      res.status(201).json(planWithRelations);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("Care plan validation error:", error.errors);
         return res.status(400).json({
           error: "入力データが正しくありません",
           details: error.errors
@@ -2380,7 +2393,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
       }
 
-      res.json(plan);
+      // Fetch the plan with relations
+      const planWithRelations = await db.query.carePlans.findFirst({
+        where: eq(carePlans.id, plan.id),
+        with: {
+          patient: true,
+          doctorOrder: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      res.json(planWithRelations);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
@@ -2501,7 +2525,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
       }).returning();
 
-      res.status(201).json(report);
+      // Fetch the report with relations
+      const reportWithRelations = await db.query.careReports.findFirst({
+        where: eq(careReports.id, report.id),
+        with: {
+          patient: true,
+          carePlan: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      res.status(201).json(reportWithRelations);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
@@ -2537,7 +2572,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
       }
 
-      res.json(report);
+      // Fetch the report with relations
+      const reportWithRelations = await db.query.careReports.findFirst({
+        where: eq(careReports.id, report.id),
+        with: {
+          patient: true,
+          carePlan: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      res.json(reportWithRelations);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({

@@ -35,14 +35,16 @@ import type { CareReport, Patient, CarePlan } from "@shared/schema";
 type CareReportWithRelations = CareReport & {
   patient: Patient;
   carePlan?: CarePlan | null;
-  creator: { fullName: string };
+  creator?: { fullName: string } | null;
   approver?: { fullName: string } | null;
 };
 
 export default function CareReportManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingReport, setEditingReport] = useState<CareReportWithRelations | null>(null);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
+  const [selectedPatientIdForForm, setSelectedPatientIdForForm] = useState<string>("");
+  const [selectedCarePlanIdForForm, setSelectedCarePlanIdForForm] = useState<string>("none");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -66,7 +68,7 @@ export default function CareReportManagement() {
   const { data: careReports, isLoading: loadingReports } = useQuery<CareReportWithRelations[]>({
     queryKey: ["/api/care-reports", selectedPatientId],
     queryFn: async () => {
-      const url = selectedPatientId
+      const url = selectedPatientId !== "all"
         ? `/api/care-reports?patientId=${selectedPatientId}`
         : "/api/care-reports";
       const response = await fetch(url);
@@ -76,13 +78,25 @@ export default function CareReportManagement() {
   });
 
   // Fetch patients for filter
-  const { data: patients } = useQuery<Patient[]>({
+  const { data: patientsResponse } = useQuery<{ data: Patient[]; total: number }>({
     queryKey: ["/api/patients"],
+    queryFn: async () => {
+      const response = await fetch("/api/patients?limit=100");
+      if (!response.ok) throw new Error("利用者の取得に失敗しました");
+      return response.json();
+    },
   });
+
+  const patients = patientsResponse?.data;
 
   // Fetch care plans for dropdown
   const { data: carePlans } = useQuery<CarePlan[]>({
     queryKey: ["/api/care-plans"],
+    queryFn: async () => {
+      const response = await fetch("/api/care-plans");
+      if (!response.ok) throw new Error("計画書の取得に失敗しました");
+      return response.json();
+    },
   });
 
   // Create mutation
@@ -168,11 +182,14 @@ export default function CareReportManagement() {
   const handleAdd = () => {
     setEditingReport(null);
     resetForm();
+    setSelectedPatientIdForForm("");
+    setSelectedCarePlanIdForForm("none");
     setIsDialogOpen(true);
   };
 
   const handleEdit = (report: CareReportWithRelations) => {
     setEditingReport(report);
+    setSelectedCarePlanIdForForm(report.carePlanId || "none");
     setFormData({
       reportNumber: report.reportNumber || "",
       reportDate: report.reportDate,
@@ -199,13 +216,13 @@ export default function CareReportManagement() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const patientId = editingReport?.patientId || (document.getElementById("patientId") as HTMLSelectElement)?.value;
+    const patientId = editingReport?.patientId || selectedPatientIdForForm;
     if (!patientId) {
       toast({ variant: "destructive", description: "利用者を選択してください" });
       return;
     }
 
-    const carePlanId = (document.getElementById("carePlanId") as HTMLSelectElement)?.value || undefined;
+    const carePlanId = selectedCarePlanIdForForm === "none" ? undefined : selectedCarePlanIdForForm;
 
     if (editingReport) {
       updateMutation.mutate({ ...formData, id: editingReport.id, patientId, carePlanId });
@@ -241,7 +258,7 @@ export default function CareReportManagement() {
                 <SelectValue placeholder="全ての利用者" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">全ての利用者</SelectItem>
+                <SelectItem value="all">全ての利用者</SelectItem>
                 {patients?.map((patient) => (
                   <SelectItem key={patient.id} value={patient.id}>
                     {patient.lastName} {patient.firstName}
@@ -289,7 +306,7 @@ export default function CareReportManagement() {
                       {report.reportPeriodStart} ~ {report.reportPeriodEnd}
                     </TableCell>
                     <TableCell className="text-right">{report.visitCount || 0}回</TableCell>
-                    <TableCell>{report.creator.fullName}</TableCell>
+                    <TableCell>{report.creator?.fullName || "-"}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button
                         variant="ghost"
@@ -329,7 +346,7 @@ export default function CareReportManagement() {
             {!editingReport && (
               <div>
                 <Label htmlFor="patientId">利用者 *</Label>
-                <Select name="patientId" required>
+                <Select value={selectedPatientIdForForm} onValueChange={setSelectedPatientIdForForm} required>
                   <SelectTrigger id="patientId">
                     <SelectValue placeholder="利用者を選択" />
                   </SelectTrigger>
@@ -346,12 +363,12 @@ export default function CareReportManagement() {
 
             <div>
               <Label htmlFor="carePlanId">関連する計画書</Label>
-              <Select name="carePlanId" defaultValue={editingReport?.carePlanId || ""}>
+              <Select value={selectedCarePlanIdForForm} onValueChange={setSelectedCarePlanIdForForm}>
                 <SelectTrigger id="carePlanId">
                   <SelectValue placeholder="計画書を選択（任意）" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">なし</SelectItem>
+                  <SelectItem value="none">なし</SelectItem>
                   {carePlans?.filter(cp => !editingReport || cp.patientId === editingReport.patientId).map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       {plan.planNumber || plan.planDate} ({plan.planPeriodStart} ~ {plan.planPeriodEnd})

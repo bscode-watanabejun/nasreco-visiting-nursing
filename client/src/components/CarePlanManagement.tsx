@@ -34,14 +34,15 @@ import type { CarePlan, Patient } from "@shared/schema";
 
 type CarePlanWithRelations = CarePlan & {
   patient: Patient;
-  creator: { fullName: string };
+  creator?: { fullName: string } | null;
   approver?: { fullName: string } | null;
 };
 
 export default function CarePlanManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<CarePlanWithRelations | null>(null);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
+  const [selectedPatientIdForForm, setSelectedPatientIdForForm] = useState<string>("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -61,7 +62,7 @@ export default function CarePlanManagement() {
   const { data: carePlans, isLoading: loadingPlans } = useQuery<CarePlanWithRelations[]>({
     queryKey: ["/api/care-plans", selectedPatientId],
     queryFn: async () => {
-      const url = selectedPatientId
+      const url = selectedPatientId !== "all"
         ? `/api/care-plans?patientId=${selectedPatientId}`
         : "/api/care-plans";
       const response = await fetch(url);
@@ -71,9 +72,16 @@ export default function CarePlanManagement() {
   });
 
   // Fetch patients for filter
-  const { data: patients } = useQuery<Patient[]>({
+  const { data: patientsResponse } = useQuery<{ data: Patient[]; total: number }>({
     queryKey: ["/api/patients"],
+    queryFn: async () => {
+      const response = await fetch("/api/patients?limit=100");
+      if (!response.ok) throw new Error("利用者の取得に失敗しました");
+      return response.json();
+    },
   });
+
+  const patients = patientsResponse?.data;
 
   // Create mutation
   const createMutation = useMutation({
@@ -154,6 +162,7 @@ export default function CarePlanManagement() {
   const handleAdd = () => {
     setEditingPlan(null);
     resetForm();
+    setSelectedPatientIdForForm("");
     setIsDialogOpen(true);
   };
 
@@ -181,7 +190,7 @@ export default function CarePlanManagement() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const patientId = editingPlan?.patientId || (document.getElementById("patientId") as HTMLSelectElement)?.value;
+    const patientId = editingPlan?.patientId || selectedPatientIdForForm;
     if (!patientId) {
       toast({ variant: "destructive", description: "利用者を選択してください" });
       return;
@@ -221,7 +230,7 @@ export default function CarePlanManagement() {
                 <SelectValue placeholder="全ての利用者" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">全ての利用者</SelectItem>
+                <SelectItem value="all">全ての利用者</SelectItem>
                 {patients?.map((patient) => (
                   <SelectItem key={patient.id} value={patient.id}>
                     {patient.lastName} {patient.firstName}
@@ -271,7 +280,7 @@ export default function CarePlanManagement() {
                     <TableCell className="max-w-xs truncate">
                       {plan.nursingGoals || "-"}
                     </TableCell>
-                    <TableCell>{plan.creator.fullName}</TableCell>
+                    <TableCell>{plan.creator?.fullName || "-"}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button
                         variant="ghost"
@@ -311,7 +320,7 @@ export default function CarePlanManagement() {
             {!editingPlan && (
               <div>
                 <Label htmlFor="patientId">利用者 *</Label>
-                <Select name="patientId" required>
+                <Select value={selectedPatientIdForForm} onValueChange={setSelectedPatientIdForForm} required>
                   <SelectTrigger id="patientId">
                     <SelectValue placeholder="利用者を選択" />
                   </SelectTrigger>
