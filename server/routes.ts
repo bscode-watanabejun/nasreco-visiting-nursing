@@ -3175,6 +3175,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get contracts for a specific patient
+  app.get("/api/patients/:patientId/contracts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { patientId } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const patientContracts = await db.select()
+        .from(contracts)
+        .where(and(
+          eq(contracts.patientId, patientId),
+          eq(contracts.facilityId, facilityId!),
+          eq(contracts.isActive, true)
+        ))
+        .orderBy(contracts.contractDate);
+
+      res.json(patientContracts);
+    } catch (error) {
+      console.error("Get patient contracts error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

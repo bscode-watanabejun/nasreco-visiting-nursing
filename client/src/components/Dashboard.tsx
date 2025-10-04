@@ -135,10 +135,37 @@ export function Dashboard() {
     },
   })
 
+  // Fetch contracts expiring soon
+  const { data: contractsData } = useQuery<any[]>({
+    queryKey: ["/api/contracts"],
+    queryFn: async () => {
+      const response = await fetch("/api/contracts")
+      if (!response.ok) throw new Error("契約書データの取得に失敗しました")
+      return response.json()
+    },
+  })
+
   const schedules = schedulesData?.data || []
   const patients = patientsData?.data || []
   const users = usersData?.data || []
   const pendingRecordsCount = schedulesWithoutRecords?.length || 0
+
+  // Calculate expiring contracts (within 30 days or already expired)
+  const nowDate = new Date()
+  const thirtyDaysLater = new Date(nowDate)
+  thirtyDaysLater.setDate(nowDate.getDate() + 30)
+
+  const expiringContracts = (contractsData || []).filter((contract: any) => {
+    if (!contract.endDate) return false
+    const endDate = new Date(contract.endDate)
+    return endDate <= thirtyDaysLater
+  })
+
+  const expiredContracts = (contractsData || []).filter((contract: any) => {
+    if (!contract.endDate) return false
+    const endDate = new Date(contract.endDate)
+    return endDate < nowDate
+  })
 
   // Mutation for updating schedule status
   const updateStatusMutation = useMutation({
@@ -337,15 +364,61 @@ export function Dashboard() {
             </CardHeader>
             <CardContent className="sm:pt-0">
               <div className="text-2xl font-bold text-orange-500 sm:text-destructive">
-                {pendingRecordsCount > 0 ? pendingRecordsCount : 0}件
+                {(pendingRecordsCount + expiredContracts.length)}件
               </div>
               <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                記録未作成アラート
+                記録未作成: {pendingRecordsCount}件 / 契約期限切れ: {expiredContracts.length}件
               </p>
             </CardContent>
           </div>
         </Card>
       </div>
+
+      {/* Expiring Contracts Alert */}
+      {expiringContracts.length > 0 && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardHeader>
+            <CardTitle className="text-yellow-900 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              契約書有効期限アラート
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-yellow-800 mb-3">
+              30日以内に有効期限が切れる契約書があります。更新手続きをご確認ください。
+            </p>
+            <div className="space-y-2">
+              {expiringContracts.slice(0, 5).map((contract: any) => {
+                const endDate = new Date(contract.endDate)
+                const isExpired = endDate < nowDate
+                const daysUntilExpiry = Math.ceil((endDate.getTime() - nowDate.getTime()) / (1000 * 60 * 60 * 24))
+
+                return (
+                  <div key={contract.id} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-200">
+                    <div>
+                      <p className="font-medium text-sm">{contract.title}</p>
+                      <p className="text-xs text-muted-foreground">患者ID: {contract.patientId}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-yellow-700'}`}>
+                        {isExpired ? '期限切れ' : `残り${daysUntilExpiry}日`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {endDate.toLocaleDateString('ja-JP')}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {expiringContracts.length > 5 && (
+              <p className="text-xs text-yellow-700 mt-2">
+                他 {expiringContracts.length - 5}件の契約書が期限間近です
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Navigation Tabs - Mobile */}
       <div className="flex justify-center gap-6 py-2 sm:hidden">
