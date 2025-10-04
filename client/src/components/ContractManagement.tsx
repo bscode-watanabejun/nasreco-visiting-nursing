@@ -34,7 +34,7 @@ import type { Contract, Patient } from "@shared/schema";
 
 type ContractWithRelations = Contract & {
   patient: Patient;
-  witnessedBy?: { fullName: string } | null;
+  witnessedBy?: { fullName: string; id: string } | null;
 };
 
 export default function ContractManagement() {
@@ -189,7 +189,7 @@ export default function ContractManagement() {
       signedBy: contract.signedBy || "",
     });
     setSelectedPatientIdForForm(contract.patientId);
-    setSelectedWitnessId(contract.witnessedBy || "none");
+    setSelectedWitnessId(contract.witnessedBy?.id || "none");
     setIsDialogOpen(true);
   };
 

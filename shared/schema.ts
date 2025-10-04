@@ -852,3 +852,18 @@ export const nursingRecordsRelations = relations(nursingRecords, ({ one }) => ({
     references: [schedules.id],
   }),
 }));
+
+export const contractsRelations = relations(contracts, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [contracts.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [contracts.patientId],
+    references: [patients.id],
+  }),
+  witnessedBy: one(users, {
+    fields: [contracts.witnessedBy],
+    references: [users.id],
+  }),
+}));
