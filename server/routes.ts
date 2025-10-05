@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import PDFDocument from "pdfkit";
 import { storage } from "./storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import {
@@ -3335,6 +3336,202 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Delete care report error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== PDF Export APIs ==========
+
+  // Export care plan to PDF
+  app.get("/api/care-plans/:id/pdf", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Fetch care plan with relations
+      const plan = await db.query.carePlans.findFirst({
+        where: and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!),
+          eq(carePlans.isActive, true)
+        ),
+        with: {
+          patient: true,
+          facility: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      if (!plan) {
+        return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
+      }
+
+      // Create PDF document with Japanese font
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+      // Register Japanese font
+      const fontPath = path.join(process.cwd(), 'server', 'fonts', 'NotoSansCJKjp-Regular.otf');
+      doc.registerFont('NotoSans', fontPath);
+      doc.font('NotoSans');
+
+      // Set response headers
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=care-plan-${plan.planNumber}.pdf`);
+
+      // Pipe PDF to response
+      doc.pipe(res);
+
+      // Add content
+      doc.fontSize(20).text('訪問看護計画書', { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(12);
+      doc.text(`計画書番号: ${plan.planNumber}`);
+      doc.text(`計画日: ${plan.planDate ? new Date(plan.planDate).toLocaleDateString('ja-JP') : '未設定'}`);
+      doc.text(`利用者: ${plan.patient.lastName} ${plan.patient.firstName}`);
+      doc.text(`計画期間: ${plan.planPeriodStart ? new Date(plan.planPeriodStart).toLocaleDateString('ja-JP') : '未設定'} ～ ${plan.planPeriodEnd ? new Date(plan.planPeriodEnd).toLocaleDateString('ja-JP') : '未設定'}`);
+      doc.moveDown();
+
+      doc.text('看護目標:');
+      doc.fontSize(10).text(plan.nursingGoals || '未記入', { indent: 20 });
+      doc.moveDown();
+
+      doc.fontSize(12).text('看護計画:');
+      doc.fontSize(10).text(plan.nursingPlan || '未記入', { indent: 20 });
+      doc.moveDown();
+
+      doc.fontSize(12).text('週間訪問計画:');
+      doc.fontSize(10).text(plan.weeklyVisitPlan || '未記入', { indent: 20 });
+      doc.moveDown();
+
+      if (plan.remarks) {
+        doc.fontSize(12).text('備考:');
+        doc.fontSize(10).text(plan.remarks, { indent: 20 });
+        doc.moveDown();
+      }
+
+      doc.fontSize(10);
+      if (plan.createdBy) {
+        doc.text(`作成者: ${plan.createdBy.fullName}`);
+      }
+      if (plan.approvedBy) {
+        doc.text(`承認者: ${plan.approvedBy.fullName}`);
+      }
+
+      // Finalize PDF
+      doc.end();
+    } catch (error) {
+      console.error("Export care plan PDF error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "PDF生成中にエラーが発生しました" });
+      }
+    }
+  });
+
+  // Export care report to PDF
+  app.get("/api/care-reports/:id/pdf", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Fetch care report with relations
+      const report = await db.query.careReports.findFirst({
+        where: and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!),
+          eq(careReports.isActive, true)
+        ),
+        with: {
+          patient: true,
+          facility: true,
+          carePlan: true,
+          createdBy: true,
+          approvedBy: true,
+        }
+      });
+
+      if (!report) {
+        return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
+      }
+
+      // Create PDF document with Japanese font
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+      // Register Japanese font
+      const fontPath = path.join(process.cwd(), 'server', 'fonts', 'NotoSansCJKjp-Regular.otf');
+      doc.registerFont('NotoSans', fontPath);
+      doc.font('NotoSans');
+
+      // Set response headers
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=care-report-${report.reportNumber}.pdf`);
+
+      // Pipe PDF to response
+      doc.pipe(res);
+
+      // Add content
+      doc.fontSize(20).text('訪問看護報告書', { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(12);
+      doc.text(`報告書番号: ${report.reportNumber}`);
+      doc.text(`報告日: ${report.reportDate ? new Date(report.reportDate).toLocaleDateString('ja-JP') : '未設定'}`);
+      doc.text(`利用者: ${report.patient.lastName} ${report.patient.firstName}`);
+      doc.text(`報告期間: ${report.reportPeriodStart ? new Date(report.reportPeriodStart).toLocaleDateString('ja-JP') : '未設定'} ～ ${report.reportPeriodEnd ? new Date(report.reportPeriodEnd).toLocaleDateString('ja-JP') : '未設定'}`);
+      doc.text(`訪問回数: ${report.visitCount || 0}回`);
+      doc.moveDown();
+
+      doc.text('利用者の状態:');
+      doc.fontSize(10).text(report.patientCondition || '未記入', { indent: 20 });
+      doc.moveDown();
+
+      doc.fontSize(12).text('看護の成果:');
+      doc.fontSize(10).text(report.nursingOutcomes || '未記入', { indent: 20 });
+      doc.moveDown();
+
+      doc.fontSize(12).text('問題点と対応:');
+      doc.fontSize(10).text(report.problemsAndActions || '未記入', { indent: 20 });
+      doc.moveDown();
+
+      if (report.familySupport) {
+        doc.fontSize(12).text('家族支援:');
+        doc.fontSize(10).text(report.familySupport, { indent: 20 });
+        doc.moveDown();
+      }
+
+      if (report.communicationWithDoctor) {
+        doc.fontSize(12).text('医師との連携:');
+        doc.fontSize(10).text(report.communicationWithDoctor, { indent: 20 });
+        doc.moveDown();
+      }
+
+      if (report.communicationWithCareManager) {
+        doc.fontSize(12).text('ケアマネージャーとの連携:');
+        doc.fontSize(10).text(report.communicationWithCareManager, { indent: 20 });
+        doc.moveDown();
+      }
+
+      if (report.remarks) {
+        doc.fontSize(12).text('備考:');
+        doc.fontSize(10).text(report.remarks, { indent: 20 });
+        doc.moveDown();
+      }
+
+      doc.fontSize(10);
+      if (report.createdBy) {
+        doc.text(`作成者: ${report.createdBy.fullName}`);
+      }
+      if (report.approvedBy) {
+        doc.text(`承認者: ${report.approvedBy.fullName}`);
+      }
+
+      // Finalize PDF
+      doc.end();
+    } catch (error) {
+      console.error("Export care report PDF error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "PDF生成中にエラーが発生しました" });
+      }
     }
   });
 

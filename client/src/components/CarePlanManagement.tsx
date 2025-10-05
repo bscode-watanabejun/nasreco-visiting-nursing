@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, FileText } from "lucide-react";
+import { Plus, Edit, Trash2, FileText, Download } from "lucide-react";
 import type { CarePlan, Patient } from "@shared/schema";
 
 type CarePlanWithRelations = CarePlan & {
@@ -282,6 +282,14 @@ export default function CarePlanManagement() {
                     </TableCell>
                     <TableCell>{plan.creator?.fullName || "-"}</TableCell>
                     <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => window.open(`/api/care-plans/${plan.id}/pdf`, '_blank')}
+                        title="PDF出力"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

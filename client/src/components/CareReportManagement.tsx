@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, FileCheck } from "lucide-react";
+import { Plus, Edit, Trash2, FileCheck, Download } from "lucide-react";
 import type { CareReport, Patient, CarePlan } from "@shared/schema";
 
 type CareReportWithRelations = CareReport & {
@@ -308,6 +308,14 @@ export default function CareReportManagement() {
                     <TableCell className="text-right">{report.visitCount || 0}回</TableCell>
                     <TableCell>{report.creator?.fullName || "-"}</TableCell>
                     <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => window.open(`/api/care-reports/${report.id}/pdf`, '_blank')}
+                        title="PDF出力"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
