@@ -224,8 +224,15 @@ export class PostgreSQLStorage implements IStorage {
 
   // ========== Patients ==========
   async getPatient(id: string): Promise<Patient | undefined> {
-    const result = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
-    return result[0];
+    const result = await db.query.patients.findFirst({
+      where: eq(patients.id, id),
+      with: {
+        building: true,
+        medicalInstitution: true,
+        careManager: true
+      }
+    });
+    return result;
   }
 
   async getPatientsByFacility(facilityId: string): Promise<Patient[]> {

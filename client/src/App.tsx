@@ -24,6 +24,7 @@ import { FacilityManagement } from "@/components/FacilityManagement";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import MedicalInstitutionManagement from "@/components/MedicalInstitutionManagement";
 import CareManagerManagement from "@/components/CareManagerManagement";
+import BuildingManagement from "@/components/BuildingManagement";
 import InsuranceCardManagement from "@/components/InsuranceCardManagement";
 import MonthlyStatistics from "@/components/MonthlyStatistics";
 import CarePlanManagement from "@/components/CarePlanManagement";
@@ -258,6 +259,7 @@ function MainLayout() {
                   <Route path="/users" component={UserManagement} />
                   <Route path="/medical-institutions" component={MedicalInstitutionManagement} />
                   <Route path="/care-managers" component={CareManagerManagement} />
+                  <Route path="/buildings" component={BuildingManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
                   <Route path="/statistics/monthly" component={MonthlyStatistics} />
                   <Route path="/care-plans" component={CarePlanManagement} />
@@ -277,6 +279,7 @@ function MainLayout() {
                   <Route path="/users" component={UserManagement} />
                   <Route path="/medical-institutions" component={MedicalInstitutionManagement} />
                   <Route path="/care-managers" component={CareManagerManagement} />
+                  <Route path="/buildings" component={BuildingManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
                   <Route path="/statistics/monthly" component={MonthlyStatistics} />
                   <Route path="/care-plans" component={CarePlanManagement} />

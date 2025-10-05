@@ -23,10 +23,16 @@ import {
   Edit,
   Trash2
 } from "lucide-react"
-import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, Building, MedicalInstitution, CareManager } from "@shared/schema"
 import { DoctorOrderDialog } from "./DoctorOrderDialog"
 import { InsuranceCardDialog } from "./InsuranceCardDialog"
 import { useToast } from "@/hooks/use-toast"
+
+type PatientWithRelations = Patient & {
+  building?: Building | null;
+  medicalInstitution?: MedicalInstitution | null;
+  careManager?: CareManager | null;
+}
 
 // Helper function to calculate age
 const calculateAge = (birthDate: Date | string | null): number => {
@@ -55,7 +61,7 @@ export function PatientDetail() {
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null)
 
   // Fetch patient data
-  const { data: patientData, isLoading: isPatientLoading } = useQuery<Patient>({
+  const { data: patientData, isLoading: isPatientLoading } = useQuery<PatientWithRelations>({
     queryKey: ["patient", id],
     queryFn: async () => {
       const response = await fetch(`/api/patients/${id}`)
@@ -298,6 +304,10 @@ export function PatientDetail() {
                     <div>
                       <p className="text-sm text-muted-foreground">住所</p>
                       <p className="font-medium">{patient.address || '未登録'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">建物</p>
+                      <p className="font-medium">{patient.building?.name || '未登録'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">緊急連絡先</p>

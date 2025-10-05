@@ -18,6 +18,7 @@ import {
   insertScheduleSchema,
   insertMedicalInstitutionSchema,
   insertCareManagerSchema,
+  insertBuildingSchema,
   insertDoctorOrderSchema,
   insertInsuranceCardSchema,
   insertCarePlanSchema,
@@ -31,6 +32,7 @@ import {
   updateScheduleSchema,
   updateMedicalInstitutionSchema,
   updateCareManagerSchema,
+  updateBuildingSchema,
   updateDoctorOrderSchema,
   updateInsuranceCardSchema,
   updateCarePlanSchema,
@@ -651,16 +653,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/patients", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const patientData = insertPatientSchema.parse(req.body);
-      
+
+      // Convert empty strings to null for foreign key fields
+      const cleanedData = {
+        ...patientData,
+        medicalInstitutionId: patientData.medicalInstitutionId === "" ? null : patientData.medicalInstitutionId,
+        careManagerId: patientData.careManagerId === "" ? null : patientData.careManagerId,
+        buildingId: patientData.buildingId === "" ? null : patientData.buildingId,
+      };
+
       // Set facility ID from current user
       const patientToCreate = {
-        ...patientData,
+        ...cleanedData,
         facilityId: req.user.facilityId
       };
-      
+
       const patient = await storage.createPatient(patientToCreate);
       res.status(201).json(patient);
-      
+
     } catch (error) {
       console.error("Create patient error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -671,28 +681,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/patients/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      
+
       // Check if patient belongs to user's facility
       const existingPatient = await storage.getPatient(id);
       if (!existingPatient || existingPatient.facilityId !== req.user.facilityId) {
         return res.status(404).json({ error: "患者が見つかりません" });
       }
-      
+
       // Validate update data with Zod schema
       const validatedData = updatePatientSchema.parse(req.body);
-      
-      const patient = await storage.updatePatient(id, validatedData);
+
+      // Convert empty strings to null for foreign key fields
+      const cleanedData = {
+        ...validatedData,
+        medicalInstitutionId: validatedData.medicalInstitutionId === "" ? null : validatedData.medicalInstitutionId,
+        careManagerId: validatedData.careManagerId === "" ? null : validatedData.careManagerId,
+        buildingId: validatedData.buildingId === "" ? null : validatedData.buildingId,
+      };
+
+      const patient = await storage.updatePatient(id, cleanedData);
       if (!patient) {
         return res.status(404).json({ error: "患者が見つかりません" });
       }
-      
+
       res.json(patient);
-      
+
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "入力データが正しくありません",
-          details: error.errors 
+          details: error.errors
         });
       }
       console.error("Update patient error:", error);
@@ -2081,6 +2099,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "医療機関を削除しました" });
     } catch (error) {
       console.error("Delete medical institution error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Buildings API (建物マスタ) ==========
+
+  // Get all buildings for the facility
+  app.get("/api/buildings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const buildingsList = await db.query.buildings.findMany({
+        where: eq(buildings.facilityId, facilityId),
+        orderBy: (buildings, { asc }) => [asc(buildings.name)]
+      });
+
+      res.json(buildingsList);
+    } catch (error) {
+      console.error("Get buildings error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create building
+  app.post("/api/buildings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const validatedData = insertBuildingSchema.parse(req.body);
+
+      const [building] = await db.insert(buildings).values({
+        ...validatedData,
+        facilityId
+      }).returning();
+
+      res.status(201).json(building);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Create building error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update building
+  app.put("/api/buildings/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const validatedData = updateBuildingSchema.parse(req.body);
+
+      const [building] = await db.update(buildings)
+        .set({
+          ...validatedData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(buildings.id, id),
+          eq(buildings.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!building) {
+        return res.status(404).json({ error: "建物が見つかりません" });
+      }
+
+      res.json(building);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "入力データが正しくありません",
+          details: error.errors
+        });
+      }
+      console.error("Update building error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete building
+  app.delete("/api/buildings/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Check if building has patients
+      const patientsInBuilding = await db.query.patients.findMany({
+        where: and(
+          eq(patients.buildingId, id),
+          eq(patients.facilityId, facilityId!)
+        )
+      });
+
+      if (patientsInBuilding.length > 0) {
+        return res.status(400).json({
+          error: "この建物には利用者が登録されています。先に利用者の建物情報を解除してください。"
+        });
+      }
+
+      await db.delete(buildings)
+        .where(and(
+          eq(buildings.id, id),
+          eq(buildings.facilityId, facilityId!)
+        ));
+
+      res.json({ message: "建物を削除しました" });
+    } catch (error) {
+      console.error("Delete building error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

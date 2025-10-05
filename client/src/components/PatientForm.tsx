@@ -21,7 +21,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 
-import type { Patient, InsertPatient, UpdatePatient, MedicalInstitution, CareManager } from "@shared/schema"
+import type { Patient, InsertPatient, UpdatePatient, MedicalInstitution, CareManager, Building } from "@shared/schema"
 
 // Form validation schema based on the database schema
 const patientFormSchema = z.object({
@@ -47,6 +47,7 @@ const patientFormSchema = z.object({
   isCritical: z.boolean().default(false),
   medicalInstitutionId: z.string().optional(),
   careManagerId: z.string().optional(),
+  buildingId: z.string().optional(),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -71,6 +72,11 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
 
   const { data: careManagers = [] } = useQuery<CareManager[]>({
     queryKey: ["/api/care-managers"],
+    enabled: isOpen,
+  });
+
+  const { data: buildings = [] } = useQuery<Building[]>({
+    queryKey: ["/api/buildings"],
     enabled: isOpen,
   });
 
@@ -124,6 +130,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       isCritical: false,
       medicalInstitutionId: undefined,
       careManagerId: undefined,
+      buildingId: undefined,
     },
   })
 
@@ -152,6 +159,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           isCritical: patient.isCritical ?? false,
           medicalInstitutionId: patient.medicalInstitutionId || "",
           careManagerId: patient.careManagerId || "",
+          buildingId: patient.buildingId || "",
         })
       } else if (mode === 'create') {
         console.log("Resetting form for create mode")
@@ -175,6 +183,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           isCritical: false,
           medicalInstitutionId: "",
           careManagerId: "",
+          buildingId: "",
         })
       }
     }
@@ -459,6 +468,31 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           {...field}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="buildingId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>建物</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="建物を選択（同一建物減算用）" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {buildings.map((building) => (
+                            <SelectItem key={building.id} value={building.id}>
+                              {building.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
