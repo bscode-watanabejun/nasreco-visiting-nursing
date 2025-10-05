@@ -58,7 +58,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNotNull, inArray, isNull } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -1404,6 +1404,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function: Calculate bonuses and points for nursing record
+  async function calculateBonusesAndPoints(recordData: any, facilityId: string) {
+    const appliedBonuses: any[] = [];
+    let calculatedPoints = 0;
+
+    // Base visit points (訪問看護基本療養費) - simplified, needs actual tariff table
+    const basePoints = 500; // Example: 基本点数（実際の診療報酬点数表に基づいて設定）
+    calculatedPoints += basePoints;
+
+    // 1. Multiple visit bonus (複数回訪問加算) - Check if this is 2nd+ visit on same day
+    if (recordData.isSecondVisit || recordData.multipleVisitReason) {
+      const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
+      const startOfDay = new Date(visitDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(visitDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Count visits on the same day for the same patient
+      const sameDayVisits = await db.query.nursingRecords.findMany({
+        where: and(
+          eq(nursingRecords.facilityId, facilityId),
+          eq(nursingRecords.patientId, recordData.patientId),
+          gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
+          lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
+          isNull(nursingRecords.deletedAt)
+        )
+      });
+
+      if (sameDayVisits.length >= 1) { // 2回目以降の訪問
+        const multipleVisitBonus = 100; // 複数回訪問加算（例: 100点）
+        calculatedPoints += multipleVisitBonus;
+        appliedBonuses.push({
+          type: 'multiple_visit',
+          points: multipleVisitBonus,
+          reason: recordData.multipleVisitReason || '複数回訪問',
+          visitNumber: sameDayVisits.length + 1
+        });
+      }
+    }
+
+    // 2. Emergency visit bonus (緊急訪問加算)
+    if (recordData.emergencyVisitReason) {
+      const emergencyBonus = 200; // 緊急訪問加算（例: 200点）
+      calculatedPoints += emergencyBonus;
+      appliedBonuses.push({
+        type: 'emergency_visit',
+        points: emergencyBonus,
+        reason: recordData.emergencyVisitReason
+      });
+    }
+
+    // 3. Long visit bonus (長時間訪問加算) - 90 minutes or more
+    if (recordData.actualStartTime && recordData.actualEndTime) {
+      const startTime = new Date(recordData.actualStartTime);
+      const endTime = new Date(recordData.actualEndTime);
+      const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+      if (durationMinutes >= 90) {
+        const longVisitBonus = 150; // 長時間訪問加算（例: 150点）
+        calculatedPoints += longVisitBonus;
+        appliedBonuses.push({
+          type: 'long_visit',
+          points: longVisitBonus,
+          duration: durationMinutes,
+          reason: recordData.longVisitReason || `${durationMinutes}分の訪問`
+        });
+      }
+    }
+
+    // 4. Same building discount (同一建物減算)
+    if (recordData.patientId) {
+      const patient = await db.query.patients.findFirst({
+        where: eq(patients.id, recordData.patientId),
+        with: {
+          building: true
+        }
+      });
+
+      if (patient?.buildingId) {
+        // Check if other patients in the same building were visited on the same day
+        const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
+        const startOfDay = new Date(visitDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(visitDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // Get other patients in the same building
+        const patientsInSameBuilding = await db.query.patients.findMany({
+          where: and(
+            eq(patients.buildingId, patient.buildingId),
+            eq(patients.facilityId, facilityId)
+          )
+        });
+
+        const patientIdsInBuilding = patientsInSameBuilding.map(p => p.id);
+
+        // Count visits to same building on the same day
+        const sameBuildingVisits = await db.query.nursingRecords.findMany({
+          where: and(
+            eq(nursingRecords.facilityId, facilityId),
+            inArray(nursingRecords.patientId, patientIdsInBuilding),
+            gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
+            lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
+            isNull(nursingRecords.deletedAt)
+          )
+        });
+
+        if (sameBuildingVisits.length >= 1) { // 同一建物で複数訪問
+          const sameBuildingDiscount = -50; // 同一建物減算（例: -50点）
+          calculatedPoints += sameBuildingDiscount;
+          appliedBonuses.push({
+            type: 'same_building_discount',
+            points: sameBuildingDiscount,
+            buildingName: patient.building?.name,
+            visitCount: sameBuildingVisits.length + 1
+          });
+        }
+      }
+    }
+
+    return {
+      calculatedPoints,
+      appliedBonuses
+    };
+  }
+
   // Create nursing record
   app.post("/api/nursing-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -1426,6 +1552,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Calculate bonuses and points
+      const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(recordData, req.user.facilityId);
+      recordData.calculatedPoints = calculatedPoints;
+      recordData.appliedBonuses = appliedBonuses;
+
       // Pass facility ID and nurse ID separately
       const record = await storage.createNursingRecord(recordData, req.user.facilityId, req.user.id);
       res.status(201).json(record);
@@ -1447,13 +1578,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/nursing-records/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      
+
       // Check if nursing record belongs to user's facility
       const existingRecord = await storage.getNursingRecord(id);
       if (!existingRecord || existingRecord.facilityId !== req.user.facilityId) {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
-      
+
       // Validate update data with Zod schema
       const validatedData = updateNursingRecordSchema.parse(req.body);
 
@@ -1464,21 +1595,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "指定された患者が見つかりません" });
         }
       }
-      
+
       if (validatedData.visitId) {
         const visit = await storage.getVisit(validatedData.visitId);
         if (!visit || visit.facilityId !== req.user.facilityId) {
           return res.status(400).json({ error: "指定された訪問予定が見つかりません" });
         }
       }
-      
+
+      // Merge existing data with updates for bonus calculation
+      const mergedData = {
+        ...existingRecord,
+        ...validatedData
+      };
+
+      // Recalculate bonuses and points
+      const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(mergedData, req.user.facilityId);
+      validatedData.calculatedPoints = calculatedPoints;
+      validatedData.appliedBonuses = appliedBonuses;
+
       const record = await storage.updateNursingRecord(id, validatedData);
       if (!record) {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
-      
+
       res.json(record);
-      
+
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
@@ -2312,6 +2454,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(cards);
     } catch (error) {
       console.error("Get insurance cards error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get expiring insurance cards (within 30 days) - MUST be before /:id route
+  app.get("/api/insurance-cards/expiring", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+      const cards = await db.query.insuranceCards.findMany({
+        where: and(
+          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.isActive, true),
+          isNotNull(insuranceCards.validUntil), // Only check cards with expiry date
+          lte(insuranceCards.validUntil, thirtyDaysFromNow.toISOString().split('T')[0]),
+          gte(insuranceCards.validUntil, today.toISOString().split('T')[0])
+        ),
+        with: {
+          patient: true
+        },
+        orderBy: (insuranceCards, { asc }) => [asc(insuranceCards.validUntil)]
+      });
+
+      res.json(cards);
+    } catch (error) {
+      console.error("Get expiring insurance cards error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

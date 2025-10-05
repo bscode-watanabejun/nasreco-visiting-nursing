@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, TrendingUp, Users, Calendar as CalendarIcon } from "lucide-react";
+import { Download, TrendingUp, Users, Calendar as CalendarIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 type MonthlyStatistic = {
   patientId: string;
@@ -42,6 +43,7 @@ export default function MonthlyStatistics() {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((currentDate.getMonth() + 1).toString());
+  const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
 
   // Fetch monthly statistics
   const { data: stats, isLoading } = useQuery<MonthlyStatisticsResponse>({
@@ -64,6 +66,40 @@ export default function MonthlyStatistics() {
   // Calculate totals
   const totalPoints = stats?.statistics.reduce((sum, stat) => sum + stat.calculatedPoints, 0) || 0;
   const totalCost = stats?.statistics.reduce((sum, stat) => sum + stat.estimatedCost, 0) || 0;
+
+  // Helper function to get bonus type name in Japanese
+  const getBonusName = (type: string): string => {
+    const names: Record<string, string> = {
+      'multiple_visit': '複数回訪問加算',
+      'emergency_visit': '緊急訪問加算',
+      'long_visit': '長時間訪問加算',
+      'same_building_discount': '同一建物減算',
+    };
+    return names[type] || type;
+  };
+
+  // Count bonuses by type for a patient
+  const getBonusSummary = (appliedBonuses: any[]): { type: string; count: number; totalPoints: number }[] => {
+    const bonusMap = new Map<string, { count: number; totalPoints: number }>();
+
+    appliedBonuses.forEach(bonusArray => {
+      if (Array.isArray(bonusArray)) {
+        bonusArray.forEach(bonus => {
+          const existing = bonusMap.get(bonus.type) || { count: 0, totalPoints: 0 };
+          bonusMap.set(bonus.type, {
+            count: existing.count + 1,
+            totalPoints: existing.totalPoints + bonus.points
+          });
+        });
+      }
+    });
+
+    return Array.from(bonusMap.entries()).map(([type, data]) => ({
+      type,
+      count: data.count,
+      totalPoints: data.totalPoints
+    }));
+  };
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -181,6 +217,7 @@ export default function MonthlyStatistics() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]"></TableHead>
                   <TableHead>利用者名</TableHead>
                   <TableHead className="text-right">訪問回数</TableHead>
                   <TableHead className="text-right">総訪問時間</TableHead>
@@ -190,16 +227,53 @@ export default function MonthlyStatistics() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.statistics.map((stat) => (
-                  <TableRow key={stat.patientId}>
-                    <TableCell className="font-medium">{stat.patientName}</TableCell>
-                    <TableCell className="text-right">{stat.visitCount}回</TableCell>
-                    <TableCell className="text-right">{stat.totalMinutes}分</TableCell>
-                    <TableCell className="text-right">{stat.averageMinutes}分</TableCell>
-                    <TableCell className="text-right">{stat.calculatedPoints.toLocaleString()}点</TableCell>
-                    <TableCell className="text-right">¥{stat.estimatedCost.toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
+                {stats.statistics.map((stat) => {
+                  const bonusSummary = getBonusSummary(stat.appliedBonuses);
+                  const isExpanded = expandedPatient === stat.patientId;
+                  const hasBonus = bonusSummary.length > 0;
+
+                  return (
+                    <>
+                      <TableRow
+                        key={stat.patientId}
+                        className={hasBonus ? "cursor-pointer hover:bg-muted/50" : ""}
+                        onClick={() => hasBonus && setExpandedPatient(isExpanded ? null : stat.patientId)}
+                      >
+                        <TableCell>
+                          {hasBonus && (
+                            isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">{stat.patientName}</TableCell>
+                        <TableCell className="text-right">{stat.visitCount}回</TableCell>
+                        <TableCell className="text-right">{stat.totalMinutes}分</TableCell>
+                        <TableCell className="text-right">{stat.averageMinutes}分</TableCell>
+                        <TableCell className="text-right">{stat.calculatedPoints.toLocaleString()}点</TableCell>
+                        <TableCell className="text-right">¥{stat.estimatedCost.toLocaleString()}</TableCell>
+                      </TableRow>
+                      {isExpanded && hasBonus && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="bg-muted/30 p-4">
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium text-muted-foreground mb-2">適用加算の内訳</p>
+                              <div className="flex flex-wrap gap-2">
+                                {bonusSummary.map((bonus) => (
+                                  <Badge
+                                    key={bonus.type}
+                                    variant={bonus.totalPoints < 0 ? "destructive" : "secondary"}
+                                    className="text-sm"
+                                  >
+                                    {getBonusName(bonus.type)}: {bonus.count}回 ({bonus.totalPoints > 0 ? '+' : ''}{bonus.totalPoints}点)
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

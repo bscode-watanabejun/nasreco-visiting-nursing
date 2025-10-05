@@ -23,9 +23,11 @@ import {
   Play,
   XCircle,
   Repeat,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from "lucide-react"
 import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
+import { VisitRecordDialog } from "./VisitRecordDialog"
 
 // Helper function to get full name
 const getFullName = (patient: Patient): string => {
@@ -68,6 +70,8 @@ export function ScheduleManagement() {
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
   const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false)
   const [selectedParentScheduleId, setSelectedParentScheduleId] = useState<string | null>(null)
+  const [recordDialogOpen, setRecordDialogOpen] = useState(false)
+  const [recordDialogSchedule, setRecordDialogSchedule] = useState<Schedule | null>(null)
 
   // Fetch patients
   const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
@@ -254,6 +258,11 @@ export function ScheduleManagement() {
     setDeleteRecurringDialogOpen(true)
   }
 
+  const handleCreateRecord = (schedule: Schedule) => {
+    setRecordDialogSchedule(schedule)
+    setRecordDialogOpen(true)
+  }
+
   const weekDates = viewMode === 'week' ? getWeekDates(currentDate) : [currentDate]
 
   return (
@@ -388,6 +397,14 @@ export function ScheduleManagement() {
                                   <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                 </div>
                                 <div className="flex gap-1 flex-shrink-0">
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    onClick={() => handleCreateRecord(schedule)}
+                                    title="訪問記録を作成"
+                                  >
+                                    <FileText className="h-3 w-3" />
+                                  </Button>
                                   {schedule.isRecurring && schedule.parentScheduleId && (
                                     <Button
                                       size="sm"
@@ -506,6 +523,17 @@ export function ScheduleManagement() {
                                 </Button>
                               </div>
                               <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => handleCreateRecord(schedule)}
+                                  title="訪問記録を作成"
+                                >
+                                  <FileText className="mr-1 h-3 w-3" />
+                                  記録作成
+                                </Button>
+                              </div>
+                              <div className="flex gap-1">
                                 <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>
                                   <Edit className="mr-1 h-3 w-3" />
                                   編集
@@ -593,6 +621,15 @@ export function ScheduleManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Visit Record Dialog */}
+      {recordDialogSchedule && (
+        <VisitRecordDialog
+          open={recordDialogOpen}
+          onOpenChange={setRecordDialogOpen}
+          schedule={recordDialogSchedule}
+        />
+      )}
     </div>
   )
 }

@@ -145,6 +145,26 @@ export function Dashboard() {
     },
   })
 
+  // Fetch expiring doctor orders (within 30 days)
+  const { data: expiringDoctorOrders } = useQuery<any[]>({
+    queryKey: ["/api/doctor-orders/expiring"],
+    queryFn: async () => {
+      const response = await fetch("/api/doctor-orders/expiring")
+      if (!response.ok) throw new Error("期限切れ間近の訪問看護指示書の取得に失敗しました")
+      return response.json()
+    },
+  })
+
+  // Fetch expiring insurance cards (within 30 days)
+  const { data: expiringInsuranceCards } = useQuery<any[]>({
+    queryKey: ["/api/insurance-cards/expiring"],
+    queryFn: async () => {
+      const response = await fetch("/api/insurance-cards/expiring")
+      if (!response.ok) throw new Error("期限切れ間近の保険証の取得に失敗しました")
+      return response.json()
+    },
+  })
+
   const schedules = schedulesData?.data || []
   const patients = patientsData?.data || []
   const users = usersData?.data || []
@@ -364,15 +384,126 @@ export function Dashboard() {
             </CardHeader>
             <CardContent className="sm:pt-0">
               <div className="text-2xl font-bold text-orange-500 sm:text-destructive">
-                {(pendingRecordsCount + expiredContracts.length)}件
+                {(pendingRecordsCount + expiredContracts.length + (expiringDoctorOrders?.length || 0) + (expiringInsuranceCards?.length || 0))}件
               </div>
               <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
                 記録未作成: {pendingRecordsCount}件 / 契約期限切れ: {expiredContracts.length}件
+                {(expiringDoctorOrders?.length || 0) > 0 && <span> / 指示書期限: {expiringDoctorOrders?.length}件</span>}
+                {(expiringInsuranceCards?.length || 0) > 0 && <span> / 保険証期限: {expiringInsuranceCards?.length}件</span>}
               </p>
             </CardContent>
           </div>
         </Card>
       </div>
+
+      {/* Expiring Doctor Orders Alert */}
+      {(expiringDoctorOrders?.length || 0) > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-900 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              訪問看護指示書有効期限アラート
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-red-800 mb-3">
+              30日以内に有効期限が切れる訪問看護指示書があります。医師に更新依頼をお願いします。
+            </p>
+            <div className="space-y-2">
+              {(expiringDoctorOrders || []).slice(0, 5).map((order: any) => {
+                const endDate = new Date(order.endDate)
+                const isExpired = endDate < nowDate
+                const daysUntilExpiry = Math.ceil((endDate.getTime() - nowDate.getTime()) / (1000 * 60 * 60 * 24))
+                const patient = order.patient || patients.find((p: Patient) => p.id === order.patientId)
+                const patientName = patient ? getFullName(patient) : '患者不明'
+
+                return (
+                  <div
+                    key={order.id}
+                    className="flex items-center justify-between p-2 bg-white rounded border border-red-200 hover:bg-red-50 cursor-pointer transition-colors"
+                    onClick={() => setLocation(`/patients/${order.patientId}`)}
+                  >
+                    <div>
+                      <p className="font-medium text-sm">利用者: {patientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        医師: {order.medicalInstitution?.doctorName || '不明'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-red-700'}`}>
+                        {isExpired ? '期限切れ' : `残り${daysUntilExpiry}日`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {endDate.toLocaleDateString('ja-JP')}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {(expiringDoctorOrders?.length || 0) > 5 && (
+              <p className="text-xs text-red-700 mt-2">
+                他 {(expiringDoctorOrders?.length || 0) - 5}件の指示書が期限間近です
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Expiring Insurance Cards Alert */}
+      {(expiringInsuranceCards?.length || 0) > 0 && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardHeader>
+            <CardTitle className="text-orange-900 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              保険証有効期限アラート
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-orange-800 mb-3">
+              30日以内に有効期限が切れる保険証があります。利用者・ご家族に更新確認をお願いします。
+            </p>
+            <div className="space-y-2">
+              {(expiringInsuranceCards || []).slice(0, 5).map((card: any) => {
+                const validUntil = new Date(card.validUntil)
+                const isExpired = validUntil < nowDate
+                const daysUntilExpiry = Math.ceil((validUntil.getTime() - nowDate.getTime()) / (1000 * 60 * 60 * 24))
+                const patient = card.patient || patients.find((p: Patient) => p.id === card.patientId)
+                const patientName = patient ? getFullName(patient) : '患者不明'
+                const cardTypeName = card.cardType === 'medical' ? '医療保険証' : '介護保険証'
+
+                return (
+                  <div
+                    key={card.id}
+                    className="flex items-center justify-between p-2 bg-white rounded border border-orange-200 hover:bg-orange-50 cursor-pointer transition-colors"
+                    onClick={() => setLocation(`/patients/${card.patientId}`)}
+                  >
+                    <div>
+                      <p className="font-medium text-sm">利用者: {patientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {cardTypeName} (保険者番号: {card.insurerNumber})
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-orange-700'}`}>
+                        {isExpired ? '期限切れ' : `残り${daysUntilExpiry}日`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {validUntil.toLocaleDateString('ja-JP')}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {(expiringInsuranceCards?.length || 0) > 5 && (
+              <p className="text-xs text-orange-700 mt-2">
+                他 {(expiringInsuranceCards?.length || 0) - 5}件の保険証が期限間近です
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Expiring Contracts Alert */}
       {expiringContracts.length > 0 && (
@@ -392,12 +523,18 @@ export function Dashboard() {
                 const endDate = new Date(contract.endDate)
                 const isExpired = endDate < nowDate
                 const daysUntilExpiry = Math.ceil((endDate.getTime() - nowDate.getTime()) / (1000 * 60 * 60 * 24))
+                const patient = contract.patient || patients.find((p: Patient) => p.id === contract.patientId)
+                const patientName = patient ? getFullName(patient) : '患者不明'
 
                 return (
-                  <div key={contract.id} className="flex items-center justify-between p-2 bg-white rounded border border-yellow-200">
+                  <div
+                    key={contract.id}
+                    className="flex items-center justify-between p-2 bg-white rounded border border-yellow-200 hover:bg-yellow-50 cursor-pointer transition-colors"
+                    onClick={() => setLocation(`/contracts?patientId=${contract.patientId}`)}
+                  >
                     <div>
                       <p className="font-medium text-sm">{contract.title}</p>
-                      <p className="text-xs text-muted-foreground">患者ID: {contract.patientId}</p>
+                      <p className="text-xs text-muted-foreground">利用者: {patientName}</p>
                     </div>
                     <div className="text-right">
                       <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-yellow-700'}`}>

@@ -19,9 +19,14 @@ import {
   ClipboardList,
   FilePlus,
   AlertCircle,
-  CreditCard
+  CreditCard,
+  Edit,
+  Trash2
 } from "lucide-react"
 import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard } from "@shared/schema"
+import { DoctorOrderDialog } from "./DoctorOrderDialog"
+import { InsuranceCardDialog } from "./InsuranceCardDialog"
+import { useToast } from "@/hooks/use-toast"
 
 // Helper function to calculate age
 const calculateAge = (birthDate: Date | string | null): number => {
@@ -41,8 +46,13 @@ type PeriodFilter = '1week' | '1month' | '3months' | '6months' | 'all'
 export function PatientDetail() {
   const { id } = useParams()
   const [, setLocation] = useLocation()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<string>("basic")
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('1month')
+  const [orderDialogOpen, setOrderDialogOpen] = useState(false)
+  const [editingOrder, setEditingOrder] = useState<DoctorOrder | null>(null)
+  const [cardDialogOpen, setCardDialogOpen] = useState(false)
+  const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null)
 
   // Fetch patient data
   const { data: patientData, isLoading: isPatientLoading } = useQuery<Patient>({
@@ -347,7 +357,14 @@ export function PatientDetail() {
                   </CardTitle>
                   <CardDescription>主治医からの訪問看護指示書</CardDescription>
                 </div>
-                <Button size="sm" variant="outline">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingOrder(null)
+                    setOrderDialogOpen(true)
+                  }}
+                >
                   <FilePlus className="mr-2 h-4 w-4" />
                   新規登録
                 </Button>
@@ -394,6 +411,14 @@ export function PatientDetail() {
                                   </Badge>
                                 )}
                               </div>
+                              {(order as any).medicalInstitution && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">医療機関</p>
+                                  <p className="font-medium">
+                                    {(order as any).medicalInstitution.name} - {(order as any).medicalInstitution.doctorName}
+                                  </p>
+                                </div>
+                              )}
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -434,6 +459,48 @@ export function PatientDetail() {
                                 )}
                               </div>
                             </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingOrder(order)
+                                  setOrderDialogOpen(true)
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  if (!confirm('この訪問看護指示書を削除してもよろしいですか？')) return
+
+                                  try {
+                                    const response = await fetch(`/api/doctor-orders/${order.id}`, {
+                                      method: 'DELETE'
+                                    })
+                                    if (!response.ok) throw new Error('削除に失敗しました')
+
+                                    toast({
+                                      title: "削除完了",
+                                      description: "訪問看護指示書を削除しました"
+                                    })
+
+                                    // Refresh data
+                                    window.location.reload()
+                                  } catch (error) {
+                                    toast({
+                                      title: "エラー",
+                                      description: "削除中にエラーが発生しました",
+                                      variant: "destructive"
+                                    })
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       )
@@ -454,7 +521,14 @@ export function PatientDetail() {
                   </CardTitle>
                   <CardDescription>医療保険・介護保険証の情報</CardDescription>
                 </div>
-                <Button size="sm" variant="outline">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingCard(null)
+                    setCardDialogOpen(true)
+                  }}
+                >
                   <FilePlus className="mr-2 h-4 w-4" />
                   新規登録
                 </Button>
@@ -541,6 +615,44 @@ export function PatientDetail() {
                                   </p>
                                 </div>
                               </div>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingCard(card)
+                                  setCardDialogOpen(true)
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={async () => {
+                                  if (!confirm('この保険証情報を削除してもよろしいですか？')) return
+                                  try {
+                                    const response = await fetch(`/api/insurance-cards/${card.id}`, {
+                                      method: 'DELETE',
+                                    })
+                                    if (!response.ok) throw new Error('削除に失敗しました')
+                                    toast({
+                                      title: "削除完了",
+                                      description: "保険証情報を削除しました",
+                                    })
+                                    window.location.reload()
+                                  } catch (error) {
+                                    toast({
+                                      title: "エラー",
+                                      description: "削除中にエラーが発生しました",
+                                      variant: "destructive",
+                                    })
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -905,6 +1017,22 @@ export function PatientDetail() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Doctor Order Dialog */}
+      <DoctorOrderDialog
+        open={orderDialogOpen}
+        onOpenChange={setOrderDialogOpen}
+        patientId={id!}
+        order={editingOrder}
+      />
+
+      {/* Insurance Card Dialog */}
+      <InsuranceCardDialog
+        open={cardDialogOpen}
+        onOpenChange={setCardDialogOpen}
+        patientId={id!}
+        card={editingCard}
+      />
     </div>
   )
 }

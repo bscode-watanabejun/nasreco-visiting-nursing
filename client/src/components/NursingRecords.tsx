@@ -1202,11 +1202,38 @@ export function NursingRecords() {
                           <p className="text-sm">{selectedRecord.appliedBonuses}</p>
                         ) : Array.isArray(selectedRecord.appliedBonuses) ? (
                           <ul className="list-disc list-inside space-y-1">
-                            {(selectedRecord.appliedBonuses as any[]).map((bonus: any, index: number) => (
-                              <li key={index} className="text-sm">
-                                {typeof bonus === 'string' ? bonus : bonus.name || JSON.stringify(bonus)}
-                              </li>
-                            ))}
+                            {(selectedRecord.appliedBonuses as any[]).map((bonus: any, index: number) => {
+                              if (typeof bonus === 'string') {
+                                return <li key={index} className="text-sm">{bonus}</li>
+                              }
+
+                              // Format bonus information
+                              const getBonusName = (type: string): string => {
+                                const names: Record<string, string> = {
+                                  'multiple_visit': '複数回訪問加算',
+                                  'emergency_visit': '緊急訪問加算',
+                                  'long_visit': '長時間訪問加算',
+                                  'same_building_discount': '同一建物減算',
+                                };
+                                return names[type] || type;
+                              };
+
+                              const name = getBonusName(bonus.type);
+                              const points = bonus.points > 0 ? `+${bonus.points}点` : `${bonus.points}点`;
+                              const details = [];
+
+                              if (bonus.reason) details.push(bonus.reason);
+                              if (bonus.duration) details.push(`${bonus.duration}分`);
+                              if (bonus.visitNumber) details.push(`${bonus.visitNumber}回目`);
+                              if (bonus.visitCount) details.push(`${bonus.visitCount}件`);
+
+                              return (
+                                <li key={index} className="text-sm">
+                                  <span className="font-medium">{name}</span>: {points}
+                                  {details.length > 0 && <span className="text-muted-foreground"> ({details.join(', ')})</span>}
+                                </li>
+                              );
+                            })}
                           </ul>
                         ) : (
                           <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(selectedRecord.appliedBonuses, null, 2)}</pre>

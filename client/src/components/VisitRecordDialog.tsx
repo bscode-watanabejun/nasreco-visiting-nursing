@@ -221,6 +221,7 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
         patientId: formData.patientId,
         recordType: 'general_care' as const,
         recordDate: currentDateTime.toISOString(),
+        visitDate: today, // 訪問日（加算計算に必要）
         status: 'draft' as const,
         title: `訪問記録 - ${today}`,
         content: `訪問日時: ${today}\n開始時間: ${formData.actualStartTime}\n終了時間: ${formData.actualEndTime}\n訪問ステータス: ${formData.visitStatusRecord}\n\n観察事項:\n${formData.observations}\n\n実施したケア:\n${formData.careProvided}\n\n次回訪問時の申し送り:\n${formData.nextVisitNotes}`,
@@ -248,6 +249,9 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
         ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
         ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
         ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
+
+        // スケジュールIDの紐付け
+        ...(schedule?.id || formData.selectedScheduleId !== 'none' ? { scheduleId: schedule?.id || formData.selectedScheduleId } : {})
       }
 
       const response = await fetch('/api/nursing-records', {
@@ -475,6 +479,7 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
         patientId: formData.patientId,
         recordType: 'general_care' as const,
         recordDate: currentDateTime.toISOString(),
+        visitDate: today, // 訪問日（加算計算に必要）
         status: 'completed' as const,
         title: `訪問記録 - ${today}`,
         content: `訪問日時: ${today}\n開始時間: ${formData.actualStartTime}\n終了時間: ${formData.actualEndTime}\n訪問ステータス: ${formData.visitStatusRecord}\n\n観察事項:\n${formData.observations}\n\n実施したケア:\n${formData.careProvided}\n\n次回訪問時の申し送り:\n${formData.nextVisitNotes}`,
@@ -502,6 +507,9 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
         ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
         ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
         ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
+
+        // スケジュールIDの紐付け
+        ...(schedule?.id || formData.selectedScheduleId !== 'none' ? { scheduleId: schedule?.id || formData.selectedScheduleId } : {})
       }
 
       const response = await fetch('/api/nursing-records', {
@@ -544,9 +552,26 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
       await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+
+      // Build toast description with bonus information
+      let description = "訪問記録を保存しました"
+      if (savedRecord.calculatedPoints) {
+        description += `\n\n算定点数: ${savedRecord.calculatedPoints}点（${savedRecord.calculatedPoints * 10}円）`
+      }
+      if (savedRecord.appliedBonuses && savedRecord.appliedBonuses.length > 0) {
+        description += "\n\n適用加算:"
+        savedRecord.appliedBonuses.forEach((bonus: any) => {
+          const bonusName = bonus.type === 'multiple_visit' ? '複数回訪問加算' :
+                           bonus.type === 'emergency_visit' ? '緊急訪問加算' :
+                           bonus.type === 'long_visit' ? '長時間訪問加算' :
+                           bonus.type === 'same_building_discount' ? '同一建物減算' : bonus.type
+          description += `\n・${bonusName}: ${bonus.points}点`
+        })
+      }
+
       toast({
         title: "保存完了",
-        description: "訪問記録を保存しました",
+        description,
       })
       setFormData(getInitialFormData())
       onOpenChange(false)
