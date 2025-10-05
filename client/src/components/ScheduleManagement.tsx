@@ -62,11 +62,41 @@ const getWeekDates = (currentDate: Date): Date[] => {
   return dates
 }
 
+// Helper function to get month dates (calendar grid)
+const getMonthDates = (currentDate: Date): Date[] => {
+  const dates: Date[] = []
+  const year = currentDate.getFullYear()
+  const month = currentDate.getMonth()
+
+  // First day of the month
+  const firstDay = new Date(year, month, 1)
+  // Last day of the month
+  const lastDay = new Date(year, month + 1, 0)
+
+  // Start from the Sunday of the week containing the first day
+  const startDate = new Date(firstDay)
+  startDate.setDate(firstDay.getDate() - firstDay.getDay())
+
+  // End at the Saturday of the week containing the last day
+  const endDate = new Date(lastDay)
+  endDate.setDate(lastDay.getDate() + (6 - lastDay.getDay()))
+
+  // Generate all dates
+  const current = new Date(startDate)
+  while (current <= endDate) {
+    dates.push(new Date(current))
+    current.setDate(current.getDate() + 1)
+  }
+
+  return dates
+}
+
 export function ScheduleManagement() {
   const queryClient = useQueryClient()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [viewMode, setViewMode] = useState<'week' | 'day'>('week')
+  const [viewMode, setViewMode] = useState<'week' | 'day' | 'month'>('week')
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedMonthDate, setSelectedMonthDate] = useState<Date | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isRecurringDialogOpen, setIsRecurringDialogOpen] = useState(false)
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
@@ -97,17 +127,30 @@ export function ScheduleManagement() {
 
   // Fetch schedules
   const { data: schedulesData, isLoading } = useQuery<PaginatedResult<Schedule>>({
-    queryKey: ["schedules", currentDate],
+    queryKey: ["schedules", currentDate, viewMode],
     queryFn: async () => {
-      const startDate = new Date(currentDate)
-      startDate.setHours(0, 0, 0, 0) // Reset time to 00:00:00
-      startDate.setDate(startDate.getDate() - startDate.getDay())
-      const endDate = new Date(startDate)
-      endDate.setDate(startDate.getDate() + 7)
-      endDate.setHours(23, 59, 59, 999) // Set time to 23:59:59
+      let startDate: Date
+      let endDate: Date
+
+      if (viewMode === 'month') {
+        // Get the entire month including surrounding weeks for calendar grid
+        const monthDates = getMonthDates(currentDate)
+        startDate = new Date(monthDates[0])
+        startDate.setHours(0, 0, 0, 0)
+        endDate = new Date(monthDates[monthDates.length - 1])
+        endDate.setHours(23, 59, 59, 999)
+      } else {
+        // Week or day view
+        startDate = new Date(currentDate)
+        startDate.setHours(0, 0, 0, 0)
+        startDate.setDate(startDate.getDate() - startDate.getDay())
+        endDate = new Date(startDate)
+        endDate.setDate(startDate.getDate() + 7)
+        endDate.setHours(23, 59, 59, 999)
+      }
 
       const response = await fetch(
-        `/api/schedules?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&limit=100`
+        `/api/schedules?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&limit=200`
       )
       if (!response.ok) throw new Error("スケジュールデータの取得に失敗しました")
       return response.json()
@@ -229,6 +272,8 @@ export function ScheduleManagement() {
     const newDate = new Date(currentDate)
     if (viewMode === 'week') {
       newDate.setDate(newDate.getDate() - 7)
+    } else if (viewMode === 'month') {
+      newDate.setMonth(newDate.getMonth() - 1)
     } else {
       newDate.setDate(newDate.getDate() - 1)
     }
@@ -239,6 +284,8 @@ export function ScheduleManagement() {
     const newDate = new Date(currentDate)
     if (viewMode === 'week') {
       newDate.setDate(newDate.getDate() + 7)
+    } else if (viewMode === 'month') {
+      newDate.setMonth(newDate.getMonth() + 1)
     } else {
       newDate.setDate(newDate.getDate() + 1)
     }
@@ -318,14 +365,17 @@ export function ScheduleManagement() {
             <div className="text-lg font-semibold">
               {viewMode === 'week'
                 ? `${formatDate(weekDates[0])} - ${formatDate(weekDates[6])}`
+                : viewMode === 'month'
+                ? currentDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' })
                 : formatDate(currentDate)
               }
             </div>
 
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'week' | 'day')}>
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'week' | 'day' | 'month')}>
               <TabsList>
-                <TabsTrigger value="week">週表示</TabsTrigger>
                 <TabsTrigger value="day">日表示</TabsTrigger>
+                <TabsTrigger value="week">週表示</TabsTrigger>
+                <TabsTrigger value="month">月表示</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -356,7 +406,223 @@ export function ScheduleManagement() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {viewMode === 'week' ? (
+              {viewMode === 'month' ? (
+                // Month view - calendar grid for PC, list for mobile
+                <>
+                  {/* PC Calendar Grid (hidden on mobile) */}
+                  <div className="hidden sm:block">
+                    <div className="grid grid-cols-7 gap-2">
+                      {/* Day headers */}
+                      {['日', '月', '火', '水', '木', '金', '土'].map((day, idx) => (
+                        <div key={idx} className="text-center font-semibold py-2 text-sm">
+                          {day}
+                        </div>
+                      ))}
+                      {/* Calendar cells */}
+                      {getMonthDates(currentDate).map((date, idx) => {
+                        const isCurrentMonth = date.getMonth() === currentDate.getMonth()
+                        const isToday = date.toDateString() === new Date().toDateString()
+                        const daySchedules = schedules
+                          .filter(s => new Date(s.scheduledDate).toDateString() === date.toDateString())
+                          .filter(s => {
+                            const patient = patients.find(p => p.id === s.patientId)
+                            const nurse = users.find(u => u.id === s.nurseId)
+                            const patientName = patient ? getFullName(patient) : ''
+                            const nurseName = nurse?.fullName || s.demoStaffName || ''
+                            return patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                   nurseName.toLowerCase().includes(searchTerm.toLowerCase())
+                          })
+                          .sort((a, b) => new Date(a.scheduledStartTime).getTime() - new Date(b.scheduledStartTime).getTime())
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`
+                              min-h-[80px] border rounded-lg p-2 cursor-pointer transition-colors
+                              ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}
+                              ${isToday ? 'border-blue-500 border-2' : 'border-gray-200'}
+                              ${daySchedules.length > 0 ? 'hover:bg-blue-50' : 'hover:bg-gray-100'}
+                            `}
+                            onClick={() => setSelectedMonthDate(date)}
+                          >
+                            <div className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600' : isCurrentMonth ? '' : 'text-gray-400'}`}>
+                              {date.getDate()}
+                            </div>
+                            {daySchedules.length > 0 && (
+                              <div className="space-y-1">
+                                {daySchedules.slice(0, 2).map(schedule => {
+                                  const statusColors = {
+                                    completed: 'bg-green-100 text-green-800',
+                                    in_progress: 'bg-orange-100 text-orange-800',
+                                    scheduled: 'bg-yellow-100 text-yellow-800',
+                                    cancelled: 'bg-gray-100 text-gray-800'
+                                  }
+                                  return (
+                                    <div key={schedule.id} className={`text-xs truncate px-1 rounded ${statusColors[schedule.status]}`}>
+                                      {formatTime(schedule.scheduledStartTime)} {patients.find(p => p.id === schedule.patientId)?.lastName || ''}
+                                    </div>
+                                  )
+                                })}
+                                {daySchedules.length > 2 && (
+                                  <div className="text-xs text-gray-500">
+                                    他{daySchedules.length - 2}件
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Selected date details */}
+                    {selectedMonthDate && (
+                      <div className="mt-4 border rounded-lg p-4 bg-gray-50">
+                        <div className="flex justify-between items-center mb-3">
+                          <h3 className="font-semibold">
+                            {selectedMonthDate.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' })}
+                          </h3>
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedMonthDate(null)}>
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {schedules
+                          .filter(s => new Date(s.scheduledDate).toDateString() === selectedMonthDate.toDateString())
+                          .sort((a, b) => new Date(a.scheduledStartTime).getTime() - new Date(b.scheduledStartTime).getTime())
+                          .map(schedule => {
+                            const patient = patients.find(p => p.id === schedule.patientId)
+                            const nurse = users.find(u => u.id === schedule.nurseId)
+                            return (
+                              <div key={schedule.id} className="mb-2 p-2 bg-white rounded border">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-sm font-medium">
+                                        {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
+                                      </span>
+                                      {schedule.status === 'completed' && (
+                                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
+                                      )}
+                                      {schedule.status === 'in_progress' && (
+                                        <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
+                                      )}
+                                      {schedule.status === 'scheduled' && (
+                                        <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
+                                      )}
+                                      {schedule.status === 'cancelled' && (
+                                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
+                                      )}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground truncate">
+                                      {patient ? getFullName(patient) : '不明'} / {nurse?.fullName || schedule.demoStaffName || '未割当'}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button size="sm" variant="ghost" onClick={() => handleCreateRecord(schedule)}>
+                                      <FileText className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        {schedules.filter(s => new Date(s.scheduledDate).toDateString() === selectedMonthDate.toDateString()).length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">予定なし</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mobile List View (shown only on mobile) */}
+                  <div className="sm:hidden space-y-2">
+                    {getMonthDates(currentDate)
+                      .filter(date => date.getMonth() === currentDate.getMonth())
+                      .map((date, idx) => {
+                        const daySchedules = schedules
+                          .filter(s => new Date(s.scheduledDate).toDateString() === date.toDateString())
+                          .filter(s => {
+                            const patient = patients.find(p => p.id === s.patientId)
+                            const nurse = users.find(u => u.id === s.nurseId)
+                            const patientName = patient ? getFullName(patient) : ''
+                            const nurseName = nurse?.fullName || s.demoStaffName || ''
+                            return patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                   nurseName.toLowerCase().includes(searchTerm.toLowerCase())
+                          })
+                          .sort((a, b) => new Date(a.scheduledStartTime).getTime() - new Date(b.scheduledStartTime).getTime())
+
+                        const isToday = date.toDateString() === new Date().toDateString()
+
+                        return (
+                          <details key={idx} className={`border rounded-lg ${isToday ? 'border-blue-500' : ''}`}>
+                            <summary className="p-3 cursor-pointer hover:bg-gray-50 flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <span className={`font-medium ${isToday ? 'text-blue-600' : ''}`}>
+                                  {date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', weekday: 'short' })}
+                                </span>
+                                {daySchedules.length > 0 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {daySchedules.length}件
+                                  </Badge>
+                                )}
+                              </div>
+                            </summary>
+                            <div className="border-t p-3 space-y-2">
+                              {daySchedules.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-2">予定なし</p>
+                              ) : (
+                                daySchedules.map(schedule => {
+                                  const patient = patients.find(p => p.id === schedule.patientId)
+                                  const nurse = users.find(u => u.id === schedule.nurseId)
+                                  return (
+                                    <div key={schedule.id} className="p-2 bg-gray-50 rounded">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-sm font-medium">
+                                              {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
+                                            </span>
+                                            {schedule.status === 'completed' && (
+                                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
+                                            )}
+                                            {schedule.status === 'in_progress' && (
+                                              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
+                                            )}
+                                            {schedule.status === 'scheduled' && (
+                                              <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
+                                            )}
+                                            {schedule.status === 'cancelled' && (
+                                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
+                                            )}
+                                          </div>
+                                          <div className="text-sm text-muted-foreground truncate">
+                                            {patient ? getFullName(patient) : '不明'} / {nurse?.fullName || schedule.demoStaffName || '未割当'}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                          <Button size="sm" variant="ghost" onClick={() => handleCreateRecord(schedule)}>
+                                            <FileText className="h-3 w-3" />
+                                          </Button>
+                                          <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                            <Edit className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </details>
+                        )
+                      })}
+                  </div>
+                </>
+              ) : viewMode === 'week' ? (
                 // Week view - show each day
                 weekDates.map((date, idx) => {
                   const daySchedules = schedules
