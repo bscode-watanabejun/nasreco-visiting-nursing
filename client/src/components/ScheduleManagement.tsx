@@ -94,9 +94,11 @@ export function ScheduleManagement() {
     queryKey: ["schedules", currentDate],
     queryFn: async () => {
       const startDate = new Date(currentDate)
+      startDate.setHours(0, 0, 0, 0) // Reset time to 00:00:00
       startDate.setDate(startDate.getDate() - startDate.getDay())
       const endDate = new Date(startDate)
       endDate.setDate(startDate.getDate() + 7)
+      endDate.setHours(23, 59, 59, 999) // Set time to 23:59:59
 
       const response = await fetch(
         `/api/schedules?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&limit=100`
