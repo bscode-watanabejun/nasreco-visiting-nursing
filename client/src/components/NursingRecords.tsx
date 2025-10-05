@@ -297,27 +297,27 @@ export function NursingRecords() {
     enabled: !!scheduleIdFromUrl,
   })
 
-  // Fetch today's schedules for the selected patient
+  // Fetch schedules for the selected patient on the visit date
   const { data: patientSchedulesData } = useQuery({
-    queryKey: ["patientSchedules", formData.patientId],
+    queryKey: ["patientSchedules", formData.patientId, formData.visitDate],
     queryFn: async () => {
-      if (!formData.patientId) return { data: [] }
+      if (!formData.patientId || !formData.visitDate) return { data: [] }
 
-      // Get today's date range in ISO format (will be interpreted as UTC by server)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const tomorrow = new Date(today)
-      tomorrow.setDate(tomorrow.getDate() + 1)
+      // Get the visit date range in ISO format
+      const visitDate = new Date(formData.visitDate)
+      visitDate.setHours(0, 0, 0, 0)
+      const nextDay = new Date(visitDate)
+      nextDay.setDate(nextDay.getDate() + 1)
 
-      const startOfDay = today.toISOString()
-      const endOfDay = tomorrow.toISOString()
+      const startOfDay = visitDate.toISOString()
+      const endOfDay = nextDay.toISOString()
 
       const url = `/api/schedules?patientId=${formData.patientId}&startDate=${startOfDay}&endDate=${endOfDay}`
       const response = await fetch(url)
       if (!response.ok) return { data: [] }
       return response.json()
     },
-    enabled: !!formData.patientId && (isCreating || isEditing), // Fetch if patient is selected and creating OR editing
+    enabled: !!formData.patientId && !!formData.visitDate && (isCreating || isEditing), // Fetch if patient and visit date are selected
   })
 
   const patientSchedules = (patientSchedulesData?.data || []) as any[]
@@ -340,6 +340,30 @@ export function NursingRecords() {
     : patientSchedules
 
   const selectedSchedule = allSchedules.find((s: any) => s.id === formData.selectedScheduleId)
+
+  // Reset schedule selection when visit date or patient changes
+  useEffect(() => {
+    if ((isCreating || isEditing) && formData.selectedScheduleId) {
+      // Check if the currently selected schedule is still in the list
+      const isStillValid = allSchedules.some((s: any) => s.id === formData.selectedScheduleId)
+      if (!isStillValid) {
+        setFormData(prev => ({
+          ...prev,
+          selectedScheduleId: ''
+        }))
+      }
+    }
+  }, [formData.visitDate, formData.patientId])
+
+  // Auto-select schedule when only one is available
+  useEffect(() => {
+    if (allSchedules.length === 1 && !formData.selectedScheduleId && (isCreating || isEditing)) {
+      setFormData(prev => ({
+        ...prev,
+        selectedScheduleId: allSchedules[0].id
+      }))
+    }
+  }, [allSchedules, formData.selectedScheduleId, isCreating, isEditing])
 
   // Fetch attachments for selected record
   const { data: attachments = [], isLoading: isLoadingAttachments } = useQuery<NursingRecordAttachment[]>({

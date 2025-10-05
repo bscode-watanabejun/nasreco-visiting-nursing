@@ -24,7 +24,8 @@ import {
   XCircle,
   Repeat,
   AlertCircle,
-  FileText
+  FileText,
+  Search
 } from "lucide-react"
 import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
 import { VisitRecordDialog } from "./VisitRecordDialog"
@@ -65,6 +66,7 @@ export function ScheduleManagement() {
   const queryClient = useQueryClient()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week')
+  const [searchTerm, setSearchTerm] = useState('')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isRecurringDialogOpen, setIsRecurringDialogOpen] = useState(false)
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
@@ -338,7 +340,16 @@ export function ScheduleManagement() {
             登録されている訪問予定
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="患者名または看護師名で検索..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 placeholder:text-gray-400"
+            />
+          </div>
           {isLoading ? (
             <div className="text-center py-8">
               <p className="text-muted-foreground">読み込み中...</p>
@@ -352,6 +363,15 @@ export function ScheduleManagement() {
                     .filter(s => {
                       const scheduleDate = new Date(s.scheduledDate)
                       return scheduleDate.toDateString() === date.toDateString()
+                    })
+                    .filter(s => {
+                      const patient = patients.find(p => p.id === s.patientId)
+                      const nurse = users.find(u => u.id === s.nurseId)
+                      const patientName = patient ? getFullName(patient) : ''
+                      const nurseName = nurse?.fullName || s.demoStaffName || ''
+                      const matchesSearch = patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                          nurseName.toLowerCase().includes(searchTerm.toLowerCase())
+                      return matchesSearch
                     })
                     .sort((a, b) => {
                       // Sort by start time (earliest first)
@@ -379,7 +399,7 @@ export function ScheduleManagement() {
                             return (
                               <div key={schedule.id} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded">
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <Clock className="h-3 w-3 flex-shrink-0" />
                                     <span className="text-sm font-medium">
                                       {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
@@ -389,6 +409,18 @@ export function ScheduleManagement() {
                                         <Repeat className="h-3 w-3 mr-1" />
                                         繰り返し
                                       </Badge>
+                                    )}
+                                    {schedule.status === 'completed' && (
+                                      <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
+                                    )}
+                                    {schedule.status === 'in_progress' && (
+                                      <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
+                                    )}
+                                    {schedule.status === 'scheduled' && (
+                                      <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
+                                    )}
+                                    {schedule.status === 'cancelled' && (
+                                      <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
                                     )}
                                   </div>
                                   <div className="text-sm text-muted-foreground truncate">
@@ -442,6 +474,15 @@ export function ScheduleManagement() {
                     .filter(s => {
                       const scheduleDate = new Date(s.scheduledDate)
                       return scheduleDate.toDateString() === currentDate.toDateString()
+                    })
+                    .filter(s => {
+                      const patient = patients.find(p => p.id === s.patientId)
+                      const nurse = users.find(u => u.id === s.nurseId)
+                      const patientName = patient ? getFullName(patient) : ''
+                      const nurseName = nurse?.fullName || s.demoStaffName || ''
+                      const matchesSearch = patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                          nurseName.toLowerCase().includes(searchTerm.toLowerCase())
+                      return matchesSearch
                     })
                     .sort((a, b) => {
                       // Sort by start time (earliest first)
