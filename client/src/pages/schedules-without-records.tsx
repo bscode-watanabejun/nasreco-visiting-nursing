@@ -71,11 +71,11 @@ export default function SchedulesWithoutRecords() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="w-full max-w-full py-4 sm:py-6 px-3 sm:px-4 space-y-4 sm:space-y-6 overflow-x-hidden">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">記録未作成スケジュール</h1>
-        <p className="text-muted-foreground">完了したスケジュールで訪問記録が未作成のもの</p>
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">記録未作成スケジュール</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">完了したスケジュールで訪問記録が未作成のもの</p>
       </div>
 
       {/* Alert */}
@@ -118,11 +118,11 @@ export default function SchedulesWithoutRecords() {
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* List/Table */}
       <Card>
         <CardHeader>
-          <CardTitle>記録未作成スケジュール一覧</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-base sm:text-lg">記録未作成スケジュール一覧</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
             {startDate && endDate && `${startDate} ～ ${endDate} の期間`}
           </CardDescription>
         </CardHeader>
@@ -134,46 +134,90 @@ export default function SchedulesWithoutRecords() {
               記録未作成のスケジュールはありません
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>訪問日時</TableHead>
-                  <TableHead>利用者</TableHead>
-                  <TableHead>担当看護師</TableHead>
-                  <TableHead>目的</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden sm:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>訪問日時</TableHead>
+                      <TableHead>利用者</TableHead>
+                      <TableHead>担当看護師</TableHead>
+                      <TableHead>目的</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {schedulesWithoutRecords.map((schedule) => (
+                      <TableRow key={schedule.id}>
+                        <TableCell>
+                          <div className="font-medium">
+                            {new Date(schedule.scheduledDate).toLocaleDateString('ja-JP')}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {formatDateTime(schedule.scheduledStartTime)} ～ {formatDateTime(schedule.scheduledEndTime)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {schedule.patient.lastName} {schedule.patient.firstName}
+                        </TableCell>
+                        <TableCell>{schedule.nurse.fullName}</TableCell>
+                        <TableCell>{schedule.purpose}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleCreateRecord(schedule)}
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            記録作成
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="sm:hidden space-y-3">
                 {schedulesWithoutRecords.map((schedule) => (
-                  <TableRow key={schedule.id}>
-                    <TableCell>
-                      <div className="font-medium">
+                  <div key={schedule.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="space-y-1">
+                      <div className="font-medium text-sm">
                         {new Date(schedule.scheduledDate).toLocaleDateString('ja-JP')}
                       </div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-xs text-muted-foreground">
                         {formatDateTime(schedule.scheduledStartTime)} ～ {formatDateTime(schedule.scheduledEndTime)}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {schedule.patient.lastName} {schedule.patient.firstName}
-                    </TableCell>
-                    <TableCell>{schedule.nurse.fullName}</TableCell>
-                    <TableCell>{schedule.purpose}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => handleCreateRecord(schedule)}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        記録作成
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                    <div className="space-y-0.5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground min-w-[60px]">利用者:</span>
+                        <span className="font-medium">{schedule.patient.lastName} {schedule.patient.firstName}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground min-w-[60px]">担当:</span>
+                        <span className="truncate">{schedule.nurse.fullName}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-xs text-muted-foreground min-w-[60px]">目的:</span>
+                        <span className="text-xs line-clamp-2">{schedule.purpose}</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleCreateRecord(schedule)}
+                      className="w-full text-xs h-8"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      記録作成
+                    </Button>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -219,9 +219,9 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <div className="space-y-2">
-              <Label htmlFor="orderDate">指示日</Label>
+              <Label htmlFor="orderDate" className="text-sm">指示日</Label>
               <Input
                 id="orderDate"
                 type="date"
@@ -230,7 +230,7 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="startDate">指示期間開始日</Label>
+              <Label htmlFor="startDate" className="text-sm">指示期間開始日</Label>
               <Input
                 id="startDate"
                 type="date"
@@ -239,7 +239,7 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="endDate">
+              <Label htmlFor="endDate" className="text-sm">
                 指示期間終了日 <span className="text-red-500">*</span>
               </Label>
               <Input

@@ -244,38 +244,38 @@ export function PatientManagement() {
               />
             </div>
             <div className="grid grid-cols-2 sm:flex gap-2">
-              <Button 
+              <Button
                 variant={statusFilter === 'all' ? 'default' : 'outline'}
-                size="default"
+                size="sm"
                 onClick={() => setStatusFilter('all')}
-                className="text-sm"
+                className="text-xs sm:text-sm h-8 sm:h-9"
                 data-testid="filter-all"
               >
                 全て
               </Button>
-              <Button 
+              <Button
                 variant={statusFilter === 'active' ? 'default' : 'outline'}
-                size="default"
+                size="sm"
                 onClick={() => setStatusFilter('active')}
-                className="text-sm"
+                className="text-xs sm:text-sm h-8 sm:h-9"
                 data-testid="filter-active"
               >
                 アクティブ
               </Button>
-              <Button 
+              <Button
                 variant={statusFilter === 'critical' ? 'default' : 'outline'}
-                size="default"
+                size="sm"
                 onClick={() => setStatusFilter('critical')}
-                className="text-sm"
+                className="text-xs sm:text-sm h-8 sm:h-9"
                 data-testid="filter-critical"
               >
                 重要
               </Button>
-              <Button 
+              <Button
                 variant={statusFilter === 'inactive' ? 'default' : 'outline'}
-                size="default"
+                size="sm"
                 onClick={() => setStatusFilter('inactive')}
-                className="text-sm"
+                className="text-xs sm:text-sm h-8 sm:h-9"
                 data-testid="filter-inactive"
               >
                 非アクティブ
@@ -324,20 +324,20 @@ export function PatientManagement() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
-                      size="default"
+                      size="sm"
                       variant="default"
                       onClick={() => handleViewDetail(patient)}
-                      className="text-xs px-2"
+                      className="text-xs h-8"
                       data-testid={`button-detail-${patient.id}`}
                     >
                       <Eye className="mr-1 h-3 w-3" />
                       詳細
                     </Button>
                     <Button
-                      size="default"
+                      size="sm"
                       variant="outline"
                       onClick={() => handleEditPatient(patient)}
-                      className="text-xs px-2"
+                      className="text-xs h-8"
                       data-testid={`button-edit-${patient.id}`}
                     >
                       <Edit className="mr-1 h-3 w-3" />

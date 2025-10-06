@@ -229,9 +229,9 @@ function MainLayout() {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
+      <div className="flex h-screen w-full overflow-x-hidden">
         <AppSidebar />
-        <div className="flex flex-col flex-1">
+        <div className="flex flex-col flex-1 min-w-0 overflow-x-hidden">
           <header className="border-b bg-background">
             <div className="flex items-center">
               <SidebarTrigger data-testid="button-sidebar-toggle" className="ml-2" />
@@ -244,7 +244,7 @@ function MainLayout() {
               />
             </div>
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden">
             <Switch>
               {/* Headquarters-specific routes */}
               {shouldShowHeadquartersFeatures ? (

@@ -594,13 +594,13 @@ export function UserManagement() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 pt-2 border-t sm:border-0 sm:pt-0">
+                  <div className="grid grid-cols-2 sm:flex gap-2 pt-2 border-t sm:border-0 sm:pt-0">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleEditUser(user)}
                       data-testid={`button-edit-${user.id}`}
-                      className="flex-1 sm:flex-initial text-xs md:text-sm"
+                      className="text-xs sm:text-sm h-8 sm:h-9"
                     >
                       <Edit className="mr-1 h-3 w-3" />
                       <span>編集</span>
@@ -611,12 +611,11 @@ export function UserManagement() {
                       onClick={() => handleResetPassword(user)}
                       disabled={!canManageUser(user) || currentUser?.id === user.id}
                       data-testid={`button-reset-password-${user.id}`}
-                      className="flex-1 sm:flex-initial text-xs md:text-sm"
+                      className="text-xs sm:text-sm h-8 sm:h-9"
                     >
                       <Settings className="mr-1 h-3 w-3" />
                       <span className="hidden sm:inline">パスワード</span>
                       <span className="sm:hidden">PW</span>
-                      <span className="hidden lg:inline">リセット</span>
                     </Button>
                     {user.status === 'active' ? (
                       <Button
@@ -625,7 +624,7 @@ export function UserManagement() {
                         onClick={() => handleDeactivateUser(user)}
                         disabled={!canManageUser(user) || currentUser?.id === user.id}
                         data-testid={`button-deactivate-${user.id}`}
-                        className="flex-1 sm:flex-initial text-xs md:text-sm"
+                        className="col-span-2 sm:col-span-1 text-xs sm:text-sm h-8 sm:h-9"
                       >
                         <UserX className="mr-1 h-3 w-3" />
                         <span>無効化</span>
@@ -637,7 +636,7 @@ export function UserManagement() {
                         onClick={() => handleActivateUser(user)}
                         disabled={!canManageUser(user)}
                         data-testid={`button-activate-${user.id}`}
-                        className="flex-1 sm:flex-initial text-xs md:text-sm"
+                        className="col-span-2 sm:col-span-1 text-xs sm:text-sm h-8 sm:h-9"
                       >
                         <UserCheck className="mr-1 h-3 w-3" />
                         <span>有効化</span>

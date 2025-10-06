@@ -242,7 +242,7 @@ export function Dashboard() {
   const totalVisits = visits.length
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="w-full max-w-full space-y-4 p-4 overflow-x-hidden">
       {/* Header */}
       <div className="space-y-3 sm:space-y-0">
         <div className="sm:flex sm:items-center sm:justify-between sm:gap-4">
@@ -308,8 +308,8 @@ export function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-        <Card className="p-4 sm:p-auto">
+      <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-4">
+        <Card className="p-3 sm:p-auto">
           <div className="flex flex-col sm:block">
             <div className="flex items-center justify-between mb-2 sm:hidden">
               <span className="text-xs text-muted-foreground">本日の訪問予定</span>
@@ -329,7 +329,7 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-auto">
+        <Card className="p-3 sm:p-auto">
           <div className="flex flex-col sm:block">
             <div className="flex items-center justify-between mb-2 sm:hidden">
               <span className="text-xs text-muted-foreground">担当患者数</span>
@@ -340,19 +340,19 @@ export function Dashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="sm:pt-0">
-              <div className="text-2xl font-bold">
+              <div className="text-xl sm:text-2xl font-bold">
                 <span className="sm:hidden">12名</span>
                 <span className="hidden sm:inline">28名</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                <span className="sm:hidden">先月比 +2名</span>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
+                <span className="sm:hidden">+2名</span>
                 <span className="hidden sm:inline">先月比 +3名</span>
               </p>
             </CardContent>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-auto">
+        <Card className="p-3 sm:p-auto">
           <div className="flex flex-col sm:block">
             <div className="flex items-center justify-between mb-2 sm:hidden">
               <span className="text-xs text-muted-foreground">未完了の記録</span>
@@ -363,16 +363,16 @@ export function Dashboard() {
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="sm:pt-0">
-              <div className="text-2xl font-bold">{pendingRecordsCount}件</div>
-              <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                <span className="sm:hidden">過去7日間</span>
+              <div className="text-xl sm:text-2xl font-bold">{pendingRecordsCount}件</div>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
+                <span className="sm:hidden">7日間</span>
                 <span className="hidden sm:inline">過去7日間の記録未作成</span>
               </p>
             </CardContent>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-auto">
+        <Card className="p-3 sm:p-auto">
           <div className="flex flex-col sm:block">
             <div className="flex items-center justify-between mb-2 sm:hidden">
               <span className="text-xs text-muted-foreground">要注意アラート</span>
@@ -383,13 +383,13 @@ export function Dashboard() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent className="sm:pt-0">
-              <div className="text-2xl font-bold text-orange-500 sm:text-destructive">
+              <div className="text-xl sm:text-2xl font-bold text-orange-500 sm:text-destructive">
                 {(pendingRecordsCount + expiredContracts.length + (expiringDoctorOrders?.length || 0) + (expiringInsuranceCards?.length || 0))}件
               </div>
-              <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                記録未作成: {pendingRecordsCount}件 / 契約期限切れ: {expiredContracts.length}件
-                {(expiringDoctorOrders?.length || 0) > 0 && <span> / 指示書期限: {expiringDoctorOrders?.length}件</span>}
-                {(expiringInsuranceCards?.length || 0) > 0 && <span> / 保険証期限: {expiringInsuranceCards?.length}件</span>}
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0 line-clamp-2 sm:line-clamp-none">
+                記録: {pendingRecordsCount} / 契約: {expiredContracts.length}
+                {(expiringDoctorOrders?.length || 0) > 0 && <span> / 指示書: {expiringDoctorOrders?.length}</span>}
+                {(expiringInsuranceCards?.length || 0) > 0 && <span className="hidden sm:inline"> / 保険証: {expiringInsuranceCards?.length}</span>}
               </p>
             </CardContent>
           </div>
@@ -399,14 +399,14 @@ export function Dashboard() {
       {/* Expiring Doctor Orders Alert */}
       {(expiringDoctorOrders?.length || 0) > 0 && (
         <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="text-red-900 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              訪問看護指示書有効期限アラート
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-sm sm:text-base text-red-900 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <span className="line-clamp-1">訪問看護指示書有効期限アラート</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-red-800 mb-3">
+          <CardContent className="space-y-3">
+            <p className="text-xs sm:text-sm text-red-800">
               30日以内に有効期限が切れる訪問看護指示書があります。医師に更新依頼をお願いします。
             </p>
             <div className="space-y-2">
@@ -420,20 +420,20 @@ export function Dashboard() {
                 return (
                   <div
                     key={order.id}
-                    className="flex items-center justify-between p-2 bg-white rounded border border-red-200 hover:bg-red-50 cursor-pointer transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 sm:p-3 bg-white rounded border border-red-200 hover:bg-red-50 cursor-pointer transition-colors"
                     onClick={() => setLocation(`/patients/${order.patientId}`)}
                   >
-                    <div>
-                      <p className="font-medium text-sm">利用者: {patientName}</p>
-                      <p className="text-xs text-muted-foreground">
+                    <div className="min-w-0">
+                      <p className="font-medium text-xs sm:text-sm truncate">利用者: {patientName}</p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
                         医師: {order.medicalInstitution?.doctorName || '不明'}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-red-700'}`}>
+                    <div className="text-left sm:text-right flex-shrink-0">
+                      <p className={`text-xs sm:text-sm font-medium ${isExpired ? 'text-red-600' : 'text-red-700'}`}>
                         {isExpired ? '期限切れ' : `残り${daysUntilExpiry}日`}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">
                         {endDate.toLocaleDateString('ja-JP')}
                       </p>
                     </div>
@@ -442,7 +442,7 @@ export function Dashboard() {
               })}
             </div>
             {(expiringDoctorOrders?.length || 0) > 5 && (
-              <p className="text-xs text-red-700 mt-2">
+              <p className="text-[10px] sm:text-xs text-red-700">
                 他 {(expiringDoctorOrders?.length || 0) - 5}件の指示書が期限間近です
               </p>
             )}
@@ -453,14 +453,14 @@ export function Dashboard() {
       {/* Expiring Insurance Cards Alert */}
       {(expiringInsuranceCards?.length || 0) > 0 && (
         <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="text-orange-900 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              保険証有効期限アラート
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-sm sm:text-base text-orange-900 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <span className="line-clamp-1">保険証有効期限アラート</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-orange-800 mb-3">
+          <CardContent className="space-y-3">
+            <p className="text-xs sm:text-sm text-orange-800">
               30日以内に有効期限が切れる保険証があります。利用者・ご家族に更新確認をお願いします。
             </p>
             <div className="space-y-2">
@@ -475,20 +475,20 @@ export function Dashboard() {
                 return (
                   <div
                     key={card.id}
-                    className="flex items-center justify-between p-2 bg-white rounded border border-orange-200 hover:bg-orange-50 cursor-pointer transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 sm:p-3 bg-white rounded border border-orange-200 hover:bg-orange-50 cursor-pointer transition-colors"
                     onClick={() => setLocation(`/patients/${card.patientId}`)}
                   >
-                    <div>
-                      <p className="font-medium text-sm">利用者: {patientName}</p>
-                      <p className="text-xs text-muted-foreground">
+                    <div className="min-w-0">
+                      <p className="font-medium text-xs sm:text-sm truncate">利用者: {patientName}</p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
                         {cardTypeName} (保険者番号: {card.insurerNumber})
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-orange-700'}`}>
+                    <div className="text-left sm:text-right flex-shrink-0">
+                      <p className={`text-xs sm:text-sm font-medium ${isExpired ? 'text-red-600' : 'text-orange-700'}`}>
                         {isExpired ? '期限切れ' : `残り${daysUntilExpiry}日`}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">
                         {validUntil.toLocaleDateString('ja-JP')}
                       </p>
                     </div>
@@ -497,7 +497,7 @@ export function Dashboard() {
               })}
             </div>
             {(expiringInsuranceCards?.length || 0) > 5 && (
-              <p className="text-xs text-orange-700 mt-2">
+              <p className="text-[10px] sm:text-xs text-orange-700">
                 他 {(expiringInsuranceCards?.length || 0) - 5}件の保険証が期限間近です
               </p>
             )}
@@ -508,14 +508,14 @@ export function Dashboard() {
       {/* Expiring Contracts Alert */}
       {expiringContracts.length > 0 && (
         <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader>
-            <CardTitle className="text-yellow-900 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              契約書有効期限アラート
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-sm sm:text-base text-yellow-900 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <span className="line-clamp-1">契約書有効期限アラート</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-yellow-800 mb-3">
+          <CardContent className="space-y-3">
+            <p className="text-xs sm:text-sm text-yellow-800">
               30日以内に有効期限が切れる契約書があります。更新手続きをご確認ください。
             </p>
             <div className="space-y-2">
@@ -529,18 +529,18 @@ export function Dashboard() {
                 return (
                   <div
                     key={contract.id}
-                    className="flex items-center justify-between p-2 bg-white rounded border border-yellow-200 hover:bg-yellow-50 cursor-pointer transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 sm:p-3 bg-white rounded border border-yellow-200 hover:bg-yellow-50 cursor-pointer transition-colors"
                     onClick={() => setLocation(`/contracts?patientId=${contract.patientId}`)}
                   >
-                    <div>
-                      <p className="font-medium text-sm">{contract.title}</p>
-                      <p className="text-xs text-muted-foreground">利用者: {patientName}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-xs sm:text-sm truncate">{contract.title}</p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground truncate">利用者: {patientName}</p>
                     </div>
-                    <div className="text-right">
-                      <p className={`text-sm font-medium ${isExpired ? 'text-red-600' : 'text-yellow-700'}`}>
+                    <div className="text-left sm:text-right flex-shrink-0">
+                      <p className={`text-xs sm:text-sm font-medium ${isExpired ? 'text-red-600' : 'text-yellow-700'}`}>
                         {isExpired ? '期限切れ' : `残り${daysUntilExpiry}日`}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground">
                         {endDate.toLocaleDateString('ja-JP')}
                       </p>
                     </div>
@@ -549,7 +549,7 @@ export function Dashboard() {
               })}
             </div>
             {expiringContracts.length > 5 && (
-              <p className="text-xs text-yellow-700 mt-2">
+              <p className="text-[10px] sm:text-xs text-yellow-700">
                 他 {expiringContracts.length - 5}件の契約書が期限間近です
               </p>
             )}

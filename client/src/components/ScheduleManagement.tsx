@@ -313,7 +313,7 @@ export function ScheduleManagement() {
   const weekDates = viewMode === 'week' ? getWeekDates(currentDate) : [currentDate]
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+    <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
@@ -346,36 +346,39 @@ export function ScheduleManagement() {
 
       {/* View Controls */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handlePrevious}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleToday}>
-                今日
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleNext}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+        <CardContent className="pt-4 sm:pt-6">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            {/* Mobile: Stacked Layout */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              <div className="flex items-center justify-between sm:justify-start gap-2">
+                <Button variant="outline" size="sm" onClick={handlePrevious} className="h-8 sm:h-9">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleToday} className="h-8 sm:h-9 text-xs sm:text-sm">
+                  今日
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleNext} className="h-8 sm:h-9">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
 
-            <div className="text-lg font-semibold">
-              {viewMode === 'week'
-                ? `${formatDate(weekDates[0])} - ${formatDate(weekDates[6])}`
-                : viewMode === 'month'
-                ? currentDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' })
-                : formatDate(currentDate)
-              }
-            </div>
+              <div className="text-sm sm:text-lg font-semibold text-center sm:text-left">
+                {viewMode === 'week'
+                  ? `${formatDate(weekDates[0])} - ${formatDate(weekDates[6])}`
+                  : viewMode === 'month'
+                  ? currentDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' })
+                  : formatDate(currentDate)
+                }
+              </div>
 
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'week' | 'day' | 'month')}>
-              <TabsList>
-                <TabsTrigger value="day">日表示</TabsTrigger>
-                <TabsTrigger value="week">週表示</TabsTrigger>
-                <TabsTrigger value="month">月表示</TabsTrigger>
-              </TabsList>
-            </Tabs>
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'week' | 'day' | 'month')} className="w-full sm:w-auto">
+                <TabsList className="grid grid-cols-3 w-full sm:w-auto">
+                  <TabsTrigger value="day" className="text-xs sm:text-sm">日</TabsTrigger>
+                  <TabsTrigger value="week" className="text-xs sm:text-sm">週</TabsTrigger>
+                  <TabsTrigger value="month" className="text-xs sm:text-sm">月</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -643,13 +646,13 @@ export function ScheduleManagement() {
                     })
 
                   return (
-                    <div key={idx} className="border rounded-lg p-4">
+                    <div key={idx} className="border rounded-lg p-3 sm:p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold">
+                        <h3 className="font-semibold text-sm sm:text-base">
                           {date.toLocaleDateString('ja-JP', { weekday: 'short', month: 'short', day: 'numeric' })}
                         </h3>
-                        <span className="text-sm text-muted-foreground">
-                          {daySchedules.length}件の予定
+                        <span className="text-xs sm:text-sm text-muted-foreground">
+                          {daySchedules.length}件
                         </span>
                       </div>
                       {daySchedules.length === 0 ? (
@@ -661,67 +664,120 @@ export function ScheduleManagement() {
                             const nurse = users.find(u => u.id === schedule.nurseId)
 
                             return (
-                              <div key={schedule.id} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <Clock className="h-3 w-3 flex-shrink-0" />
-                                    <span className="text-sm font-medium">
-                                      {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
-                                    </span>
-                                    {schedule.isRecurring && schedule.parentScheduleId && (
-                                      <Badge variant="outline" className="text-xs">
-                                        <Repeat className="h-3 w-3 mr-1" />
-                                        繰り返し
-                                      </Badge>
-                                    )}
-                                    {schedule.status === 'completed' && (
-                                      <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
-                                    )}
-                                    {schedule.status === 'in_progress' && (
-                                      <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
-                                    )}
-                                    {schedule.status === 'scheduled' && (
-                                      <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
-                                    )}
-                                    {schedule.status === 'cancelled' && (
-                                      <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
-                                    )}
+                              <div key={schedule.id} className="border rounded p-2 bg-white sm:bg-gray-50">
+                                {/* Mobile Layout */}
+                                <div className="sm:hidden space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                      <div className="flex items-center gap-1 text-xs">
+                                        <Clock className="h-3 w-3 flex-shrink-0" />
+                                        <span className="font-medium">
+                                          {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
+                                        </span>
+                                        {schedule.status === 'completed' && (
+                                          <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px]">完了</span>
+                                        )}
+                                        {schedule.status === 'in_progress' && (
+                                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px]">実施中</span>
+                                        )}
+                                        {schedule.status === 'scheduled' && (
+                                          <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px]">予定</span>
+                                        )}
+                                      </div>
+                                      <div className="text-sm font-medium truncate">
+                                        {patient ? getFullName(patient) : '患者不明'}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground truncate">
+                                        {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground line-clamp-1">{schedule.purpose}</div>
+                                    </div>
                                   </div>
-                                  <div className="text-sm text-muted-foreground truncate">
-                                    {patient ? getFullName(patient) : '患者不明'} / {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
+                                  <div className="grid grid-cols-2 gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      onClick={() => handleCreateRecord(schedule)}
+                                      className="text-xs h-8"
+                                    >
+                                      <FileText className="h-3 w-3 mr-1" />
+                                      記録
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setSelectedSchedule(schedule)}
+                                      className="text-xs h-8"
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      編集
+                                    </Button>
                                   </div>
-                                  <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                 </div>
-                                <div className="flex gap-1 flex-shrink-0">
-                                  <Button
-                                    size="sm"
-                                    variant="default"
-                                    onClick={() => handleCreateRecord(schedule)}
-                                    title="訪問記録を作成"
-                                  >
-                                    <FileText className="h-3 w-3" />
-                                  </Button>
-                                  {schedule.isRecurring && schedule.parentScheduleId && (
+
+                                {/* Desktop Layout */}
+                                <div className="hidden sm:flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <Clock className="h-3 w-3 flex-shrink-0" />
+                                      <span className="text-sm font-medium">
+                                        {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
+                                      </span>
+                                      {schedule.isRecurring && schedule.parentScheduleId && (
+                                        <Badge variant="outline" className="text-xs">
+                                          <Repeat className="h-3 w-3 mr-1" />
+                                          繰り返し
+                                        </Badge>
+                                      )}
+                                      {schedule.status === 'completed' && (
+                                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
+                                      )}
+                                      {schedule.status === 'in_progress' && (
+                                        <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
+                                      )}
+                                      {schedule.status === 'scheduled' && (
+                                        <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
+                                      )}
+                                      {schedule.status === 'cancelled' && (
+                                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
+                                      )}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground truncate">
+                                      {patient ? getFullName(patient) : '患者不明'} / {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
+                                  </div>
+                                  <div className="flex gap-1 flex-shrink-0">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      onClick={() => handleCreateRecord(schedule)}
+                                      title="訪問記録を作成"
+                                    >
+                                      <FileText className="h-3 w-3" />
+                                    </Button>
+                                    {schedule.isRecurring && schedule.parentScheduleId && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleDeleteRecurringSeries(schedule.parentScheduleId!)}
+                                        title="シリーズ全体を削除"
+                                      >
+                                        <Repeat className="h-3 w-3 mr-1" />
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                    <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={() => handleDeleteRecurringSeries(schedule.parentScheduleId!)}
-                                      title="シリーズ全体を削除"
+                                      onClick={() => handleDeleteSchedule(schedule)}
                                     >
-                                      <Repeat className="h-3 w-3 mr-1" />
                                       <Trash2 className="h-3 w-3" />
                                     </Button>
-                                  )}
-                                  <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
-                                    <Edit className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleDeleteSchedule(schedule)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
+                                  </div>
                                 </div>
                               </div>
                             )
