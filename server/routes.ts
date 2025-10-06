@@ -121,6 +121,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     fileFilter: fileFilter
   });
 
+  // Helper function to decode UTF-8 filename from multer
+  // Multer receives filename as latin1, but browsers send it as UTF-8
+  function decodeFilename(filename: string): string {
+    try {
+      // Convert latin1 bytes back to UTF-8 string
+      const buffer = Buffer.from(filename, 'latin1');
+      return buffer.toString('utf8');
+    } catch (error) {
+      console.error('Filename decoding error:', error);
+      return filename; // Fallback to original if decoding fails
+    }
+  }
+
+  // Multer setup for doctor orders and insurance cards
+  const documentStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.join(process.cwd(), 'uploads', 'documents');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+      const ext = path.extname(file.originalname);
+      cb(null, `${uniqueSuffix}${ext}`);
+    }
+  });
+
+  const documentUpload = multer({
+    storage: documentStorage,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('PDFまたは画像ファイル（JPEG、PNG）のみアップロード可能です'));
+      }
+    }
+  });
+
   // ========== Authentication Routes ==========
   
   // Login
@@ -2493,7 +2537,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create doctor order
-  app.post("/api/doctor-orders", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/doctor-orders", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const facilityId = req.session.facilityId;
 
@@ -2503,13 +2547,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = insertDoctorOrderSchema.parse(req.body);
 
-      const [order] = await db.insert(doctorOrders).values({
+      const orderData: any = {
         ...validatedData,
         facilityId
-      }).returning();
+      };
+
+      // Add file path and original filename if file was uploaded
+      if (req.file) {
+        orderData.filePath = `/uploads/documents/${req.file.filename}`;
+        orderData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
+      const [order] = await db.insert(doctorOrders).values(orderData).returning();
 
       res.status(201).json(order);
     } catch (error) {
+      // Clean up uploaded file if there was an error
+      if (req.file) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          console.error('Error deleting file:', unlinkError);
+        }
+      }
+
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: "入力データが正しくありません",
@@ -2522,18 +2583,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update doctor order
-  app.put("/api/doctor-orders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/doctor-orders/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
       const facilityId = req.session.facilityId;
 
       const validatedData = updateDoctorOrderSchema.parse(req.body);
 
+      const updateData: any = {
+        ...validatedData,
+        updatedAt: new Date()
+      };
+
+      // If a new file is uploaded, delete the old one first
+      if (req.file) {
+        // Get current order to find old file path
+        const [currentOrder] = await db.select()
+          .from(doctorOrders)
+          .where(and(
+            eq(doctorOrders.id, id),
+            eq(doctorOrders.facilityId, facilityId!)
+          ))
+          .limit(1);
+
+        // Delete old file if exists
+        if (currentOrder?.filePath) {
+          const oldFilePath = path.join(process.cwd(), currentOrder.filePath);
+          try {
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
+          } catch (fileError) {
+            console.error('Error deleting old file:', fileError);
+          }
+        }
+
+        updateData.filePath = `/uploads/documents/${req.file.filename}`;
+        updateData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
       const [order] = await db.update(doctorOrders)
-        .set({
-          ...validatedData,
-          updatedAt: new Date()
-        })
+        .set(updateData)
         .where(and(
           eq(doctorOrders.id, id),
           eq(doctorOrders.facilityId, facilityId!)
@@ -2541,6 +2631,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .returning();
 
       if (!order) {
+        // Clean up uploaded file if order not found
+        if (req.file) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (unlinkError) {
+            console.error('Error deleting file:', unlinkError);
+          }
+        }
         return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
       }
 
@@ -2578,6 +2676,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "訪問看護指示書を削除しました" });
     } catch (error) {
       console.error("Delete doctor order error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Download doctor order attachment with original filename
+  app.get("/api/doctor-orders/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [order] = await db.select()
+        .from(doctorOrders)
+        .where(and(
+          eq(doctorOrders.id, id),
+          eq(doctorOrders.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!order) {
+        return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
+      }
+
+      if (!order.filePath) {
+        return res.status(404).json({ error: "添付ファイルがありません" });
+      }
+
+      const filePath = path.join(process.cwd(), order.filePath);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      // Set Content-Disposition header with RFC 5987 encoding for international filenames
+      const filename = order.originalFileName || order.filePath.split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Download doctor order attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete doctor order attachment
+  app.delete("/api/doctor-orders/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Get current order to find file path
+      const [currentOrder] = await db.select()
+        .from(doctorOrders)
+        .where(and(
+          eq(doctorOrders.id, id),
+          eq(doctorOrders.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!currentOrder) {
+        return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
+      }
+
+      // Delete physical file if exists
+      if (currentOrder.filePath) {
+        const filePath = path.join(process.cwd(), currentOrder.filePath);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (fileError) {
+          console.error('Error deleting file:', fileError);
+        }
+      }
+
+      // Update database to remove file path
+      const [order] = await db.update(doctorOrders)
+        .set({ filePath: null, updatedAt: new Date() })
+        .where(and(
+          eq(doctorOrders.id, id),
+          eq(doctorOrders.facilityId, facilityId!)
+        ))
+        .returning();
+
+      res.json({ message: "添付ファイルを削除しました", order });
+    } catch (error) {
+      console.error("Delete doctor order attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
@@ -2687,7 +2870,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create insurance card
-  app.post("/api/insurance-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/insurance-cards", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const facilityId = req.session.facilityId;
 
@@ -2697,13 +2880,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedData = insertInsuranceCardSchema.parse(req.body);
 
-      const [card] = await db.insert(insuranceCards).values({
+      const cardData: any = {
         ...validatedData,
         facilityId
-      }).returning();
+      };
+
+      // Add file path and original filename if file was uploaded
+      if (req.file) {
+        cardData.filePath = `/uploads/documents/${req.file.filename}`;
+        cardData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
+      const [card] = await db.insert(insuranceCards).values(cardData).returning();
 
       res.status(201).json(card);
     } catch (error) {
+      // Clean up uploaded file if there was an error
+      if (req.file) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          console.error('Error deleting file:', unlinkError);
+        }
+      }
+
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: "入力データが正しくありません",
@@ -2716,18 +2916,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update insurance card
-  app.put("/api/insurance-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/insurance-cards/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
       const facilityId = req.session.facilityId;
 
       const validatedData = updateInsuranceCardSchema.parse(req.body);
 
+      const updateData: any = {
+        ...validatedData,
+        updatedAt: new Date()
+      };
+
+      // If a new file is uploaded, delete the old one first
+      if (req.file) {
+        // Get current card to find old file path
+        const [currentCard] = await db.select()
+          .from(insuranceCards)
+          .where(and(
+            eq(insuranceCards.id, id),
+            eq(insuranceCards.facilityId, facilityId!)
+          ))
+          .limit(1);
+
+        // Delete old file if exists
+        if (currentCard?.filePath) {
+          const oldFilePath = path.join(process.cwd(), currentCard.filePath);
+          try {
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
+          } catch (fileError) {
+            console.error('Error deleting old file:', fileError);
+          }
+        }
+
+        updateData.filePath = `/uploads/documents/${req.file.filename}`;
+        updateData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
       const [card] = await db.update(insuranceCards)
-        .set({
-          ...validatedData,
-          updatedAt: new Date()
-        })
+        .set(updateData)
         .where(and(
           eq(insuranceCards.id, id),
           eq(insuranceCards.facilityId, facilityId!)
@@ -2735,6 +2964,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .returning();
 
       if (!card) {
+        // Clean up uploaded file if card not found
+        if (req.file) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (unlinkError) {
+            console.error('Error deleting file:', unlinkError);
+          }
+        }
         return res.status(404).json({ error: "保険証情報が見つかりません" });
       }
 
@@ -2772,6 +3009,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "保険証情報を削除しました" });
     } catch (error) {
       console.error("Delete insurance card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Download insurance card attachment with original filename
+  app.get("/api/insurance-cards/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Get insurance card with file
+      const [card] = await db.select()
+        .from(insuranceCards)
+        .where(and(
+          eq(insuranceCards.id, id),
+          eq(insuranceCards.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!card) {
+        return res.status(404).json({ error: "保険証情報が見つかりません" });
+      }
+
+      if (!card.filePath) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      const filePath = path.join(process.cwd(), card.filePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      // Set Content-Disposition header with RFC 5987 encoding for international filenames
+      const filename = card.originalFileName || card.filePath.split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Download insurance card attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete insurance card attachment
+  app.delete("/api/insurance-cards/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Get current card to find file path
+      const [currentCard] = await db.select()
+        .from(insuranceCards)
+        .where(and(
+          eq(insuranceCards.id, id),
+          eq(insuranceCards.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!currentCard) {
+        return res.status(404).json({ error: "保険証情報が見つかりません" });
+      }
+
+      // Delete physical file if exists
+      if (currentCard.filePath) {
+        const filePath = path.join(process.cwd(), currentCard.filePath);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (fileError) {
+          console.error('Error deleting file:', fileError);
+        }
+      }
+
+      // Update database to remove file path
+      const [card] = await db.update(insuranceCards)
+        .set({ filePath: null, updatedAt: new Date() })
+        .where(and(
+          eq(insuranceCards.id, id),
+          eq(insuranceCards.facilityId, facilityId!)
+        ))
+        .returning();
+
+      res.json({ message: "添付ファイルを削除しました", card });
+    } catch (error) {
+      console.error("Delete insurance card attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

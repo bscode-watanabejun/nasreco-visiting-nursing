@@ -312,6 +312,7 @@ export const doctorOrders = pgTable("doctor_orders", {
   orderContent: text("order_content").notNull(), // 指示内容
   weeklyVisitLimit: integer("weekly_visit_limit"), // 週の訪問回数上限
   filePath: text("file_path"), // PDF/画像ファイルパス
+  originalFileName: text("original_file_name"), // 元のファイル名
   notes: text("notes"), // 備考
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -332,6 +333,8 @@ export const insuranceCards = pgTable("insurance_cards", {
   validFrom: date("valid_from").notNull(), // 有効期間開始日
   validUntil: date("valid_until"), // 有効期限（nullの場合は無期限）
   certificationDate: date("certification_date"), // 認定日（介護保険のみ）
+  filePath: text("file_path"), // PDF/画像ファイルパス
+  originalFileName: text("original_file_name"), // 元のファイル名
   notes: text("notes"), // 備考
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),

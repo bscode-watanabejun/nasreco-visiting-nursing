@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams, useLocation } from "wouter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,9 @@ import {
   AlertCircle,
   CreditCard,
   Edit,
-  Trash2
+  Trash2,
+  ExternalLink,
+  Download
 } from "lucide-react"
 import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, Building, MedicalInstitution, CareManager } from "@shared/schema"
 import { DoctorOrderDialog } from "./DoctorOrderDialog"
@@ -52,6 +54,7 @@ type PeriodFilter = '1week' | '1month' | '3months' | '6months' | 'all'
 export function PatientDetail() {
   const { id } = useParams()
   const [, setLocation] = useLocation()
+  const queryClient = useQueryClient()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<string>("basic")
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('1month')
@@ -467,6 +470,62 @@ export function PatientDetail() {
                                     <p className="font-medium whitespace-pre-wrap">{order.notes}</p>
                                   </div>
                                 )}
+                                {order.filePath && (
+                                  <div className="md:col-span-2">
+                                    <p className="text-sm text-muted-foreground">添付ファイル</p>
+                                    <p className="text-sm font-medium mt-1">{order.originalFileName || order.filePath.split('/').pop()}</p>
+                                    <div className="flex gap-2 mt-1">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => window.open(order.filePath!, '_blank')}
+                                      >
+                                        <ExternalLink className="mr-2 h-4 w-4" />
+                                        プレビュー
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          window.location.href = `/api/doctor-orders/${order.id}/attachment/download`;
+                                        }}
+                                      >
+                                        <Download className="mr-2 h-4 w-4" />
+                                        ダウンロード
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={async () => {
+                                          if (!confirm('添付ファイルを削除してもよろしいですか？')) return
+
+                                          try {
+                                            const response = await fetch(`/api/doctor-orders/${order.id}/attachment`, {
+                                              method: 'DELETE'
+                                            })
+                                            if (!response.ok) throw new Error('削除に失敗しました')
+
+                                            toast({
+                                              title: "削除完了",
+                                              description: "添付ファイルを削除しました"
+                                            })
+
+                                            queryClient.invalidateQueries({ queryKey: ["doctor-orders", id] })
+                                          } catch (error) {
+                                            toast({
+                                              title: "エラー",
+                                              description: "削除中にエラーが発生しました",
+                                              variant: "destructive"
+                                            })
+                                          }
+                                        }}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        削除
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="flex gap-2">
@@ -624,6 +683,62 @@ export function PatientDetail() {
                                     {card.validUntil ? new Date(card.validUntil).toLocaleDateString('ja-JP') : '無期限'}
                                   </p>
                                 </div>
+                                {card.filePath && (
+                                  <div className="md:col-span-2">
+                                    <p className="text-sm text-muted-foreground">添付ファイル</p>
+                                    <p className="text-sm font-medium mt-1">{card.originalFileName || card.filePath.split('/').pop()}</p>
+                                    <div className="flex gap-2 mt-1">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => window.open(card.filePath!, '_blank')}
+                                      >
+                                        <ExternalLink className="mr-2 h-4 w-4" />
+                                        プレビュー
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          window.location.href = `/api/insurance-cards/${card.id}/attachment/download`;
+                                        }}
+                                      >
+                                        <Download className="mr-2 h-4 w-4" />
+                                        ダウンロード
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={async () => {
+                                          if (!confirm('添付ファイルを削除してもよろしいですか？')) return
+
+                                          try {
+                                            const response = await fetch(`/api/insurance-cards/${card.id}/attachment`, {
+                                              method: 'DELETE'
+                                            })
+                                            if (!response.ok) throw new Error('削除に失敗しました')
+
+                                            toast({
+                                              title: "削除完了",
+                                              description: "添付ファイルを削除しました"
+                                            })
+
+                                            queryClient.invalidateQueries({ queryKey: ["insurance-cards", id] })
+                                          } catch (error) {
+                                            toast({
+                                              title: "エラー",
+                                              description: "削除中にエラーが発生しました",
+                                              variant: "destructive"
+                                            })
+                                          }
+                                        }}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        削除
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="flex flex-col gap-2">

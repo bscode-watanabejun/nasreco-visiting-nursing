@@ -31,6 +31,7 @@ interface FormData {
   orderContent: string
   weeklyVisitLimit: string
   notes: string
+  file?: File | null
 }
 
 const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
@@ -107,26 +108,53 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
     setIsSaving(true)
 
     try {
-      const apiData = {
-        patientId,
-        medicalInstitutionId: formData.medicalInstitutionId,
-        orderDate: formData.orderDate,
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        diagnosis: formData.diagnosis,
-        orderContent: formData.orderContent,
-        ...(formData.weeklyVisitLimit && { weeklyVisitLimit: parseInt(formData.weeklyVisitLimit) }),
-        ...(formData.notes && { notes: formData.notes }),
-      }
-
       const url = order ? `/api/doctor-orders/${order.id}` : "/api/doctor-orders"
       const method = order ? "PUT" : "POST"
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiData),
-      })
+      let response: Response
+
+      // If file is attached, use FormData for multipart upload
+      if (formData.file) {
+        const multipartData = new FormData()
+        multipartData.append('patientId', patientId)
+        multipartData.append('medicalInstitutionId', formData.medicalInstitutionId)
+        multipartData.append('orderDate', formData.orderDate)
+        multipartData.append('startDate', formData.startDate)
+        multipartData.append('endDate', formData.endDate)
+        multipartData.append('diagnosis', formData.diagnosis)
+        multipartData.append('orderContent', formData.orderContent)
+        if (formData.weeklyVisitLimit) {
+          multipartData.append('weeklyVisitLimit', formData.weeklyVisitLimit)
+        }
+        if (formData.notes) {
+          multipartData.append('notes', formData.notes)
+        }
+        multipartData.append('file', formData.file)
+
+        response = await fetch(url, {
+          method,
+          body: multipartData,
+        })
+      } else {
+        // No file, send JSON
+        const apiData = {
+          patientId,
+          medicalInstitutionId: formData.medicalInstitutionId,
+          orderDate: formData.orderDate,
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+          diagnosis: formData.diagnosis,
+          orderContent: formData.orderContent,
+          ...(formData.weeklyVisitLimit && { weeklyVisitLimit: parseInt(formData.weeklyVisitLimit) }),
+          ...(formData.notes && { notes: formData.notes }),
+        }
+
+        response = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(apiData),
+        })
+      }
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown server error' }))
@@ -280,6 +308,33 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
               placeholder="特記事項があれば入力してください"
               rows={3}
             />
+          </div>
+
+          {/* File Upload */}
+          <div className="space-y-2">
+            <Label htmlFor="file">指示書PDFファイル</Label>
+            <Input
+              id="file"
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                setFormData(prev => ({ ...prev, file }))
+              }}
+            />
+            {formData.file && (
+              <p className="text-xs text-muted-foreground">
+                選択中: {formData.file.name} ({(formData.file.size / 1024).toFixed(1)} KB)
+              </p>
+            )}
+            {order?.filePath && !formData.file && (
+              <p className="text-xs text-green-600">
+                既存ファイル: {order.originalFileName || order.filePath.split('/').pop()}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              PDF形式または画像ファイル（JPEG、PNG）をアップロードできます
+            </p>
           </div>
 
           <DialogFooter>

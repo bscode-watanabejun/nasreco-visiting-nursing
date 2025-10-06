@@ -33,6 +33,7 @@ interface FormData {
   validUntil: string
   certificationDate: string
   notes: string
+  file?: File | null
 }
 
 const getInitialFormData = (card?: InsuranceCard | null): FormData => ({
@@ -101,28 +102,53 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
     setIsSaving(true)
 
     try {
-      const apiData: any = {
-        patientId,
-        cardType: formData.cardType,
-        insurerNumber: formData.insurerNumber,
-        insuredNumber: formData.insuredNumber,
-        validFrom: formData.validFrom,
-        ...(formData.insuredSymbol && { insuredSymbol: formData.insuredSymbol }),
-        ...(formData.insuredCardNumber && { insuredCardNumber: formData.insuredCardNumber }),
-        ...(formData.copaymentRate && { copaymentRate: formData.copaymentRate }),
-        ...(formData.validUntil && { validUntil: formData.validUntil }),
-        ...(formData.certificationDate && { certificationDate: formData.certificationDate }),
-        ...(formData.notes && { notes: formData.notes }),
-      }
-
       const url = card ? `/api/insurance-cards/${card.id}` : "/api/insurance-cards"
       const method = card ? "PUT" : "POST"
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiData),
-      })
+      let response: Response
+
+      // If file is attached, use FormData for multipart upload
+      if (formData.file) {
+        const multipartData = new FormData()
+        multipartData.append('patientId', patientId)
+        multipartData.append('cardType', formData.cardType)
+        multipartData.append('insurerNumber', formData.insurerNumber)
+        multipartData.append('insuredNumber', formData.insuredNumber)
+        multipartData.append('validFrom', formData.validFrom)
+        if (formData.insuredSymbol) multipartData.append('insuredSymbol', formData.insuredSymbol)
+        if (formData.insuredCardNumber) multipartData.append('insuredCardNumber', formData.insuredCardNumber)
+        if (formData.copaymentRate) multipartData.append('copaymentRate', formData.copaymentRate)
+        if (formData.validUntil) multipartData.append('validUntil', formData.validUntil)
+        if (formData.certificationDate) multipartData.append('certificationDate', formData.certificationDate)
+        if (formData.notes) multipartData.append('notes', formData.notes)
+        multipartData.append('file', formData.file)
+
+        response = await fetch(url, {
+          method,
+          body: multipartData,
+        })
+      } else {
+        // No file, send JSON
+        const apiData: any = {
+          patientId,
+          cardType: formData.cardType,
+          insurerNumber: formData.insurerNumber,
+          insuredNumber: formData.insuredNumber,
+          validFrom: formData.validFrom,
+          ...(formData.insuredSymbol && { insuredSymbol: formData.insuredSymbol }),
+          ...(formData.insuredCardNumber && { insuredCardNumber: formData.insuredCardNumber }),
+          ...(formData.copaymentRate && { copaymentRate: formData.copaymentRate }),
+          ...(formData.validUntil && { validUntil: formData.validUntil }),
+          ...(formData.certificationDate && { certificationDate: formData.certificationDate }),
+          ...(formData.notes && { notes: formData.notes }),
+        }
+
+        response = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(apiData),
+        })
+      }
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown server error' }))
@@ -303,6 +329,33 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
               placeholder="特記事項があれば入力してください"
               rows={3}
             />
+          </div>
+
+          {/* File Upload */}
+          <div className="space-y-2">
+            <Label htmlFor="file">保険証PDFファイル</Label>
+            <Input
+              id="file"
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                setFormData(prev => ({ ...prev, file }))
+              }}
+            />
+            {formData.file && (
+              <p className="text-xs text-muted-foreground">
+                選択中: {formData.file.name} ({(formData.file.size / 1024).toFixed(1)} KB)
+              </p>
+            )}
+            {card?.filePath && !formData.file && (
+              <p className="text-xs text-green-600">
+                既存ファイル: {card.originalFileName || card.filePath.split('/').pop()}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              PDF形式または画像ファイル（JPEG、PNG）をアップロードできます
+            </p>
           </div>
 
           <DialogFooter>
