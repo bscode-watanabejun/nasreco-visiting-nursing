@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
 import {
   Dialog,
   DialogContent,
@@ -13,16 +13,17 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import type { InsuranceCard } from "@shared/schema"
+import type { InsuranceCard, Patient } from "@shared/schema"
 
 interface InsuranceCardDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  patientId: string
+  patientId?: string
   card?: InsuranceCard | null
 }
 
 interface FormData {
+  patientId: string
   cardType: 'medical' | 'long_term_care' | ''
   insurerNumber: string
   insuredNumber: string
@@ -36,7 +37,8 @@ interface FormData {
   file?: File | null
 }
 
-const getInitialFormData = (card?: InsuranceCard | null): FormData => ({
+const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: string): FormData => ({
+  patientId: card?.patientId || initialPatientId || '',
   cardType: card?.cardType || '',
   insurerNumber: card?.insurerNumber || '',
   insuredNumber: card?.insuredNumber || '',
@@ -52,20 +54,38 @@ const getInitialFormData = (card?: InsuranceCard | null): FormData => ({
 export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: InsuranceCardDialogProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [formData, setFormData] = useState<FormData>(getInitialFormData(card))
+  const [formData, setFormData] = useState<FormData>(getInitialFormData(card, patientId))
   const [isSaving, setIsSaving] = useState(false)
+
+  // Fetch patients for dropdown
+  const { data: patientsData } = useQuery<{ data: Patient[] } | Patient[]>({
+    queryKey: ["/api/patients"],
+  })
+
+  // Handle both array and paginated response formats
+  const patients: Patient[] = Array.isArray(patientsData)
+    ? patientsData
+    : ((patientsData as { data: Patient[] })?.data || [])
 
   // Reset form when dialog opens or card changes
   useEffect(() => {
     if (open) {
-      setFormData(getInitialFormData(card))
+      setFormData(getInitialFormData(card, patientId))
     }
-  }, [open, card])
+  }, [open, card, patientId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Validation
+    if (!formData.patientId) {
+      toast({
+        title: "エラー",
+        description: "利用者を選択してください",
+        variant: "destructive"
+      })
+      return
+    }
     if (!formData.cardType) {
       toast({
         title: "エラー",
@@ -110,7 +130,7 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
       // If file is attached, use FormData for multipart upload
       if (formData.file) {
         const multipartData = new FormData()
-        multipartData.append('patientId', patientId)
+        multipartData.append('patientId', formData.patientId)
         multipartData.append('cardType', formData.cardType)
         multipartData.append('insurerNumber', formData.insurerNumber)
         multipartData.append('insuredNumber', formData.insuredNumber)
@@ -130,7 +150,7 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
       } else {
         // No file, send JSON
         const apiData: any = {
-          patientId,
+          patientId: formData.patientId,
           cardType: formData.cardType,
           insurerNumber: formData.insurerNumber,
           insuredNumber: formData.insuredNumber,
@@ -155,7 +175,7 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         throw new Error(error.error || `サーバーエラー (${response.status})`)
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["insurance-cards"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards"] })
 
       toast({
         title: "保存完了",
@@ -185,6 +205,43 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Patient Selection or Display */}
+          {patientId ? (
+            // 利用者が指定されている場合（編集時 or 利用者詳細画面からの新規登録）
+            <div className="space-y-2">
+              <Label>利用者</Label>
+              <div className="text-sm font-medium px-3 py-2 bg-muted rounded-md">
+                {(() => {
+                  const patient = patients.find(p => p.id === formData.patientId)
+                  return patient ? `${patient.lastName} ${patient.firstName}` : '不明'
+                })()}
+              </div>
+            </div>
+          ) : (
+            // 利用者が指定されていない場合（保険証管理画面からの新規登録）
+            <div className="space-y-2">
+              <Label htmlFor="patientId">
+                利用者 <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={formData.patientId}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, patientId: value }))}
+                required
+              >
+                <SelectTrigger id="patientId">
+                  <SelectValue placeholder="利用者を選択してください" />
+                </SelectTrigger>
+                <SelectContent>
+                  {patients.map((patient) => (
+                    <SelectItem key={patient.id} value={patient.id}>
+                      {patient.lastName} {patient.firstName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Card Type */}
           <div className="space-y-2">
             <Label htmlFor="cardType">

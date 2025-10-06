@@ -104,7 +104,7 @@ export function PatientDetail() {
 
   // Fetch insurance cards for this patient
   const { data: insuranceCards = [], isLoading: isCardsLoading } = useQuery<InsuranceCard[]>({
-    queryKey: ["insurance-cards", id],
+    queryKey: ["/api/insurance-cards", id],
     queryFn: async () => {
       const response = await fetch(`/api/insurance-cards?patientId=${id}`)
       if (!response.ok) {
@@ -723,7 +723,7 @@ export function PatientDetail() {
                                               description: "添付ファイルを削除しました"
                                             })
 
-                                            queryClient.invalidateQueries({ queryKey: ["insurance-cards", id] })
+                                            queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards", id] })
                                           } catch (error) {
                                             toast({
                                               title: "エラー",

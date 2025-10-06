@@ -1,16 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -29,27 +19,17 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, CreditCard } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, ExternalLink, Download } from "lucide-react";
+import { InsuranceCardDialog } from "./InsuranceCardDialog";
 import type { InsuranceCard, Patient } from "@shared/schema";
 
 export default function InsuranceCardManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const [formData, setFormData] = useState({
-    patientId: "",
-    cardType: "long_term_care" as "medical" | "long_term_care",
-    insurerNumber: "",
-    insuredNumber: "",
-    insuredSymbol: "",
-    insuredCardNumber: "",
-    copaymentRate: "10" as "10" | "20" | "30",
-    validFrom: "",
-    validUntil: "",
-  });
 
   // Fetch patients for dropdown
   const { data: patientsData } = useQuery<{ data: Patient[] } | Patient[]>({
@@ -74,50 +54,6 @@ export default function InsuranceCardManagement() {
     },
   });
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      const response = await fetch("/api/insurance-cards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("保険証の登録に失敗しました");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards"] });
-      toast({ title: "保険証を登録しました" });
-      handleCloseDialog();
-    },
-    onError: (error: Error) => {
-      toast({ title: "エラー", description: error.message, variant: "destructive" });
-    },
-  });
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
-      const response = await fetch(`/api/insurance-cards/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("保険証の更新に失敗しました");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards"] });
-      toast({ title: "保険証を更新しました" });
-      handleCloseDialog();
-    },
-    onError: (error: Error) => {
-      toast({ title: "エラー", description: error.message, variant: "destructive" });
-    },
-  });
-
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -138,53 +74,43 @@ export default function InsuranceCardManagement() {
   });
 
   const handleOpenDialog = (card?: InsuranceCard) => {
-    if (card) {
-      setEditingCard(card);
-      setFormData({
-        patientId: card.patientId,
-        cardType: card.cardType as "medical" | "long_term_care",
-        insurerNumber: card.insurerNumber,
-        insuredNumber: card.insuredNumber,
-        insuredSymbol: card.insuredSymbol || "",
-        insuredCardNumber: card.insuredCardNumber || "",
-        copaymentRate: (card.copaymentRate as "10" | "20" | "30") || "10",
-        validFrom: card.validFrom || "",
-        validUntil: card.validUntil || "",
-      });
-    } else {
-      setEditingCard(null);
-      setFormData({
-        patientId: "",
-        cardType: "long_term_care",
-        insurerNumber: "",
-        insuredNumber: "",
-        insuredSymbol: "",
-        insuredCardNumber: "",
-        copaymentRate: "10",
-        validFrom: "",
-        validUntil: "",
-      });
-    }
+    setEditingCard(card || null);
     setIsDialogOpen(true);
-  };
-
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
-    setEditingCard(null);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingCard) {
-      updateMutation.mutate({ id: editingCard.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
-    }
   };
 
   const handleDelete = (id: string) => {
     if (confirm("本当に削除しますか？")) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleDeleteAttachment = async (id: string) => {
+    if (!confirm('添付ファイルを削除してもよろしいですか？')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/insurance-cards/${id}/attachment`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('削除に失敗しました');
+      }
+
+      toast({
+        title: "削除完了",
+        description: "添付ファイルを削除しました",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards"] });
+    } catch (error) {
+      console.error('Delete attachment error:', error);
+      toast({
+        title: "エラー",
+        description: "削除中にエラーが発生しました",
+        variant: "destructive"
+      });
     }
   };
 
@@ -253,45 +179,141 @@ export default function InsuranceCardManagement() {
               </TableHeader>
               <TableBody>
                 {cards.map((card) => (
-                  <TableRow key={card.id}>
-                    <TableCell className="font-medium">{getPatientName(card.patientId)}</TableCell>
-                    <TableCell>
-                      <Badge variant={card.cardType === "medical" ? "default" : "secondary"}>
-                        {card.cardType === "medical" ? "医療保険" : "介護保険"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{card.insurerNumber}</TableCell>
-                    <TableCell>{card.insuredNumber}</TableCell>
-                    <TableCell>{card.copaymentRate ? `${card.copaymentRate}割` : "-"}</TableCell>
-                    <TableCell>
-                      {card.validUntil ? (
-                        <div className="flex items-center gap-2">
-                          {new Date(card.validUntil).toLocaleDateString('ja-JP')}
-                          {!isCardValid(card) && (
-                            <Badge variant="destructive">期限切れ</Badge>
-                          )}
-                        </div>
-                      ) : (
-                        <Badge variant="outline">無期限</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenDialog(card)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(card.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow
+                      key={card.id}
+                      onClick={() => setExpandedRow(expandedRow === card.id ? null : card.id)}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell className="font-medium">{getPatientName(card.patientId)}</TableCell>
+                      <TableCell>
+                        <Badge variant={card.cardType === "medical" ? "default" : "secondary"}>
+                          {card.cardType === "medical" ? "医療保険" : "介護保険"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{card.insurerNumber}</TableCell>
+                      <TableCell>{card.insuredNumber}</TableCell>
+                      <TableCell>{card.copaymentRate ? `${card.copaymentRate}割` : "-"}</TableCell>
+                      <TableCell>
+                        {card.validUntil ? (
+                          <div className="flex items-center gap-2">
+                            {new Date(card.validUntil).toLocaleDateString('ja-JP')}
+                            {!isCardValid(card) && (
+                              <Badge variant="destructive">期限切れ</Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge variant="outline">無期限</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDialog(card);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(card.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* 展開エリア */}
+                    {expandedRow === card.id && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="bg-muted/30 p-0">
+                          <div className="p-4 space-y-3">
+                            {/* 記号・番号（医療保険のみ） */}
+                            {card.cardType === "medical" && (card.insuredSymbol || card.insuredCardNumber) && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">記号・番号</p>
+                                <p className="text-sm mt-1">
+                                  {card.insuredSymbol && `記号: ${card.insuredSymbol}`}
+                                  {card.insuredSymbol && card.insuredCardNumber && " / "}
+                                  {card.insuredCardNumber && `番号: ${card.insuredCardNumber}`}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* 認定日（介護保険のみ） */}
+                            {card.cardType === "long_term_care" && card.certificationDate && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">認定日</p>
+                                <p className="text-sm mt-1">{new Date(card.certificationDate).toLocaleDateString('ja-JP')}</p>
+                              </div>
+                            )}
+
+                            {/* 有効期間 */}
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground">有効期間</p>
+                              <p className="text-sm mt-1">
+                                {new Date(card.validFrom).toLocaleDateString('ja-JP')} 〜
+                                {card.validUntil ? ` ${new Date(card.validUntil).toLocaleDateString('ja-JP')}` : " 無期限"}
+                              </p>
+                            </div>
+
+                            {/* 備考 */}
+                            {card.notes && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">備考</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{card.notes}</p>
+                              </div>
+                            )}
+
+                            {/* 添付ファイル */}
+                            {card.filePath && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">添付ファイル</p>
+                                <p className="text-sm mt-1">
+                                  {card.originalFileName || card.filePath.split('/').pop()}
+                                </p>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(card.filePath!, '_blank')}
+                                  >
+                                    <ExternalLink className="mr-1 h-3 w-3" />
+                                    プレビュー
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      window.location.href = `/api/insurance-cards/${card.id}/attachment/download`;
+                                    }}
+                                  >
+                                    <Download className="mr-1 h-3 w-3" />
+                                    ダウンロード
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteAttachment(card.id)}
+                                  >
+                                    <Trash2 className="mr-1 h-3 w-3" />
+                                    削除
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
@@ -299,150 +321,18 @@ export default function InsuranceCardManagement() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCard ? "保険証の編集" : "保険証の新規登録"}
-            </DialogTitle>
-            <DialogDescription>
-              医療保険または介護保険証の情報を入力してください
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="patientId">利用者 *</Label>
-                <Select
-                  value={formData.patientId}
-                  onValueChange={(value) => setFormData({ ...formData, patientId: value })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="利用者を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients.map((patient) => (
-                      <SelectItem key={patient.id} value={patient.id}>
-                        {patient.lastName} {patient.firstName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cardType">保険種別 *</Label>
-                  <Select
-                    value={formData.cardType}
-                    onValueChange={(value) => setFormData({ ...formData, cardType: value as "medical" | "long_term_care" })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="medical">医療保険</SelectItem>
-                      <SelectItem value="long_term_care">介護保険</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="copaymentRate">負担割合</Label>
-                  <Select
-                    value={formData.copaymentRate}
-                    onValueChange={(value) => setFormData({ ...formData, copaymentRate: value as "10" | "20" | "30" })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">1割</SelectItem>
-                      <SelectItem value="20">2割</SelectItem>
-                      <SelectItem value="30">3割</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="insurerNumber">保険者番号 *</Label>
-                  <Input
-                    id="insurerNumber"
-                    required
-                    value={formData.insurerNumber}
-                    onChange={(e) => setFormData({ ...formData, insurerNumber: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="insuredNumber">被保険者番号 *</Label>
-                  <Input
-                    id="insuredNumber"
-                    required
-                    value={formData.insuredNumber}
-                    onChange={(e) => setFormData({ ...formData, insuredNumber: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {formData.cardType === "medical" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="insuredSymbol">記号（医療保険のみ）</Label>
-                    <Input
-                      id="insuredSymbol"
-                      value={formData.insuredSymbol}
-                      onChange={(e) => setFormData({ ...formData, insuredSymbol: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="insuredCardNumber">番号（医療保険のみ）</Label>
-                    <Input
-                      id="insuredCardNumber"
-                      value={formData.insuredCardNumber}
-                      onChange={(e) => setFormData({ ...formData, insuredCardNumber: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="validFrom">有効期間開始日 *</Label>
-                  <Input
-                    id="validFrom"
-                    type="date"
-                    required
-                    value={formData.validFrom}
-                    onChange={(e) => setFormData({ ...formData, validFrom: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="validUntil">有効期限（無期限の場合は空欄）</Label>
-                  <Input
-                    id="validUntil"
-                    type="date"
-                    value={formData.validUntil}
-                    onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                キャンセル
-              </Button>
-              <Button
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-              >
-                {editingCard ? "更新" : "登録"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* 保険証情報編集ダイアログ */}
+      <InsuranceCardDialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) {
+            setEditingCard(null);
+          }
+        }}
+        patientId={editingCard?.patientId}
+        card={editingCard}
+      />
     </div>
   );
 }
