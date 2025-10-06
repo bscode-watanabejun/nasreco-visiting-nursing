@@ -61,7 +61,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, isNotNull, inArray, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNotNull, inArray, isNull, not, lt } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -874,18 +874,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Build query conditions
       const whereConditions = [
         eq(schedules.facilityId, facilityId!),
-        eq(schedules.status, "completed" as any), // Only check completed schedules
+        // Search for past schedules (not just "completed" status)
+        // Exclude cancelled schedules
+        not(inArray(schedules.status, ["cancelled"] as const)),
       ];
+
+      const today = new Date();
+      today.setHours(23, 59, 59, 999); // End of today
 
       if (startDate && typeof startDate === 'string') {
         whereConditions.push(gte(schedules.scheduledDate, new Date(startDate)));
       }
 
       if (endDate && typeof endDate === 'string') {
-        whereConditions.push(lte(schedules.scheduledDate, new Date(endDate)));
+        // Use user-specified endDate, but limit to today if future date is specified
+        const endDateTime = new Date(endDate);
+        endDateTime.setHours(23, 59, 59, 999); // End of the specified day
+
+        const effectiveEndDate = endDateTime > today ? today : endDateTime;
+        whereConditions.push(lte(schedules.scheduledDate, effectiveEndDate));
+      } else {
+        // If no endDate specified, only show past schedules (up to today)
+        whereConditions.push(lte(schedules.scheduledDate, today));
       }
 
-      // Get all completed schedules in the date range
+      // Get all past schedules in the date range (excluding cancelled/no-show/refused)
       const allSchedules = await db.query.schedules.findMany({
         where: and(...whereConditions),
         with: {
@@ -906,7 +919,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderBy: (schedules, { desc }) => [desc(schedules.scheduledDate)]
       });
 
-      console.log(`完了状態のスケジュール数: ${allSchedules.length}`);
+      console.log(`過去のスケジュール数（キャンセル等除く）: ${allSchedules.length}`);
       allSchedules.forEach(s => {
         console.log(`  - ID: ${s.id}, 日付: ${s.scheduledDate}, ステータス: ${s.status}`);
       });

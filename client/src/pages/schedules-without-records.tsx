@@ -36,10 +36,10 @@ type ScheduleWithoutRecord = {
 export default function SchedulesWithoutRecords() {
   const [, setLocation] = useLocation();
   const today = new Date();
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(today.getDate() - 7);
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 30);
 
-  const [startDate, setStartDate] = useState(sevenDaysAgo.toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
 
   const { data: schedulesWithoutRecords, isLoading } = useQuery<ScheduleWithoutRecord[]>({
