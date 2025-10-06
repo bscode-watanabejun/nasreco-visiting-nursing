@@ -3382,7 +3382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create care plan
-  app.post("/api/care-plans", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/care-plans", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const facilityId = req.session.facilityId;
       const userId = req.session.userId;
@@ -3394,11 +3394,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("Received care plan data:", req.body);
       const validatedData = insertCarePlanSchema.parse(req.body);
 
-      const [plan] = await db.insert(carePlans).values({
+      const planData: any = {
         ...validatedData,
         facilityId,
         createdBy: userId,
-      }).returning();
+      };
+
+      if (req.file) {
+        planData.filePath = `/uploads/documents/${req.file.filename}`;
+        planData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
+      const [plan] = await db.insert(carePlans).values(planData).returning();
 
       // Fetch the plan with relations
       const planWithRelations = await db.query.carePlans.findFirst({
@@ -3426,18 +3433,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update care plan
-  app.put("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/care-plans/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
       const facilityId = req.session.facilityId;
 
       const validatedData = updateCarePlanSchema.parse(req.body);
 
+      const updateData: any = {
+        ...validatedData,
+        updatedAt: new Date()
+      };
+
+      if (req.file) {
+        const [currentPlan] = await db.select()
+          .from(carePlans)
+          .where(and(
+            eq(carePlans.id, id),
+            eq(carePlans.facilityId, facilityId!)
+          ))
+          .limit(1);
+
+        if (currentPlan?.filePath) {
+          const oldFilePath = path.join(process.cwd(), currentPlan.filePath);
+          try {
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
+          } catch (fileError) {
+            console.error('Error deleting old file:', fileError);
+          }
+        }
+
+        updateData.filePath = `/uploads/documents/${req.file.filename}`;
+        updateData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
       const [plan] = await db.update(carePlans)
-        .set({
-          ...validatedData,
-          updatedAt: new Date()
-        })
+        .set(updateData)
         .where(and(
           eq(carePlans.id, id),
           eq(carePlans.facilityId, facilityId!)
@@ -3473,6 +3506,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete (soft delete) care plan
+  // Download care plan attachment
+  app.get("/api/care-plans/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [plan] = await db.select()
+        .from(carePlans)
+        .where(and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!plan) {
+        return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
+      }
+
+      if (!plan.filePath) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      const filePath = path.join(process.cwd(), plan.filePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      const filename = plan.originalFileName || plan.filePath.split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Download care plan attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete care plan attachment
+  app.delete("/api/care-plans/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [currentPlan] = await db.select()
+        .from(carePlans)
+        .where(and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!currentPlan) {
+        return res.status(404).json({ error: "訪問看護計画書が見つかりません" });
+      }
+
+      if (currentPlan.filePath) {
+        const filePath = path.join(process.cwd(), currentPlan.filePath);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (fileError) {
+          console.error('Error deleting file:', fileError);
+        }
+      }
+
+      const [plan] = await db.update(carePlans)
+        .set({ filePath: null, originalFileName: null, updatedAt: new Date() })
+        .where(and(
+          eq(carePlans.id, id),
+          eq(carePlans.facilityId, facilityId!)
+        ))
+        .returning();
+
+      res.json({ message: "添付ファイルを削除しました", plan });
+    } catch (error) {
+      console.error("Delete care plan attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   app.delete("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -3563,7 +3678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create care report
-  app.post("/api/care-reports", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/care-reports", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const facilityId = req.session.facilityId;
       const userId = req.session.userId;
@@ -3572,13 +3687,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "認証情報が見つかりません" });
       }
 
-      const validatedData = insertCareReportSchema.parse(req.body);
+      // FormDataの場合は数値型を変換
+      const requestData = { ...req.body };
+      if (requestData.visitCount !== undefined) {
+        requestData.visitCount = parseInt(requestData.visitCount);
+      }
 
-      const [report] = await db.insert(careReports).values({
+      const validatedData = insertCareReportSchema.parse(requestData);
+
+      const reportData: any = {
         ...validatedData,
         facilityId,
         createdBy: userId,
-      }).returning();
+      };
+
+      if (req.file) {
+        reportData.filePath = `/uploads/documents/${req.file.filename}`;
+        reportData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
+      const [report] = await db.insert(careReports).values(reportData).returning();
 
       // Fetch the report with relations
       const reportWithRelations = await db.query.careReports.findFirst({
@@ -3605,18 +3733,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update care report
-  app.put("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/care-reports/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
       const facilityId = req.session.facilityId;
 
-      const validatedData = updateCareReportSchema.parse(req.body);
+      // FormDataの場合は数値型を変換
+      const requestData = { ...req.body };
+      if (requestData.visitCount !== undefined) {
+        requestData.visitCount = parseInt(requestData.visitCount);
+      }
+
+      const validatedData = updateCareReportSchema.parse(requestData);
+
+      const updateData: any = {
+        ...validatedData,
+        updatedAt: new Date()
+      };
+
+      if (req.file) {
+        const [currentReport] = await db.select()
+          .from(careReports)
+          .where(and(
+            eq(careReports.id, id),
+            eq(careReports.facilityId, facilityId!)
+          ))
+          .limit(1);
+
+        if (currentReport?.filePath) {
+          const oldFilePath = path.join(process.cwd(), currentReport.filePath);
+          try {
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
+          } catch (fileError) {
+            console.error('Error deleting old file:', fileError);
+          }
+        }
+
+        updateData.filePath = `/uploads/documents/${req.file.filename}`;
+        updateData.originalFileName = decodeFilename(req.file.originalname);
+      }
 
       const [report] = await db.update(careReports)
-        .set({
-          ...validatedData,
-          updatedAt: new Date()
-        })
+        .set(updateData)
         .where(and(
           eq(careReports.id, id),
           eq(careReports.facilityId, facilityId!)
@@ -3652,6 +3812,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete (soft delete) care report
+  // Download care report attachment
+  app.get("/api/care-reports/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [report] = await db.select()
+        .from(careReports)
+        .where(and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!report) {
+        return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
+      }
+
+      if (!report.filePath) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      const filePath = path.join(process.cwd(), report.filePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      const filename = report.originalFileName || report.filePath.split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Download care report attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete care report attachment
+  app.delete("/api/care-reports/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [currentReport] = await db.select()
+        .from(careReports)
+        .where(and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!currentReport) {
+        return res.status(404).json({ error: "訪問看護報告書が見つかりません" });
+      }
+
+      if (currentReport.filePath) {
+        const filePath = path.join(process.cwd(), currentReport.filePath);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (fileError) {
+          console.error('Error deleting file:', fileError);
+        }
+      }
+
+      const [report] = await db.update(careReports)
+        .set({ filePath: null, originalFileName: null, updatedAt: new Date() })
+        .where(and(
+          eq(careReports.id, id),
+          eq(careReports.facilityId, facilityId!)
+        ))
+        .returning();
+
+      res.json({ message: "添付ファイルを削除しました", report });
+    } catch (error) {
+      console.error("Delete care report attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   app.delete("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
@@ -3911,16 +4153,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new contract
-  app.post("/api/contracts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/contracts", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const facilityId = req.session.facilityId;
       const validatedData = insertContractSchema.parse(req.body);
 
+      const contractData: any = {
+        ...validatedData,
+        facilityId: facilityId!,
+      };
+
+      // Add file path and original filename if file was uploaded
+      if (req.file) {
+        contractData.filePath = `/uploads/documents/${req.file.filename}`;
+        contractData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
       const [contract] = await db.insert(contracts)
-        .values({
-          ...validatedData,
-          facilityId: facilityId!,
-        })
+        .values(contractData)
         .returning();
 
       // Fetch the contract with relations
@@ -3951,14 +4201,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update contract
-  app.put("/api/contracts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/contracts/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
       const facilityId = req.session.facilityId;
       const validatedData = updateContractSchema.parse(req.body);
 
+      const updateData: any = {
+        ...validatedData,
+        updatedAt: new Date()
+      };
+
+      // If a new file is uploaded, delete the old one first
+      if (req.file) {
+        // Get current contract to find old file path
+        const [currentContract] = await db.select()
+          .from(contracts)
+          .where(and(
+            eq(contracts.id, id),
+            eq(contracts.facilityId, facilityId!)
+          ))
+          .limit(1);
+
+        // Delete old file if exists
+        if (currentContract?.filePath) {
+          const oldFilePath = path.join(process.cwd(), currentContract.filePath);
+          try {
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
+          } catch (fileError) {
+            console.error('Error deleting old file:', fileError);
+          }
+        }
+
+        updateData.filePath = `/uploads/documents/${req.file.filename}`;
+        updateData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
       const [contract] = await db.update(contracts)
-        .set({ ...validatedData, updatedAt: new Date() })
+        .set(updateData)
         .where(and(
           eq(contracts.id, id),
           eq(contracts.facilityId, facilityId!)
@@ -3996,6 +4278,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete (soft delete) contract
+  // Download contract attachment with original filename
+  app.get("/api/contracts/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [contract] = await db.select()
+        .from(contracts)
+        .where(and(
+          eq(contracts.id, id),
+          eq(contracts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!contract) {
+        return res.status(404).json({ error: "契約書が見つかりません" });
+      }
+
+      if (!contract.filePath) {
+        return res.status(404).json({ error: "添付ファイルが見つかりません" });
+      }
+
+      const filePath = path.join(process.cwd(), contract.filePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      // Set Content-Disposition header with RFC 5987 encoding for international filenames
+      const filename = contract.originalFileName || contract.filePath.split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Download contract attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete contract attachment
+  app.delete("/api/contracts/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Get current contract to find file path
+      const [currentContract] = await db.select()
+        .from(contracts)
+        .where(and(
+          eq(contracts.id, id),
+          eq(contracts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (!currentContract) {
+        return res.status(404).json({ error: "契約書が見つかりません" });
+      }
+
+      // Delete physical file if exists
+      if (currentContract.filePath) {
+        const filePath = path.join(process.cwd(), currentContract.filePath);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (fileError) {
+          console.error('Error deleting file:', fileError);
+        }
+      }
+
+      // Update database to remove file path
+      const [contract] = await db.update(contracts)
+        .set({ filePath: null, originalFileName: null, updatedAt: new Date() })
+        .where(and(
+          eq(contracts.id, id),
+          eq(contracts.facilityId, facilityId!)
+        ))
+        .returning();
+
+      res.json({ message: "添付ファイルを削除しました", contract });
+    } catch (error) {
+      console.error("Delete contract attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   app.delete("/api/contracts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;

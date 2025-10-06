@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, FileCheck, Download } from "lucide-react";
+import { Plus, Edit, Trash2, FileCheck, Download, ExternalLink } from "lucide-react";
 import type { CareReport, Patient, CarePlan } from "@shared/schema";
 
 type CareReportWithRelations = CareReport & {
@@ -45,6 +45,7 @@ export default function CareReportManagement() {
   const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
   const [selectedPatientIdForForm, setSelectedPatientIdForForm] = useState<string>("");
   const [selectedCarePlanIdForForm, setSelectedCarePlanIdForForm] = useState<string>("none");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -62,6 +63,7 @@ export default function CareReportManagement() {
     communicationWithDoctor: "",
     communicationWithCareManager: "",
     remarks: "",
+    file: null as File | null,
   });
 
   // Fetch care reports
@@ -102,10 +104,26 @@ export default function CareReportManagement() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData & { patientId: string; carePlanId?: string }) => {
+      const formDataToSend = new FormData();
+      formDataToSend.append('patientId', data.patientId);
+      formDataToSend.append('reportDate', data.reportDate);
+      formDataToSend.append('reportPeriodStart', data.reportPeriodStart);
+      formDataToSend.append('reportPeriodEnd', data.reportPeriodEnd);
+      formDataToSend.append('visitCount', data.visitCount.toString());
+      if (data.carePlanId) formDataToSend.append('carePlanId', data.carePlanId);
+      if (data.reportNumber) formDataToSend.append('reportNumber', data.reportNumber);
+      if (data.patientCondition) formDataToSend.append('patientCondition', data.patientCondition);
+      if (data.nursingOutcomes) formDataToSend.append('nursingOutcomes', data.nursingOutcomes);
+      if (data.problemsAndActions) formDataToSend.append('problemsAndActions', data.problemsAndActions);
+      if (data.familySupport) formDataToSend.append('familySupport', data.familySupport);
+      if (data.communicationWithDoctor) formDataToSend.append('communicationWithDoctor', data.communicationWithDoctor);
+      if (data.communicationWithCareManager) formDataToSend.append('communicationWithCareManager', data.communicationWithCareManager);
+      if (data.remarks) formDataToSend.append('remarks', data.remarks);
+      if (data.file) formDataToSend.append('file', data.file);
+
       const response = await fetch("/api/care-reports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: formDataToSend,
       });
       if (!response.ok) throw new Error("作成に失敗しました");
       return response.json();
@@ -124,10 +142,26 @@ export default function CareReportManagement() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData & { id: string; patientId: string; carePlanId?: string }) => {
+      const formDataToSend = new FormData();
+      formDataToSend.append('patientId', data.patientId);
+      formDataToSend.append('reportDate', data.reportDate);
+      formDataToSend.append('reportPeriodStart', data.reportPeriodStart);
+      formDataToSend.append('reportPeriodEnd', data.reportPeriodEnd);
+      formDataToSend.append('visitCount', data.visitCount.toString());
+      if (data.carePlanId) formDataToSend.append('carePlanId', data.carePlanId);
+      if (data.reportNumber) formDataToSend.append('reportNumber', data.reportNumber);
+      if (data.patientCondition) formDataToSend.append('patientCondition', data.patientCondition);
+      if (data.nursingOutcomes) formDataToSend.append('nursingOutcomes', data.nursingOutcomes);
+      if (data.problemsAndActions) formDataToSend.append('problemsAndActions', data.problemsAndActions);
+      if (data.familySupport) formDataToSend.append('familySupport', data.familySupport);
+      if (data.communicationWithDoctor) formDataToSend.append('communicationWithDoctor', data.communicationWithDoctor);
+      if (data.communicationWithCareManager) formDataToSend.append('communicationWithCareManager', data.communicationWithCareManager);
+      if (data.remarks) formDataToSend.append('remarks', data.remarks);
+      if (data.file) formDataToSend.append('file', data.file);
+
       const response = await fetch(`/api/care-reports/${data.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: formDataToSend,
       });
       if (!response.ok) throw new Error("更新に失敗しました");
       return response.json();
@@ -176,6 +210,7 @@ export default function CareReportManagement() {
       communicationWithDoctor: "",
       communicationWithCareManager: "",
       remarks: "",
+      file: null,
     });
   };
 
@@ -203,6 +238,7 @@ export default function CareReportManagement() {
       communicationWithDoctor: report.communicationWithDoctor || "",
       communicationWithCareManager: report.communicationWithCareManager || "",
       remarks: report.remarks || "",
+      file: null,
     });
     setIsDialogOpen(true);
   };
@@ -210,6 +246,36 @@ export default function CareReportManagement() {
   const handleDelete = (id: string) => {
     if (confirm("この訪問看護報告書を削除してもよろしいですか?")) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleDeleteAttachment = async (id: string) => {
+    if (!confirm('添付ファイルを削除してもよろしいですか？')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/care-reports/${id}/attachment`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('削除に失敗しました');
+      }
+
+      toast({
+        title: "削除完了",
+        description: "添付ファイルを削除しました",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/care-reports"] });
+    } catch (error) {
+      console.error('Delete attachment error:', error);
+      toast({
+        title: "エラー",
+        description: "削除中にエラーが発生しました",
+        variant: "destructive"
+      });
     }
   };
 
@@ -298,40 +364,158 @@ export default function CareReportManagement() {
               </TableHeader>
               <TableBody>
                 {careReports.map((report) => (
-                  <TableRow key={report.id}>
-                    <TableCell className="font-medium">{report.reportNumber || "-"}</TableCell>
-                    <TableCell>{report.patient.lastName} {report.patient.firstName}</TableCell>
-                    <TableCell>{report.reportDate}</TableCell>
-                    <TableCell>
-                      {report.reportPeriodStart} ~ {report.reportPeriodEnd}
-                    </TableCell>
-                    <TableCell className="text-right">{report.visitCount || 0}回</TableCell>
-                    <TableCell>{report.creator?.fullName || "-"}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => window.open(`/api/care-reports/${report.id}/pdf`, '_blank')}
-                        title="PDF出力"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(report)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(report.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow
+                      key={report.id}
+                      onClick={() => setExpandedRow(expandedRow === report.id ? null : report.id)}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell className="font-medium">{report.reportNumber || "-"}</TableCell>
+                      <TableCell>{report.patient.lastName} {report.patient.firstName}</TableCell>
+                      <TableCell>{report.reportDate}</TableCell>
+                      <TableCell>
+                        {report.reportPeriodStart} ~ {report.reportPeriodEnd}
+                      </TableCell>
+                      <TableCell className="text-right">{report.visitCount || 0}回</TableCell>
+                      <TableCell>{report.creator?.fullName || "-"}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`/api/care-reports/${report.id}/pdf`, '_blank');
+                          }}
+                          title="PDF出力"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(report);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(report.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* 展開エリア */}
+                    {expandedRow === report.id && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="bg-muted/30 p-0">
+                          <div className="p-4 space-y-3">
+                            {/* 利用者の状態 */}
+                            {report.patientCondition && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">利用者の状態</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.patientCondition}</p>
+                              </div>
+                            )}
+
+                            {/* 看護の成果 */}
+                            {report.nursingOutcomes && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">看護の成果</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.nursingOutcomes}</p>
+                              </div>
+                            )}
+
+                            {/* 問題点と対応 */}
+                            {report.problemsAndActions && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">問題点と対応</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.problemsAndActions}</p>
+                              </div>
+                            )}
+
+                            {/* 家族への支援 */}
+                            {report.familySupport && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">家族への支援</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.familySupport}</p>
+                              </div>
+                            )}
+
+                            {/* 主治医への連絡事項 */}
+                            {report.communicationWithDoctor && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">主治医への連絡事項</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.communicationWithDoctor}</p>
+                              </div>
+                            )}
+
+                            {/* ケアマネージャーへの連絡事項 */}
+                            {report.communicationWithCareManager && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">ケアマネージャーへの連絡事項</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.communicationWithCareManager}</p>
+                              </div>
+                            )}
+
+                            {/* 備考 */}
+                            {report.remarks && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">備考</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{report.remarks}</p>
+                              </div>
+                            )}
+
+                            {/* 添付ファイル */}
+                            {report.filePath && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">添付ファイル</p>
+                                <p className="text-sm mt-1">
+                                  {report.originalFileName || report.filePath.split('/').pop()}
+                                </p>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(report.filePath!, '_blank')}
+                                  >
+                                    <ExternalLink className="mr-1 h-3 w-3" />
+                                    プレビュー
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      window.location.href = `/api/care-reports/${report.id}/attachment/download`;
+                                    }}
+                                  >
+                                    <Download className="mr-1 h-3 w-3" />
+                                    ダウンロード
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteAttachment(report.id)}
+                                  >
+                                    <Trash2 className="mr-1 h-3 w-3" />
+                                    削除
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
@@ -517,6 +701,33 @@ export default function CareReportManagement() {
                 onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                 placeholder="備考を入力してください"
               />
+            </div>
+
+            {/* File Upload */}
+            <div className="space-y-2">
+              <Label htmlFor="file">報告書PDFファイル</Label>
+              <Input
+                id="file"
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setFormData({ ...formData, file });
+                }}
+              />
+              {formData.file && (
+                <p className="text-xs text-muted-foreground">
+                  選択中: {formData.file.name} ({(formData.file.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+              {editingReport?.filePath && !formData.file && (
+                <p className="text-xs text-green-600">
+                  既存ファイル: {editingReport.originalFileName || editingReport.filePath.split('/').pop()}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                PDF形式または画像ファイル（JPEG、PNG）をアップロードできます
+              </p>
             </div>
 
             <DialogFooter>

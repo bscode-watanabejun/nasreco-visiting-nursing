@@ -356,6 +356,8 @@ export const carePlans = pgTable("care_plans", {
   nursingPlan: text("nursing_plan"), // 看護計画
   weeklyVisitPlan: text("weekly_visit_plan"), // 週間訪問計画（例：月・水・金）
   remarks: text("remarks"), // 備考
+  filePath: text("file_path"), // PDF/画像ファイルパス
+  originalFileName: text("original_file_name"), // 元のファイル名
   createdBy: varchar("created_by").notNull().references(() => users.id), // 作成者
   approvedBy: varchar("approved_by").references(() => users.id), // 承認者
   approvedAt: timestamp("approved_at", { withTimezone: true }), // 承認日時
@@ -382,6 +384,8 @@ export const careReports = pgTable("care_reports", {
   communicationWithDoctor: text("communication_with_doctor"), // 主治医との連携内容
   communicationWithCareManager: text("communication_with_care_manager"), // ケアマネとの連携内容
   remarks: text("remarks"), // 特記事項
+  filePath: text("file_path"), // PDF/画像ファイルパス
+  originalFileName: text("original_file_name"), // 元のファイル名
   createdBy: varchar("created_by").notNull().references(() => users.id), // 作成者
   approvedBy: varchar("approved_by").references(() => users.id), // 承認者
   approvedAt: timestamp("approved_at", { withTimezone: true }), // 承認日時
@@ -412,7 +416,8 @@ export const contracts = pgTable("contracts", {
   title: text("title").notNull(), // 契約書タイトル
   description: text("description"), // 説明・備考
   filePath: text("file_path"), // PDF/画像ファイルパス
-  fileName: text("file_name"), // ファイル名
+  fileName: text("file_name"), // ファイル名（非推奨、後方互換性のため残す）
+  originalFileName: text("original_file_name"), // 元のファイル名
   signedBy: text("signed_by"), // 署名者（利用者または代理人）
   witnessedBy: varchar("witnessed_by").references(() => users.id), // 立会人（スタッフ）
   isActive: boolean("is_active").notNull().default(true),

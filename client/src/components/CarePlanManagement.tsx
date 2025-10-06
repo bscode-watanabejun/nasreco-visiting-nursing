@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, FileText, Download } from "lucide-react";
+import { Plus, Edit, Trash2, FileText, Download, ExternalLink } from "lucide-react";
 import type { CarePlan, Patient } from "@shared/schema";
 
 type CarePlanWithRelations = CarePlan & {
@@ -43,6 +43,7 @@ export default function CarePlanManagement() {
   const [editingPlan, setEditingPlan] = useState<CarePlanWithRelations | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
   const [selectedPatientIdForForm, setSelectedPatientIdForForm] = useState<string>("");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -56,6 +57,7 @@ export default function CarePlanManagement() {
     nursingPlan: "",
     weeklyVisitPlan: "",
     remarks: "",
+    file: null as File | null,
   });
 
   // Fetch care plans
@@ -86,10 +88,21 @@ export default function CarePlanManagement() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData & { patientId: string }) => {
+      const formDataToSend = new FormData();
+      formDataToSend.append('patientId', data.patientId);
+      formDataToSend.append('planDate', data.planDate);
+      formDataToSend.append('planPeriodStart', data.planPeriodStart);
+      formDataToSend.append('planPeriodEnd', data.planPeriodEnd);
+      if (data.planNumber) formDataToSend.append('planNumber', data.planNumber);
+      if (data.nursingGoals) formDataToSend.append('nursingGoals', data.nursingGoals);
+      if (data.nursingPlan) formDataToSend.append('nursingPlan', data.nursingPlan);
+      if (data.weeklyVisitPlan) formDataToSend.append('weeklyVisitPlan', data.weeklyVisitPlan);
+      if (data.remarks) formDataToSend.append('remarks', data.remarks);
+      if (data.file) formDataToSend.append('file', data.file);
+
       const response = await fetch("/api/care-plans", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: formDataToSend,
       });
       if (!response.ok) throw new Error("作成に失敗しました");
       return response.json();
@@ -108,10 +121,21 @@ export default function CarePlanManagement() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData & { id: string; patientId: string }) => {
+      const formDataToSend = new FormData();
+      formDataToSend.append('patientId', data.patientId);
+      formDataToSend.append('planDate', data.planDate);
+      formDataToSend.append('planPeriodStart', data.planPeriodStart);
+      formDataToSend.append('planPeriodEnd', data.planPeriodEnd);
+      if (data.planNumber) formDataToSend.append('planNumber', data.planNumber);
+      if (data.nursingGoals) formDataToSend.append('nursingGoals', data.nursingGoals);
+      if (data.nursingPlan) formDataToSend.append('nursingPlan', data.nursingPlan);
+      if (data.weeklyVisitPlan) formDataToSend.append('weeklyVisitPlan', data.weeklyVisitPlan);
+      if (data.remarks) formDataToSend.append('remarks', data.remarks);
+      if (data.file) formDataToSend.append('file', data.file);
+
       const response = await fetch(`/api/care-plans/${data.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: formDataToSend,
       });
       if (!response.ok) throw new Error("更新に失敗しました");
       return response.json();
@@ -156,6 +180,7 @@ export default function CarePlanManagement() {
       nursingPlan: "",
       weeklyVisitPlan: "",
       remarks: "",
+      file: null,
     });
   };
 
@@ -177,6 +202,7 @@ export default function CarePlanManagement() {
       nursingPlan: plan.nursingPlan || "",
       weeklyVisitPlan: plan.weeklyVisitPlan || "",
       remarks: plan.remarks || "",
+      file: null,
     });
     setIsDialogOpen(true);
   };
@@ -184,6 +210,36 @@ export default function CarePlanManagement() {
   const handleDelete = (id: string) => {
     if (confirm("この訪問看護計画書を削除してもよろしいですか?")) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleDeleteAttachment = async (id: string) => {
+    if (!confirm('添付ファイルを削除してもよろしいですか？')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/care-plans/${id}/attachment`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('削除に失敗しました');
+      }
+
+      toast({
+        title: "削除完了",
+        description: "添付ファイルを削除しました",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/care-plans"] });
+    } catch (error) {
+      console.error('Delete attachment error:', error);
+      toast({
+        title: "エラー",
+        description: "削除中にエラーが発生しました",
+        variant: "destructive"
+      });
     }
   };
 
@@ -270,42 +326,128 @@ export default function CarePlanManagement() {
               </TableHeader>
               <TableBody>
                 {carePlans.map((plan) => (
-                  <TableRow key={plan.id}>
-                    <TableCell className="font-medium">{plan.planNumber || "-"}</TableCell>
-                    <TableCell>{plan.patient.lastName} {plan.patient.firstName}</TableCell>
-                    <TableCell>{plan.planDate}</TableCell>
-                    <TableCell>
-                      {plan.planPeriodStart} ~ {plan.planPeriodEnd}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {plan.nursingGoals || "-"}
-                    </TableCell>
-                    <TableCell>{plan.creator?.fullName || "-"}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => window.open(`/api/care-plans/${plan.id}/pdf`, '_blank')}
-                        title="PDF出力"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(plan)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(plan.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow
+                      key={plan.id}
+                      onClick={() => setExpandedRow(expandedRow === plan.id ? null : plan.id)}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell className="font-medium">{plan.planNumber || "-"}</TableCell>
+                      <TableCell>{plan.patient.lastName} {plan.patient.firstName}</TableCell>
+                      <TableCell>{plan.planDate}</TableCell>
+                      <TableCell>
+                        {plan.planPeriodStart} ~ {plan.planPeriodEnd}
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate">
+                        {plan.nursingGoals || "-"}
+                      </TableCell>
+                      <TableCell>{plan.creator?.fullName || "-"}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`/api/care-plans/${plan.id}/pdf`, '_blank');
+                          }}
+                          title="PDF出力"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(plan);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(plan.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* 展開エリア */}
+                    {expandedRow === plan.id && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="bg-muted/30 p-0">
+                          <div className="p-4 space-y-3">
+                            {/* 看護計画 */}
+                            {plan.nursingPlan && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">看護計画</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{plan.nursingPlan}</p>
+                              </div>
+                            )}
+
+                            {/* 週間訪問計画 */}
+                            {plan.weeklyVisitPlan && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">週間訪問計画</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{plan.weeklyVisitPlan}</p>
+                              </div>
+                            )}
+
+                            {/* 備考 */}
+                            {plan.remarks && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">備考</p>
+                                <p className="text-sm mt-1 whitespace-pre-wrap">{plan.remarks}</p>
+                              </div>
+                            )}
+
+                            {/* 添付ファイル */}
+                            {plan.filePath && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">添付ファイル</p>
+                                <p className="text-sm mt-1">
+                                  {plan.originalFileName || plan.filePath.split('/').pop()}
+                                </p>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(plan.filePath!, '_blank')}
+                                  >
+                                    <ExternalLink className="mr-1 h-3 w-3" />
+                                    プレビュー
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      window.location.href = `/api/care-plans/${plan.id}/attachment/download`;
+                                    }}
+                                  >
+                                    <Download className="mr-1 h-3 w-3" />
+                                    ダウンロード
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteAttachment(plan.id)}
+                                  >
+                                    <Trash2 className="mr-1 h-3 w-3" />
+                                    削除
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
@@ -430,6 +572,33 @@ export default function CarePlanManagement() {
                 onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                 placeholder="備考を入力してください"
               />
+            </div>
+
+            {/* File Upload */}
+            <div className="space-y-2">
+              <Label htmlFor="file">計画書PDFファイル</Label>
+              <Input
+                id="file"
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setFormData({ ...formData, file });
+                }}
+              />
+              {formData.file && (
+                <p className="text-xs text-muted-foreground">
+                  選択中: {formData.file.name} ({(formData.file.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+              {editingPlan?.filePath && !formData.file && (
+                <p className="text-xs text-green-600">
+                  既存ファイル: {editingPlan.originalFileName || editingPlan.filePath.split('/').pop()}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                PDF形式または画像ファイル（JPEG、PNG）をアップロードできます
+              </p>
             </div>
 
             <DialogFooter>

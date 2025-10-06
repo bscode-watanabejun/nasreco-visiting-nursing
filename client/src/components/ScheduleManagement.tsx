@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useLocation } from "wouter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,7 +29,6 @@ import {
   Search
 } from "lucide-react"
 import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
-import { VisitRecordDialog } from "./VisitRecordDialog"
 
 // Helper function to get full name
 const getFullName = (patient: Patient): string => {
@@ -93,6 +93,7 @@ const getMonthDates = (currentDate: Date): Date[] => {
 
 export function ScheduleManagement() {
   const queryClient = useQueryClient()
+  const [, setLocation] = useLocation()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'week' | 'day' | 'month'>('week')
   const [searchTerm, setSearchTerm] = useState('')
@@ -102,8 +103,6 @@ export function ScheduleManagement() {
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
   const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false)
   const [selectedParentScheduleId, setSelectedParentScheduleId] = useState<string | null>(null)
-  const [recordDialogOpen, setRecordDialogOpen] = useState(false)
-  const [recordDialogSchedule, setRecordDialogSchedule] = useState<Schedule | null>(null)
 
   // Fetch patients
   const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
@@ -308,8 +307,7 @@ export function ScheduleManagement() {
   }
 
   const handleCreateRecord = (schedule: Schedule) => {
-    setRecordDialogSchedule(schedule)
-    setRecordDialogOpen(true)
+    setLocation(`/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}`)
   }
 
   const weekDates = viewMode === 'week' ? getWeekDates(currentDate) : [currentDate]
@@ -929,14 +927,6 @@ export function ScheduleManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Visit Record Dialog */}
-      {recordDialogSchedule && (
-        <VisitRecordDialog
-          open={recordDialogOpen}
-          onOpenChange={setRecordDialogOpen}
-          schedule={recordDialogSchedule}
-        />
-      )}
     </div>
   )
 }

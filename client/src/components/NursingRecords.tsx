@@ -123,6 +123,9 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
     ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
     ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
+
+    // スケジュールIDの紐付け
+    ...(formData.selectedScheduleId && formData.selectedScheduleId !== 'none' ? { scheduleId: formData.selectedScheduleId } : {})
   }
 
   return apiData
@@ -284,6 +287,7 @@ export function NursingRecords() {
   // Fetch schedule data if scheduleId is in URL
   const urlParams = new URLSearchParams(searchParams)
   const scheduleIdFromUrl = urlParams.get('scheduleId')
+  const patientIdFromUrl = urlParams.get('patientId')
   const modeFromUrl = urlParams.get('mode')
 
   const { data: scheduleFromUrl } = useQuery({
@@ -391,10 +395,11 @@ export function NursingRecords() {
       setSelectedRecord(null)
       setFormData({
         ...getInitialFormData(),
-        patientId: schedule.patientId || '',
+        patientId: patientIdFromUrl || schedule.patientId || '',
         visitDate: visitDate, // Set visit date from schedule
         actualStartTime: startTime.toTimeString().slice(0, 5),
         actualEndTime: endTime.toTimeString().slice(0, 5),
+        emergencyVisitReason: schedule.visitType === '緊急訪問' ? '緊急訪問のため' : '',
         selectedScheduleId: scheduleIdFromUrl
       })
       setSaveError(null)
@@ -412,7 +417,7 @@ export function NursingRecords() {
       // Clear URL parameters by replacing current history entry
       window.history.replaceState({}, '', '/records')
     }
-  }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl])
+  }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl, patientIdFromUrl])
 
   // Transform records to include patient and nurse names
   const records: NursingRecordDisplay[] = rawRecords.map(record => {
@@ -695,8 +700,26 @@ export function NursingRecords() {
         await uploadAttachments(savedRecord.id)
       }
 
+      // 訪問ステータスが「完了」の場合、スケジュールのステータスも更新
+      if (formData.visitStatusRecord === 'completed' && formData.selectedScheduleId && formData.selectedScheduleId !== 'none') {
+        try {
+          const statusResponse = await fetch(`/api/schedules/${formData.selectedScheduleId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "completed" }),
+          })
+          if (!statusResponse.ok) {
+            console.error('スケジュールステータスの更新に失敗しました')
+          }
+        } catch (error) {
+          console.error('スケジュールステータス更新エラー:', error)
+        }
+      }
+
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] })
       toast({
         title: "保存完了",
         description: isEditing ? '記録を更新しました' : '記録を完成しました',

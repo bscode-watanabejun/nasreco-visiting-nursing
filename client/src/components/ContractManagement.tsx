@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus, Edit, Trash2, ExternalLink, Download } from "lucide-react";
 import type { Contract, Patient } from "@shared/schema";
 
 type ContractWithRelations = Contract & {
@@ -43,6 +43,7 @@ export default function ContractManagement() {
   const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
   const [selectedPatientIdForForm, setSelectedPatientIdForForm] = useState<string>("");
   const [selectedWitnessId, setSelectedWitnessId] = useState<string>("");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -55,6 +56,7 @@ export default function ContractManagement() {
     title: "",
     description: "",
     signedBy: "",
+    file: null as File | null,
   });
 
   // Fetch contracts
@@ -97,10 +99,21 @@ export default function ContractManagement() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData & { patientId: string; witnessedBy?: string }) => {
+      const formDataToSend = new FormData();
+      formDataToSend.append('patientId', data.patientId);
+      formDataToSend.append('contractType', data.contractType);
+      formDataToSend.append('contractDate', data.contractDate);
+      formDataToSend.append('startDate', data.startDate);
+      if (data.endDate) formDataToSend.append('endDate', data.endDate);
+      formDataToSend.append('title', data.title);
+      if (data.description) formDataToSend.append('description', data.description);
+      if (data.signedBy) formDataToSend.append('signedBy', data.signedBy);
+      if (data.witnessedBy) formDataToSend.append('witnessedBy', data.witnessedBy);
+      if (data.file) formDataToSend.append('file', data.file);
+
       const response = await fetch("/api/contracts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: formDataToSend,
       });
       if (!response.ok) throw new Error("作成に失敗しました");
       return response.json();
@@ -119,10 +132,21 @@ export default function ContractManagement() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData & { id: string; patientId: string; witnessedBy?: string }) => {
+      const formDataToSend = new FormData();
+      formDataToSend.append('patientId', data.patientId);
+      formDataToSend.append('contractType', data.contractType);
+      formDataToSend.append('contractDate', data.contractDate);
+      formDataToSend.append('startDate', data.startDate);
+      if (data.endDate) formDataToSend.append('endDate', data.endDate);
+      formDataToSend.append('title', data.title);
+      if (data.description) formDataToSend.append('description', data.description);
+      if (data.signedBy) formDataToSend.append('signedBy', data.signedBy);
+      if (data.witnessedBy) formDataToSend.append('witnessedBy', data.witnessedBy);
+      if (data.file) formDataToSend.append('file', data.file);
+
       const response = await fetch(`/api/contracts/${data.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: formDataToSend,
       });
       if (!response.ok) throw new Error("更新に失敗しました");
       return response.json();
@@ -166,6 +190,7 @@ export default function ContractManagement() {
       title: "",
       description: "",
       signedBy: "",
+      file: null,
     });
     setSelectedPatientIdForForm("");
     setSelectedWitnessId("none");
@@ -187,6 +212,7 @@ export default function ContractManagement() {
       title: contract.title,
       description: contract.description || "",
       signedBy: contract.signedBy || "",
+      file: null,
     });
     setSelectedPatientIdForForm(contract.patientId);
     setSelectedWitnessId(contract.witnessedBy?.id || "none");
@@ -196,6 +222,30 @@ export default function ContractManagement() {
   const handleDelete = (id: string) => {
     if (confirm("この契約書を削除してもよろしいですか?")) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleDeleteAttachment = async (id: string) => {
+    if (!confirm('添付ファイルを削除してもよろしいですか？')) return;
+
+    try {
+      const response = await fetch(`/api/contracts/${id}/attachment`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) throw new Error('削除に失敗しました');
+
+      toast({
+        title: "削除完了",
+        description: "添付ファイルを削除しました"
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: "削除中にエラーが発生しました",
+        variant: "destructive"
+      });
     }
   };
 
@@ -297,33 +347,94 @@ export default function ContractManagement() {
               </TableHeader>
               <TableBody>
                 {contractsList.map((contract) => (
-                  <TableRow key={contract.id}>
-                    <TableCell>{contractTypeLabels[contract.contractType]}</TableCell>
-                    <TableCell className="font-medium">{contract.title}</TableCell>
-                    <TableCell>{contract.patient.lastName} {contract.patient.firstName}</TableCell>
-                    <TableCell>{contract.contractDate}</TableCell>
-                    <TableCell>
-                      {contract.startDate} ~ {contract.endDate || "無期限"}
-                    </TableCell>
-                    <TableCell>{contract.signedBy || "-"}</TableCell>
-                    <TableCell>{contract.witnessedBy?.fullName || "-"}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(contract)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(contract.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow
+                      key={contract.id}
+                      onClick={() => setExpandedRow(expandedRow === contract.id ? null : contract.id)}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell>{contractTypeLabels[contract.contractType]}</TableCell>
+                      <TableCell className="font-medium">{contract.title}</TableCell>
+                      <TableCell>{contract.patient.lastName} {contract.patient.firstName}</TableCell>
+                      <TableCell>{contract.contractDate}</TableCell>
+                      <TableCell>
+                        {contract.startDate} ~ {contract.endDate || "無期限"}
+                      </TableCell>
+                      <TableCell>{contract.signedBy || "-"}</TableCell>
+                      <TableCell>{contract.witnessedBy?.fullName || "-"}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(contract);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(contract.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* 展開エリア */}
+                    {expandedRow === contract.id && (
+                      <TableRow>
+                        <TableCell colSpan={8}>
+                          <div className="p-4 space-y-3 bg-muted/30">
+                            {contract.description && (
+                              <div>
+                                <p className="text-sm font-medium">説明・備考</p>
+                                <p className="text-sm whitespace-pre-wrap">{contract.description}</p>
+                              </div>
+                            )}
+
+                            {contract.filePath && (
+                              <div>
+                                <p className="text-sm font-medium">添付ファイル</p>
+                                <p className="text-sm mt-1">{contract.originalFileName || contract.filePath.split('/').pop()}</p>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(contract.filePath!, '_blank')}
+                                  >
+                                    <ExternalLink className="mr-1 h-3 w-3" />
+                                    プレビュー
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.location.href = `/api/contracts/${contract.id}/attachment/download`}
+                                  >
+                                    <Download className="mr-1 h-3 w-3" />
+                                    ダウンロード
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteAttachment(contract.id)}
+                                  >
+                                    <Trash2 className="mr-1 h-3 w-3" />
+                                    削除
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
@@ -464,6 +575,33 @@ export default function ContractManagement() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* File Upload */}
+            <div className="space-y-2">
+              <Label htmlFor="file">契約書PDFファイル</Label>
+              <Input
+                id="file"
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setFormData(prev => ({ ...prev, file }));
+                }}
+              />
+              {formData.file && (
+                <p className="text-xs text-muted-foreground">
+                  選択中: {formData.file.name} ({(formData.file.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+              {editingContract?.filePath && !formData.file && (
+                <p className="text-xs text-green-600">
+                  既存ファイル: {editingContract.originalFileName || editingContract.filePath.split('/').pop()}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                PDF形式または画像ファイル（JPEG、PNG）をアップロードできます
+              </p>
             </div>
 
             <DialogFooter>
