@@ -34,12 +34,14 @@ import {
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
+import { useQuery } from "@tanstack/react-query"
 
 type NavigationItem = {
   title: string;
   href: string;
   icon: any;
-  badge: { text: string; variant: "destructive" | "default" } | null;
+  badge?: { text: string | number; variant: "destructive" | "default" } | null;
+  badgeKey?: string; // Dynamic badge key for notification data
 };
 
 type NavigationGroup = {
@@ -73,13 +75,13 @@ const facilityNavigationGroups: NavigationGroup[] = [
         title: "訪問記録",
         href: "/records",
         icon: ClipboardList,
-        badge: { text: "3", variant: "destructive" as const },
+        badge: null,
       },
       {
         title: "記録未作成一覧",
         href: "/schedules-without-records",
         icon: AlertTriangle,
-        badge: null,
+        badgeKey: "schedulesWithoutRecords", // Dynamic badge from API
       },
     ],
   },
@@ -232,6 +234,18 @@ export function AppSidebar() {
   // Use user-based headquarters detection as the primary indicator
   const shouldShowHeadquartersMenu = isUserBasedHeadquarters || isHeadquarters
 
+  // Fetch notification count for dynamic badges
+  const { data: notificationData } = useQuery<{
+    total: number
+    schedulesWithoutRecords: number
+    expiringDoctorOrders: number
+    expiringInsuranceCards: number
+  }>({
+    queryKey: ["/api/notifications/count"],
+    refetchInterval: 60000, // Refetch every 60 seconds
+    enabled: !shouldShowHeadquartersMenu, // Only fetch for facility menu
+  })
+
   const isActive = (href: string) => {
     return location === href
   }
@@ -241,6 +255,18 @@ export function AppSidebar() {
     if (isMobile) {
       setOpenMobile(false)
     }
+  }
+
+  // Get dynamic badge for an item
+  const getDynamicBadge = (item: NavigationItem) => {
+    if (item.badge) return item.badge
+    if (item.badgeKey && notificationData) {
+      const count = notificationData[item.badgeKey as keyof typeof notificationData]
+      if (typeof count === 'number' && count > 0) {
+        return { text: count, variant: "destructive" as const }
+      }
+    }
+    return null
   }
 
   return (
@@ -306,6 +332,7 @@ export function AppSidebar() {
                     {group.items.map((item) => {
                       const Icon = item.icon
                       const active = isActive(item.href)
+                      const badge = getDynamicBadge(item)
 
                       return (
                         <SidebarMenuItem key={item.href}>
@@ -317,12 +344,12 @@ export function AppSidebar() {
                             <Link href={item.href} onClick={handleLinkClick}>
                               <Icon className="h-4 w-4" />
                               <span>{item.title}</span>
-                              {item.badge && (
+                              {badge && (
                                 <Badge
-                                  variant={item.badge.variant}
+                                  variant={badge.variant}
                                   className="ml-auto h-5 px-1.5 text-xs"
                                 >
-                                  {item.badge.text}
+                                  {badge.text}
                                 </Badge>
                               )}
                             </Link>

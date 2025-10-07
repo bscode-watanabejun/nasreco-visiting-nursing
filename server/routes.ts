@@ -265,6 +265,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get notification count
+  app.get("/api/notifications/count", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+
+      // 1. Count schedules without records (up to today)
+      const allSchedules = await db.query.schedules.findMany({
+        where: and(
+          eq(schedules.facilityId, facilityId),
+          not(inArray(schedules.status, ["cancelled"] as const)),
+          lte(schedules.scheduledDate, today)
+        ),
+        columns: { id: true }
+      });
+
+      const schedulesWithRecords = await db.query.nursingRecords.findMany({
+        where: and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNotNull(nursingRecords.scheduleId)
+        ),
+        columns: { scheduleId: true }
+      });
+
+      const scheduleIdsWithRecords = new Set(
+        schedulesWithRecords
+          .map(r => r.scheduleId)
+          .filter((id): id is string => id !== null)
+      );
+
+      const schedulesWithoutRecordsCount = allSchedules.filter(
+        s => !scheduleIdsWithRecords.has(s.id)
+      ).length;
+
+      // 2. Count doctor orders expiring within 14 days
+      const fourteenDaysFromNow = new Date();
+      fourteenDaysFromNow.setDate(today.getDate() + 14);
+      const todayStr = today.toISOString().split('T')[0];
+      const fourteenDaysStr = fourteenDaysFromNow.toISOString().split('T')[0];
+
+      const expiringDoctorOrders = await db.query.doctorOrders.findMany({
+        where: and(
+          eq(doctorOrders.facilityId, facilityId),
+          gte(doctorOrders.endDate, todayStr),
+          lte(doctorOrders.endDate, fourteenDaysStr)
+        ),
+        columns: { id: true }
+      });
+
+      // 3. Count insurance cards expiring within 30 days
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      const thirtyDaysStr = thirtyDaysFromNow.toISOString().split('T')[0];
+
+      const expiringInsuranceCards = await db.query.insuranceCards.findMany({
+        where: and(
+          eq(insuranceCards.facilityId, facilityId),
+          isNotNull(insuranceCards.validUntil),
+          gte(insuranceCards.validUntil, todayStr),
+          lte(insuranceCards.validUntil, thirtyDaysStr)
+        ),
+        columns: { id: true }
+      });
+
+      const totalCount =
+        schedulesWithoutRecordsCount +
+        expiringDoctorOrders.length +
+        expiringInsuranceCards.length;
+
+      res.json({
+        total: totalCount,
+        schedulesWithoutRecords: schedulesWithoutRecordsCount,
+        expiringDoctorOrders: expiringDoctorOrders.length,
+        expiringInsuranceCards: expiringInsuranceCards.length
+      });
+
+    } catch (error) {
+      console.error("Get notification count error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Enhanced Middleware for authenticated routes ==========
   // Use hierarchical access control middleware from separate file
 

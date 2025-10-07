@@ -1,15 +1,15 @@
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Bell, Settings, LogOut, Building2, ChevronDown, Heart } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 
 interface NavbarProps {
   currentFacility?: string
@@ -19,14 +19,25 @@ interface NavbarProps {
   onLogout?: () => void
 }
 
-export function Navbar({ 
-  currentFacility = "さくら訪問看護ステーション", 
-  userName = "田中 花子", 
+export function Navbar({
+  currentFacility = "さくら訪問看護ステーション",
+  userName = "田中 花子",
   userRole = "管理者",
   onFacilityChange = () => console.log('Facility change clicked'),
   onLogout = () => console.log('Logout clicked')
 }: NavbarProps) {
-  const [notificationCount] = useState(3)
+  // Fetch notification count
+  const { data: notificationData } = useQuery<{
+    total: number
+    schedulesWithoutRecords: number
+    expiringDoctorOrders: number
+    expiringInsuranceCards: number
+  }>({
+    queryKey: ["/api/notifications/count"],
+    refetchInterval: 60000, // Refetch every 60 seconds
+  })
+
+  const notificationCount = notificationData?.total || 0
 
   return (
     <nav className="flex-1">
