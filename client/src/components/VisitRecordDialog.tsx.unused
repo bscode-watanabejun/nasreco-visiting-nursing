@@ -13,9 +13,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, CheckCircle, XCircle, Camera, Upload, X, Image as ImageIcon, FileText, Loader2 } from "lucide-react"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { AlertCircle, CheckCircle, XCircle, Camera, Upload, X, Image as ImageIcon, FileText, Loader2, BookOpen } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import type { Patient, Schedule, PaginatedResult, NursingRecordAttachment } from "@shared/schema"
+import { useIsMobile } from "@/hooks/use-mobile"
+import type { Patient, Schedule, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan } from "@shared/schema"
 
 interface VisitRecordDialogProps {
   open: boolean
@@ -74,6 +76,7 @@ const getInitialFormData = (schedule?: Schedule | null): FormData => ({
 export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordDialogProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState("basic")
   const [formData, setFormData] = useState<FormData>(getInitialFormData(schedule))
   const [isSaving, setIsSaving] = useState(false)
@@ -88,6 +91,10 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
   const [savedRecordId, setSavedRecordId] = useState<string | null>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Document reference sheet state
+  const [docsSheetOpen, setDocsSheetOpen] = useState(false)
+  const [docsTab, setDocsTab] = useState<"orders" | "careplans">("orders")
 
   // Reset form data when dialog opens or schedule changes
   useEffect(() => {
@@ -123,9 +130,43 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
     },
   })
 
+  // Fetch doctor orders for selected patient
+  const { data: doctorOrders = [] } = useQuery<DoctorOrder[]>({
+    queryKey: ["doctor-orders", formData.patientId],
+    queryFn: async () => {
+      if (!formData.patientId) return []
+      const response = await fetch(`/api/doctor-orders?patientId=${formData.patientId}`)
+      if (!response.ok) return []
+      return response.json()
+    },
+    enabled: !!formData.patientId && open,
+  })
+
+  // Fetch service care plans for selected patient
+  const { data: serviceCarePlans = [] } = useQuery<ServiceCarePlan[]>({
+    queryKey: ["/api/service-care-plans", formData.patientId],
+    queryFn: async () => {
+      if (!formData.patientId) return []
+      const response = await fetch(`/api/service-care-plans?patientId=${formData.patientId}`)
+      if (!response.ok) return []
+      return response.json()
+    },
+    enabled: !!formData.patientId && open,
+  })
+
   const patients = patientsData?.data || []
   const currentUser = userData?.user
   const selectedPatient = patients.find(p => p.id === formData.patientId)
+
+  // Filter active doctor orders (not expired)
+  const activeDoctorOrders = doctorOrders.filter(order =>
+    new Date(order.endDate) >= new Date()
+  ).sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+
+  // Get latest service care plan
+  const latestCarePlan = serviceCarePlans.length > 0
+    ? serviceCarePlans.sort((a, b) => new Date(b.planDate).getTime() - new Date(a.planDate).getTime())[0]
+    : null
 
   // Fetch today's schedules for the selected patient
   const { data: patientSchedulesData } = useQuery({
@@ -586,7 +627,7 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl sm:text-2xl">
             訪問記録の作成
@@ -595,6 +636,9 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
             {new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} の訪問記録を作成します
           </p>
         </DialogHeader>
+
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto -mx-6 px-6">
 
         {/* 基本情報セクション */}
         <div className="space-y-4 p-4 bg-gray-50 rounded-lg border">
@@ -1131,34 +1175,264 @@ export function VisitRecordDialog({ open, onOpenChange, schedule }: VisitRecordD
             </div>
           </div>
         )}
+        </div>
+        {/* End of scrollable area */}
 
-        {/* アクションボタン */}
-        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
+        {/* アクションボタン - 固定位置 */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-4 border-t mt-4 -mx-6 px-6 bg-background">
           <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-            className="w-full sm:w-auto"
+            variant="ghost"
+            onClick={() => setDocsSheetOpen(true)}
+            disabled={!formData.patientId || isSaving}
+            className="w-full sm:w-auto order-first sm:order-none"
           >
-            キャンセル
+            <BookOpen className="mr-2 h-4 w-4" />
+            指示書・計画書を確認
           </Button>
-          <Button
-            variant="outline"
-            onClick={handleSaveDraft}
-            disabled={isSaving}
-            className="w-full sm:w-auto"
-          >
-            {isSaving ? '保存中...' : '下書き保存'}
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600"
-          >
-            {isSaving ? '保存中...' : '記録を保存'}
-          </Button>
+
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSaving}
+              className="w-full sm:w-auto"
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={isSaving}
+              className="w-full sm:w-auto"
+            >
+              {isSaving ? '保存中...' : '下書き保存'}
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600"
+            >
+              {isSaving ? '保存中...' : '記録を保存'}
+            </Button>
+          </div>
         </div>
       </DialogContent>
+
+      {/* Document Reference Sheet */}
+      <Sheet open={docsSheetOpen} onOpenChange={setDocsSheetOpen}>
+        <SheetContent
+          side={isMobile ? "bottom" : "right"}
+          className={isMobile ? "h-[85vh]" : "w-[600px] overflow-y-auto"}
+        >
+          <SheetHeader>
+            <SheetTitle>指示書・計画書</SheetTitle>
+          </SheetHeader>
+
+          <Tabs value={docsTab} onValueChange={(v) => setDocsTab(v as "orders" | "careplans")} className="mt-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="orders">
+                訪問看護指示書
+                {activeDoctorOrders.length > 0 && (
+                  <Badge className="ml-2" variant="secondary">{activeDoctorOrders.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="careplans">
+                ケアプラン
+                {latestCarePlan && <Badge className="ml-2" variant="secondary">1</Badge>}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Doctor Orders Tab */}
+            <TabsContent value="orders" className="space-y-4 mt-4">
+              {!formData.patientId ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">患者を選択してください</p>
+                </div>
+              ) : activeDoctorOrders.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">有効な訪問看護指示書がありません</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {activeDoctorOrders.map((order) => (
+                    <div key={order.id} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default">有効</Badge>
+                        {(() => {
+                          const daysUntilExpiry = Math.ceil(
+                            (new Date(order.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                          )
+                          return daysUntilExpiry <= 14 ? (
+                            <Badge variant="destructive" className="flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              期限間近（残り{daysUntilExpiry}日）
+                            </Badge>
+                          ) : null
+                        })()}
+                      </div>
+
+                      {(order as any).medicalInstitution && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">医療機関</p>
+                          <p className="text-sm font-medium">
+                            {(order as any).medicalInstitution.name} - {(order as any).medicalInstitution.doctorName}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">指示日</p>
+                          <p className="text-sm">{new Date(order.orderDate).toLocaleDateString('ja-JP')}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">有効期限</p>
+                          <p className="text-sm">{new Date(order.endDate).toLocaleDateString('ja-JP')}</p>
+                        </div>
+                      </div>
+
+                      {order.diagnosis && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">病名</p>
+                          <p className="text-sm whitespace-pre-wrap">{order.diagnosis}</p>
+                        </div>
+                      )}
+
+                      {order.orderContent && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">指示内容</p>
+                          <p className="text-sm whitespace-pre-wrap">{order.orderContent}</p>
+                        </div>
+                      )}
+
+                      {order.weeklyVisitLimit && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">週の訪問回数上限</p>
+                          <p className="text-sm">{order.weeklyVisitLimit}回/週</p>
+                        </div>
+                      )}
+
+                      {order.filePath && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-2">添付ファイル</p>
+                          <div className="border rounded-md overflow-hidden">
+                            {order.filePath.toLowerCase().endsWith('.pdf') ? (
+                              <iframe
+                                src={order.filePath}
+                                className="w-full h-[70vh]"
+                                title="指示書PDF"
+                              />
+                            ) : (
+                              <img
+                                src={order.filePath}
+                                alt="指示書"
+                                className="w-full h-auto max-h-[70vh] object-contain"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Care Plans Tab */}
+            <TabsContent value="careplans" className="space-y-4 mt-4">
+              {!formData.patientId ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">患者を選択してください</p>
+                </div>
+              ) : !latestCarePlan ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">居宅サービス計画書がありません</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">
+                      {latestCarePlan.planType === 'initial' ? '初回' :
+                       latestCarePlan.planType === 'update' ? '更新' : '変更'}
+                    </Badge>
+                    {latestCarePlan.planNumber && (
+                      <span className="text-sm font-medium">計画書番号: {latestCarePlan.planNumber}</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">作成日</p>
+                      <p className="text-sm">{latestCarePlan.planDate}</p>
+                    </div>
+                    {latestCarePlan.certificationPeriodStart && latestCarePlan.certificationPeriodEnd && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">認定期間</p>
+                        <p className="text-sm">
+                          {latestCarePlan.certificationPeriodStart} 〜 {latestCarePlan.certificationPeriodEnd}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {latestCarePlan.userIntention && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">利用者の意向</p>
+                      <p className="text-sm whitespace-pre-wrap">{latestCarePlan.userIntention}</p>
+                    </div>
+                  )}
+
+                  {latestCarePlan.familyIntention && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">家族の意向</p>
+                      <p className="text-sm whitespace-pre-wrap">{latestCarePlan.familyIntention}</p>
+                    </div>
+                  )}
+
+                  {latestCarePlan.comprehensivePolicy && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">総合的な援助の方針</p>
+                      <p className="text-sm whitespace-pre-wrap">{latestCarePlan.comprehensivePolicy}</p>
+                    </div>
+                  )}
+
+                  {latestCarePlan.remarks && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">備考</p>
+                      <p className="text-sm whitespace-pre-wrap">{latestCarePlan.remarks}</p>
+                    </div>
+                  )}
+
+                  {latestCarePlan.filePath && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">添付ファイル</p>
+                      <div className="border rounded-md overflow-hidden">
+                        {latestCarePlan.filePath.toLowerCase().endsWith('.pdf') ? (
+                          <iframe
+                            src={latestCarePlan.filePath}
+                            className="w-full h-[70vh]"
+                            title="ケアプランPDF"
+                          />
+                        ) : (
+                          <img
+                            src={latestCarePlan.filePath}
+                            alt="ケアプラン"
+                            className="w-full h-auto max-h-[70vh] object-contain"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </SheetContent>
+      </Sheet>
     </Dialog>
   )
 }

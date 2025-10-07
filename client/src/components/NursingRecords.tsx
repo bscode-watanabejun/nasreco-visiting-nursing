@@ -41,10 +41,16 @@ import {
   ZoomIn,
   ExternalLink
 } from "lucide-react"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useToast } from "@/hooks/use-toast"
 
-import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan } from "@shared/schema"
 
 // Display-specific interface for nursing records with patient/nurse names
 interface NursingRecordDisplay extends NursingRecord {
@@ -283,6 +289,40 @@ export function NursingRecords() {
   const patients = patientsData?.data || []
   const rawRecords = recordsData?.data || []
   const users = usersData?.data || []
+
+  // Fetch doctor orders for selected patient
+  const { data: doctorOrders = [] } = useQuery<DoctorOrder[]>({
+    queryKey: ["doctor-orders", formData.patientId],
+    queryFn: async () => {
+      if (!formData.patientId) return []
+      const response = await fetch(`/api/doctor-orders?patientId=${formData.patientId}`)
+      if (!response.ok) return []
+      return response.json()
+    },
+    enabled: !!formData.patientId && (isCreating || isEditing),
+  })
+
+  // Fetch service care plans for selected patient
+  const { data: serviceCarePlans = [] } = useQuery<ServiceCarePlan[]>({
+    queryKey: ["/api/service-care-plans", formData.patientId],
+    queryFn: async () => {
+      if (!formData.patientId) return []
+      const response = await fetch(`/api/service-care-plans?patientId=${formData.patientId}`)
+      if (!response.ok) return []
+      return response.json()
+    },
+    enabled: !!formData.patientId && (isCreating || isEditing),
+  })
+
+  // Filter active doctor orders (not expired)
+  const activeDoctorOrders = doctorOrders.filter(order =>
+    new Date(order.endDate) >= new Date()
+  ).sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+
+  // Get latest service care plan
+  const latestCarePlan = serviceCarePlans.length > 0
+    ? serviceCarePlans.sort((a, b) => new Date(b.planDate).getTime() - new Date(a.planDate).getTime())[0]
+    : null
 
   // Fetch schedule data if scheduleId is in URL
   const urlParams = new URLSearchParams(searchParams)
@@ -804,6 +844,7 @@ export function NursingRecords() {
     const selectedPatient = patients.find(p => p.id === formData.patientId)
 
     return (
+      <>
       <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
@@ -1378,6 +1419,208 @@ export function NursingRecords() {
               </Button>
             </div>
           </div>
+        )}
+
+        {/* Document Reference Accordion */}
+        {formData.patientId && (isCreating || isEditing) && (
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="doctor-orders">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span>訪問看護指示書</span>
+                  {activeDoctorOrders.length > 0 && (
+                    <Badge variant="secondary">{activeDoctorOrders.length}件</Badge>
+                  )}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                {activeDoctorOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                    <p className="text-muted-foreground">有効な訪問看護指示書がありません</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {activeDoctorOrders.map((order) => (
+                      <div key={order.id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="default">有効</Badge>
+                          {(() => {
+                            const daysUntilExpiry = Math.ceil(
+                              (new Date(order.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                            )
+                            return daysUntilExpiry <= 14 ? (
+                              <Badge variant="destructive" className="flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                期限間近（残り{daysUntilExpiry}日）
+                              </Badge>
+                            ) : null
+                          })()}
+                        </div>
+
+                        {(order as any).medicalInstitution && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">医療機関</p>
+                            <p className="text-sm font-medium">
+                              {(order as any).medicalInstitution.name} - {(order as any).medicalInstitution.doctorName}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">指示日</p>
+                            <p className="text-sm">{new Date(order.orderDate).toLocaleDateString('ja-JP')}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">有効期限</p>
+                            <p className="text-sm">{new Date(order.endDate).toLocaleDateString('ja-JP')}</p>
+                          </div>
+                        </div>
+
+                        {order.diagnosis && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">病名</p>
+                            <p className="text-sm whitespace-pre-wrap">{order.diagnosis}</p>
+                          </div>
+                        )}
+
+                        {order.orderContent && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">指示内容</p>
+                            <p className="text-sm whitespace-pre-wrap">{order.orderContent}</p>
+                          </div>
+                        )}
+
+                        {order.weeklyVisitLimit && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">週の訪問回数上限</p>
+                            <p className="text-sm">{order.weeklyVisitLimit}回/週</p>
+                          </div>
+                        )}
+
+                        {order.filePath && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-2">添付ファイル</p>
+                            <div className="border rounded-md overflow-hidden">
+                              {order.filePath.toLowerCase().endsWith('.pdf') ? (
+                                <iframe
+                                  src={order.filePath}
+                                  className="w-full h-[600px]"
+                                  title="指示書PDF"
+                                />
+                              ) : (
+                                <img
+                                  src={order.filePath}
+                                  alt="指示書"
+                                  className="w-full h-auto"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="care-plan">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span>ケアプラン（居宅サービス計画書）</span>
+                  {latestCarePlan && <Badge variant="secondary">1件</Badge>}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                {!latestCarePlan ? (
+                  <div className="text-center py-8">
+                    <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                    <p className="text-muted-foreground">居宅サービス計画書がありません</p>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">
+                        {latestCarePlan.planType === 'initial' ? '初回' :
+                         latestCarePlan.planType === 'update' ? '更新' : '変更'}
+                      </Badge>
+                      {latestCarePlan.planNumber && (
+                        <span className="text-sm font-medium">計画書番号: {latestCarePlan.planNumber}</span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">作成日</p>
+                        <p className="text-sm">{latestCarePlan.planDate}</p>
+                      </div>
+                      {latestCarePlan.certificationPeriodStart && latestCarePlan.certificationPeriodEnd && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">認定期間</p>
+                          <p className="text-sm">
+                            {latestCarePlan.certificationPeriodStart} 〜 {latestCarePlan.certificationPeriodEnd}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {latestCarePlan.userIntention && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">利用者の意向</p>
+                        <p className="text-sm whitespace-pre-wrap">{latestCarePlan.userIntention}</p>
+                      </div>
+                    )}
+
+                    {latestCarePlan.familyIntention && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">家族の意向</p>
+                        <p className="text-sm whitespace-pre-wrap">{latestCarePlan.familyIntention}</p>
+                      </div>
+                    )}
+
+                    {latestCarePlan.comprehensivePolicy && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">総合的な援助の方針</p>
+                        <p className="text-sm whitespace-pre-wrap">{latestCarePlan.comprehensivePolicy}</p>
+                      </div>
+                    )}
+
+                    {latestCarePlan.remarks && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">備考</p>
+                        <p className="text-sm whitespace-pre-wrap">{latestCarePlan.remarks}</p>
+                      </div>
+                    )}
+
+                    {latestCarePlan.filePath && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">添付ファイル</p>
+                        <div className="border rounded-md overflow-hidden">
+                          {latestCarePlan.filePath.toLowerCase().endsWith('.pdf') ? (
+                            <iframe
+                              src={latestCarePlan.filePath}
+                              className="w-full h-[600px]"
+                              title="ケアプランPDF"
+                            />
+                          ) : (
+                            <img
+                              src={latestCarePlan.filePath}
+                              alt="ケアプラン"
+                              className="w-full h-auto"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
 
         {/* 5 Tabs */}
@@ -1995,6 +2238,8 @@ export function NursingRecords() {
           </div>
         )}
       </div>
+
+      </>
     )
   }
 
@@ -2228,4 +2473,3 @@ export function NursingRecords() {
     </>
   )
 }
-
