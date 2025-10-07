@@ -23,6 +23,7 @@ import {
   insertDoctorOrderSchema,
   insertInsuranceCardSchema,
   insertCarePlanSchema,
+  insertServiceCarePlanSchema,
   insertCareReportSchema,
   updateUserSelfSchema,
   updateUserAdminSchema,
@@ -37,6 +38,7 @@ import {
   updateDoctorOrderSchema,
   updateInsuranceCardSchema,
   updateCarePlanSchema,
+  updateServiceCarePlanSchema,
   updateCareReportSchema,
   insertContractSchema,
   updateContractSchema,
@@ -46,6 +48,7 @@ import {
   doctorOrders,
   insuranceCards,
   carePlans,
+  serviceCarePlans,
   careReports,
   contracts,
   patients,
@@ -3608,6 +3611,259 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "訪問看護計画書を削除しました" });
     } catch (error) {
       console.error("Delete care plan error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Service Care Plans API (居宅サービス計画書) ==========
+
+  // Get all service care plans with optional patient filter
+  app.get("/api/service-care-plans", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { patientId } = req.query;
+
+      const whereConditions = [
+        eq(serviceCarePlans.facilityId, facilityId!),
+        eq(serviceCarePlans.isActive, true)
+      ];
+
+      if (patientId && typeof patientId === 'string') {
+        whereConditions.push(eq(serviceCarePlans.patientId, patientId));
+      }
+
+      const plans = await db.query.serviceCarePlans.findMany({
+        where: and(...whereConditions),
+        with: {
+          patient: true,
+          facility: true,
+        },
+        orderBy: (serviceCarePlans, { desc }) => [desc(serviceCarePlans.planDate)]
+      });
+
+      res.json(plans);
+    } catch (error) {
+      console.error("Get service care plans error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single service care plan
+  app.get("/api/service-care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const plan = await db.query.serviceCarePlans.findFirst({
+        where: and(
+          eq(serviceCarePlans.id, id),
+          eq(serviceCarePlans.facilityId, facilityId!)
+        ),
+        with: {
+          patient: true,
+          facility: true,
+        }
+      });
+
+      if (!plan) {
+        return res.status(404).json({ error: "居宅サービス計画書が見つかりません" });
+      }
+
+      res.json(plan);
+    } catch (error) {
+      console.error("Get service care plan error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create service care plan
+  app.post("/api/service-care-plans", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "認証情報が見つかりません" });
+      }
+
+      console.log("Received service care plan data:", req.body);
+      const validatedData = insertServiceCarePlanSchema.parse(req.body);
+
+      const planData: any = {
+        ...validatedData,
+        facilityId,
+      };
+
+      if (req.file) {
+        planData.filePath = `/uploads/documents/${req.file.filename}`;
+        planData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
+      const [plan] = await db.insert(serviceCarePlans).values(planData).returning();
+
+      // Fetch the plan with relations
+      const planWithRelations = await db.query.serviceCarePlans.findFirst({
+        where: eq(serviceCarePlans.id, plan.id),
+        with: {
+          patient: true,
+          facility: true,
+        }
+      });
+
+      res.status(201).json(planWithRelations);
+    } catch (error) {
+      console.error("Create service care plan error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "入力データが不正です", details: error.errors });
+      }
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update service care plan
+  app.put("/api/service-care-plans/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      if (!facilityId) {
+        return res.status(401).json({ error: "認証情報が見つかりません" });
+      }
+
+      console.log("Updating service care plan:", id, req.body);
+      const validatedData = updateServiceCarePlanSchema.parse(req.body);
+
+      const updateData: any = {
+        ...validatedData,
+        updatedAt: new Date(),
+      };
+
+      if (req.file) {
+        updateData.filePath = `/uploads/documents/${req.file.filename}`;
+        updateData.originalFileName = decodeFilename(req.file.originalname);
+      }
+
+      const [plan] = await db.update(serviceCarePlans)
+        .set(updateData)
+        .where(and(
+          eq(serviceCarePlans.id, id),
+          eq(serviceCarePlans.facilityId, facilityId)
+        ))
+        .returning();
+
+      if (!plan) {
+        return res.status(404).json({ error: "居宅サービス計画書が見つかりません" });
+      }
+
+      // Fetch the plan with relations
+      const planWithRelations = await db.query.serviceCarePlans.findFirst({
+        where: eq(serviceCarePlans.id, plan.id),
+        with: {
+          patient: true,
+          facility: true,
+        }
+      });
+
+      res.json(planWithRelations);
+    } catch (error) {
+      console.error("Update service care plan error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "入力データが不正です", details: error.errors });
+      }
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Download service care plan attachment
+  app.get("/api/service-care-plans/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const plan = await db.query.serviceCarePlans.findFirst({
+        where: and(
+          eq(serviceCarePlans.id, id),
+          eq(serviceCarePlans.facilityId, facilityId!)
+        )
+      });
+
+      if (!plan || !plan.filePath) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      const filePath = path.join(process.cwd(), plan.filePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "ファイルが見つかりません" });
+      }
+
+      const fileName = plan.originalFileName || path.basename(plan.filePath);
+      res.download(filePath, fileName);
+    } catch (error) {
+      console.error("Download service care plan attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete service care plan attachment
+  app.delete("/api/service-care-plans/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const plan = await db.query.serviceCarePlans.findFirst({
+        where: and(
+          eq(serviceCarePlans.id, id),
+          eq(serviceCarePlans.facilityId, facilityId!)
+        )
+      });
+
+      if (!plan) {
+        return res.status(404).json({ error: "居宅サービス計画書が見つかりません" });
+      }
+
+      if (plan.filePath) {
+        const filePath = path.join(process.cwd(), plan.filePath);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+
+      await db.update(serviceCarePlans)
+        .set({
+          filePath: null,
+          originalFileName: null,
+          updatedAt: new Date()
+        })
+        .where(eq(serviceCarePlans.id, id));
+
+      res.json({ message: "添付ファイルを削除しました" });
+    } catch (error) {
+      console.error("Delete service care plan attachment error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete service care plan (logical delete)
+  app.delete("/api/service-care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const [plan] = await db.update(serviceCarePlans)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(serviceCarePlans.id, id),
+          eq(serviceCarePlans.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!plan) {
+        return res.status(404).json({ error: "居宅サービス計画書が見つかりません" });
+      }
+
+      res.json({ message: "居宅サービス計画書を削除しました" });
+    } catch (error) {
+      console.error("Delete service care plan error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

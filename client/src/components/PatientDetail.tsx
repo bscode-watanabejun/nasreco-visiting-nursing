@@ -25,9 +25,11 @@ import {
   ExternalLink,
   Download
 } from "lucide-react"
-import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, Building, MedicalInstitution, CareManager } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, ServiceCarePlan, CarePlan, Building, MedicalInstitution, CareManager } from "@shared/schema"
 import { DoctorOrderDialog } from "./DoctorOrderDialog"
 import { InsuranceCardDialog } from "./InsuranceCardDialog"
+import { ServiceCarePlanDialog } from "./ServiceCarePlanDialog"
+import { CarePlanDialog } from "./CarePlanDialog"
 import { useToast } from "@/hooks/use-toast"
 
 type PatientWithRelations = Patient & {
@@ -62,6 +64,10 @@ export function PatientDetail() {
   const [editingOrder, setEditingOrder] = useState<DoctorOrder | null>(null)
   const [cardDialogOpen, setCardDialogOpen] = useState(false)
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null)
+  const [serviceCarePlanDialogOpen, setServiceCarePlanDialogOpen] = useState(false)
+  const [editingServiceCarePlan, setEditingServiceCarePlan] = useState<ServiceCarePlan | null>(null)
+  const [carePlanDialogOpen, setCarePlanDialogOpen] = useState(false)
+  const [editingCarePlan, setEditingCarePlan] = useState<CarePlan | null>(null)
 
   // Fetch patient data
   const { data: patientData, isLoading: isPatientLoading } = useQuery<PatientWithRelations>({
@@ -109,6 +115,32 @@ export function PatientDetail() {
       const response = await fetch(`/api/insurance-cards?patientId=${id}`)
       if (!response.ok) {
         throw new Error("保険証の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!id,
+  })
+
+  // Fetch service care plans for this patient
+  const { data: serviceCarePlans = [], isLoading: isServiceCarePlansLoading } = useQuery<ServiceCarePlan[]>({
+    queryKey: ["/api/service-care-plans", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/service-care-plans?patientId=${id}`)
+      if (!response.ok) {
+        throw new Error("居宅サービス計画書の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!id,
+  })
+
+  // Fetch nursing care plans for this patient
+  const { data: nursingCarePlans = [], isLoading: isNursingCarePlansLoading } = useQuery<CarePlan[]>({
+    queryKey: ["/api/care-plans", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/care-plans?patientId=${id}`)
+      if (!response.ok) {
+        throw new Error("訪問看護計画書の取得に失敗しました")
       }
       return response.json()
     },
@@ -1128,16 +1160,234 @@ export function PatientDetail() {
 
         {/* Care Plan Tab */}
         <TabsContent value="care" className="space-y-6">
+          {/* Service Care Plans (居宅サービス計画書) */}
           <Card>
             <CardHeader>
-              <CardTitle>ケアプラン</CardTitle>
-              <CardDescription>看護計画とケアプラン</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>居宅サービス計画書（ケアプラン）</CardTitle>
+                  <CardDescription>ケアマネージャーが作成する総合的な介護計画</CardDescription>
+                </div>
+                <Button
+                  onClick={() => {
+                    setEditingServiceCarePlan(null)
+                    setServiceCarePlanDialogOpen(true)
+                  }}
+                  size="sm"
+                >
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  新規作成
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8">
-                <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
-                <p className="text-muted-foreground">ケアプラン機能は次のフェーズで実装予定です</p>
+              {isServiceCarePlansLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">読み込み中...</p>
+                </div>
+              ) : serviceCarePlans.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">居宅サービス計画書が登録されていません</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {serviceCarePlans.map((plan) => (
+                    <div key={plan.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">
+                              {plan.planType === 'initial' ? '初回' : plan.planType === 'update' ? '更新' : '変更'}
+                            </Badge>
+                            {plan.planNumber && (
+                              <span className="text-sm font-medium">計画書番号: {plan.planNumber}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span>作成日: {plan.planDate}</span>
+                            {plan.certificationPeriodStart && plan.certificationPeriodEnd && (
+                              <span>認定期間: {plan.certificationPeriodStart} 〜 {plan.certificationPeriodEnd}</span>
+                            )}
+                          </div>
+                          {plan.userIntention && (
+                            <div className="mt-2">
+                              <p className="text-xs text-muted-foreground">利用者の意向</p>
+                              <p className="text-sm">{plan.userIntention}</p>
+                            </div>
+                          )}
+                          {plan.filePath && (
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => window.open(plan.filePath!, '_blank')}
+                              >
+                                <ExternalLink className="mr-1 h-3 w-3" />
+                                プレビュー
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  window.location.href = `/api/service-care-plans/${plan.id}/attachment/download`
+                                }}
+                              >
+                                <Download className="mr-1 h-3 w-3" />
+                                ダウンロード
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setEditingServiceCarePlan(plan)
+                              setServiceCarePlanDialogOpen(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={async () => {
+                              if (!confirm('この居宅サービス計画書を削除してもよろしいですか？')) return
+                              try {
+                                const response = await fetch(`/api/service-care-plans/${plan.id}`, {
+                                  method: 'DELETE',
+                                })
+                                if (!response.ok) throw new Error('削除に失敗しました')
+                                toast({ description: "居宅サービス計画書を削除しました" })
+                                queryClient.invalidateQueries({ queryKey: ["/api/service-care-plans", id] })
+                              } catch (error) {
+                                toast({ variant: "destructive", description: "削除に失敗しました" })
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Nursing Care Plans (訪問看護計画書) */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>訪問看護計画書</CardTitle>
+                  <CardDescription>訪問看護ステーションが作成する看護計画</CardDescription>
+                </div>
+                <Button
+                  onClick={() => {
+                    setEditingCarePlan(null)
+                    setCarePlanDialogOpen(true)
+                  }}
+                  size="sm"
+                >
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  新規作成
+                </Button>
               </div>
+            </CardHeader>
+            <CardContent>
+              {isNursingCarePlansLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">読み込み中...</p>
+                </div>
+              ) : nursingCarePlans.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">訪問看護計画書が登録されていません</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {nursingCarePlans.map((plan) => (
+                    <div key={plan.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            {plan.planNumber && (
+                              <span className="text-sm font-medium">計画書番号: {plan.planNumber}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span>計画日: {plan.planDate}</span>
+                            <span>期間: {plan.planPeriodStart} 〜 {plan.planPeriodEnd}</span>
+                          </div>
+                          {plan.nursingGoals && (
+                            <div className="mt-2">
+                              <p className="text-xs text-muted-foreground">看護目標</p>
+                              <p className="text-sm">{plan.nursingGoals}</p>
+                            </div>
+                          )}
+                          {plan.filePath && (
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => window.open(plan.filePath!, '_blank')}
+                              >
+                                <ExternalLink className="mr-1 h-3 w-3" />
+                                プレビュー
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  window.location.href = `/api/care-plans/${plan.id}/attachment/download`
+                                }}
+                              >
+                                <Download className="mr-1 h-3 w-3" />
+                                ダウンロード
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setEditingCarePlan(plan)
+                              setCarePlanDialogOpen(true)
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={async () => {
+                              if (!confirm('この訪問看護計画書を削除してもよろしいですか？')) return
+                              try {
+                                const response = await fetch(`/api/care-plans/${plan.id}`, {
+                                  method: 'DELETE',
+                                })
+                                if (!response.ok) throw new Error('削除に失敗しました')
+                                toast({ description: "訪問看護計画書を削除しました" })
+                                queryClient.invalidateQueries({ queryKey: ["/api/care-plans", id] })
+                              } catch (error) {
+                                toast({ variant: "destructive", description: "削除に失敗しました" })
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1157,6 +1407,22 @@ export function PatientDetail() {
         onOpenChange={setCardDialogOpen}
         patientId={id!}
         card={editingCard}
+      />
+
+      {/* Service Care Plan Dialog */}
+      <ServiceCarePlanDialog
+        open={serviceCarePlanDialogOpen}
+        onOpenChange={setServiceCarePlanDialogOpen}
+        patientId={id!}
+        plan={editingServiceCarePlan}
+      />
+
+      {/* Care Plan Dialog */}
+      <CarePlanDialog
+        open={carePlanDialogOpen}
+        onOpenChange={setCarePlanDialogOpen}
+        patientId={id!}
+        plan={editingCarePlan}
       />
     </div>
   )

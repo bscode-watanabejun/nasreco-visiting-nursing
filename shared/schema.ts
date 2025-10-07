@@ -366,6 +366,59 @@ export const carePlans = pgTable("care_plans", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Service Care Plans Table (居宅サービス計画書 - ケアマネ作成) ==========
+export const serviceCareplanTypeEnum = pgEnum("service_careplan_type", ["initial", "update", "revision"]);
+
+export const serviceCarePlans = pgTable("service_care_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+
+  // 基本情報
+  planType: serviceCareplanTypeEnum("plan_type").notNull().default("initial"),
+  planNumber: text("plan_number"), // 計画書番号
+  planDate: date("plan_date").notNull(), // 作成日
+  initialPlanDate: date("initial_plan_date"), // 初回作成日
+
+  // 認定情報
+  certificationDate: date("certification_date"), // 認定日
+  certificationPeriodStart: date("certification_period_start"), // 認定有効期間開始
+  certificationPeriodEnd: date("certification_period_end"), // 認定有効期間終了
+
+  // 利用者・家族の意向
+  userIntention: text("user_intention"), // 利用者の生活に対する意向
+  familyIntention: text("family_intention"), // 家族の意向
+
+  // 援助方針
+  comprehensivePolicy: text("comprehensive_policy"), // 総合的な援助の方針
+
+  // 生活課題と目標（JSON配列）
+  lifeChallenges: json("life_challenges"), // [{challenge, longTermGoal, shortTermGoal, supportContent, serviceType, frequency, period}]
+
+  // 週間サービス計画（JSON配列）
+  weeklySchedule: json("weekly_schedule"), // [{dayOfWeek, timeSlot, service, provider}]
+
+  // サービス担当者会議
+  meetingDate: timestamp("meeting_date", { withTimezone: true }), // 会議開催日時
+  meetingParticipants: text("meeting_participants"), // 参加者
+  meetingNotes: text("meeting_notes"), // 検討内容
+
+  // モニタリング
+  monitoringNotes: text("monitoring_notes"), // モニタリング記録
+
+  // 備考
+  remarks: text("remarks"), // 備考
+
+  // ファイル添付
+  filePath: text("file_path"), // PDF/画像ファイルパス
+  originalFileName: text("original_file_name"), // 元のファイル名
+
+  // メタ情報
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // ========== Care Reports Table (訪問看護報告書) ==========
 export const careReports = pgTable("care_reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -547,6 +600,14 @@ export const insertCarePlanSchema = createInsertSchema(carePlans).omit({
   updatedAt: true,
 });
 
+export const insertServiceCarePlanSchema = createInsertSchema(serviceCarePlans).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertCareReportSchema = createInsertSchema(careReports).omit({
   id: true,
   facilityId: true, // Set by server from user session
@@ -618,6 +679,8 @@ export const updateInsuranceCardSchema = insertInsuranceCardSchema.partial();
 
 export const updateCarePlanSchema = insertCarePlanSchema.partial();
 
+export const updateServiceCarePlanSchema = insertServiceCarePlanSchema.partial();
+
 export const updateCareReportSchema = insertCareReportSchema.partial();
 
 export const updateContractSchema = insertContractSchema.partial();
@@ -671,6 +734,9 @@ export type InsuranceCard = typeof insuranceCards.$inferSelect;
 export type InsertCarePlan = z.infer<typeof insertCarePlanSchema>;
 export type CarePlan = typeof carePlans.$inferSelect;
 
+export type InsertServiceCarePlan = z.infer<typeof insertServiceCarePlanSchema>;
+export type ServiceCarePlan = typeof serviceCarePlans.$inferSelect;
+
 export type InsertCareReport = z.infer<typeof insertCareReportSchema>;
 export type CareReport = typeof careReports.$inferSelect;
 
@@ -693,6 +759,7 @@ export type UpdateCareManager = z.infer<typeof updateCareManagerSchema>;
 export type UpdateDoctorOrder = z.infer<typeof updateDoctorOrderSchema>;
 export type UpdateInsuranceCard = z.infer<typeof updateInsuranceCardSchema>;
 export type UpdateCarePlan = z.infer<typeof updateCarePlanSchema>;
+export type UpdateServiceCarePlan = z.infer<typeof updateServiceCarePlanSchema>;
 export type UpdateCareReport = z.infer<typeof updateCareReportSchema>;
 export type UpdateContract = z.infer<typeof updateContractSchema>;
 
@@ -801,6 +868,17 @@ export const carePlansRelations = relations(carePlans, ({ one }) => ({
   approvedBy: one(users, {
     fields: [carePlans.approvedBy],
     references: [users.id],
+  }),
+}));
+
+export const serviceCarePlansRelations = relations(serviceCarePlans, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [serviceCarePlans.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [serviceCarePlans.patientId],
+    references: [patients.id],
   }),
 }));
 
