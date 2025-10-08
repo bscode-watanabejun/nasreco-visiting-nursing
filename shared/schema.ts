@@ -117,6 +117,11 @@ export const patients = pgTable("patients", {
   medicalInstitutionId: varchar("medical_institution_id").references(() => medicalInstitutions.id), // 主治医
   careManagerId: varchar("care_manager_id").references(() => careManagers.id), // ケアマネージャー
 
+  // Special management addition (特別管理加算)
+  specialManagementTypes: text("special_management_types").array(), // 特管項目（複数選択）
+  specialManagementStartDate: date("special_management_start_date"), // 特管開始日
+  specialManagementEndDate: date("special_management_end_date"), // 特管終了日（nullは継続中）
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -226,6 +231,9 @@ export const nursingRecords = pgTable("nursing_records", {
   // Phase 1: Bonus calculation fields (加算計算フィールド)
   calculatedPoints: integer("calculated_points"), // 算定点数
   appliedBonuses: json("applied_bonuses"), // 適用加算の詳細（JSON配列）
+
+  // Special management record data (特別管理記録データ)
+  specialManagementData: json("special_management_data"), // 特管記録（JSON形式）
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

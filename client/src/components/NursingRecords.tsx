@@ -52,6 +52,36 @@ import { useToast } from "@/hooks/use-toast"
 
 import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan } from "@shared/schema"
 
+// Special management types definition (matching PatientForm)
+const SPECIAL_MANAGEMENT_TYPES = [
+  { value: "oxygen", label: "在宅酸素療法", fields: [
+    { name: "flow_rate", label: "酸素流量(L/分)", type: "number" as const },
+    { name: "spo2", label: "SpO2(%)", type: "number" as const },
+    { name: "usage_hours", label: "使用時間", type: "select" as const, options: ["24時間", "夜間のみ", "間欠"] },
+  ]},
+  { value: "tracheostomy", label: "気管カニューレ", fields: [
+    { name: "suction_count", label: "吸引回数", type: "number" as const },
+    { name: "sputum_amount", label: "痰の量", type: "select" as const, options: ["少量", "中等量", "多量"] },
+    { name: "sputum_property", label: "痰の性状", type: "text" as const },
+  ]},
+  { value: "ventilator", label: "人工呼吸器", fields: [
+    { name: "mode", label: "換気モード", type: "text" as const },
+    { name: "respiratory_rate", label: "呼吸回数", type: "number" as const },
+  ]},
+  { value: "tpn", label: "中心静脈栄養", fields: [
+    { name: "infusion_amount", label: "注入量(mL)", type: "number" as const },
+    { name: "insertion_site", label: "刺入部状態", type: "text" as const },
+  ]},
+  { value: "pressure_ulcer", label: "褥瘡管理", fields: [
+    { name: "design_r", label: "DESIGN-R評価", type: "text" as const },
+    { name: "treatment", label: "処置内容", type: "text" as const },
+  ]},
+  { value: "artificial_anus", label: "人工肛門", fields: [
+    { name: "output_amount", label: "排泄量", type: "text" as const },
+    { name: "stoma_condition", label: "ストーマ周囲皮膚状態", type: "text" as const },
+  ]},
+] as const
+
 // Display-specific interface for nursing records with patient/nurse names
 interface NursingRecordDisplay extends NursingRecord {
   patientName?: string
@@ -81,6 +111,8 @@ interface FormData {
   longVisitReason: string
   // Selected schedule ID (for multiple schedules)
   selectedScheduleId: string
+  // Special management record data
+  specialManagementData: Record<string, any>
 }
 
 // Helper function to get full name
@@ -129,6 +161,11 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
     ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
     ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
+
+    // 特別管理記録データ
+    ...(Object.keys(formData.specialManagementData).length > 0 && {
+      specialManagementData: formData.specialManagementData
+    }),
 
     // スケジュールIDの紐付け
     ...(formData.selectedScheduleId && formData.selectedScheduleId !== 'none' ? { scheduleId: formData.selectedScheduleId } : {})
@@ -216,7 +253,8 @@ const getInitialFormData = (): FormData => ({
   multipleVisitReason: '',
   emergencyVisitReason: '',
   longVisitReason: '',
-  selectedScheduleId: ''
+  selectedScheduleId: '',
+  specialManagementData: {}
 })
 
 export function NursingRecords() {
@@ -526,7 +564,8 @@ export function NursingRecords() {
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
-      selectedScheduleId: ''
+      selectedScheduleId: '',
+      specialManagementData: (record.specialManagementData as Record<string, any>) || {}
     })
 
   }
@@ -561,7 +600,8 @@ export function NursingRecords() {
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
-      selectedScheduleId: ''
+      selectedScheduleId: '',
+      specialManagementData: (record.specialManagementData as Record<string, any>) || {}
     })
   }
 
@@ -1848,9 +1888,110 @@ export function NursingRecords() {
 
             {/* 特管記録タブ（保留） */}
             <TabsContent value="special" className="mt-4">
-              <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
-                <p className="text-sm">特別管理加算記録機能は準備中です</p>
-              </div>
+              {(() => {
+                const selectedPatient = patientsData?.data.find(p => p.id === formData.patientId)
+                const specialTypes = selectedPatient?.specialManagementTypes || []
+
+                if (specialTypes.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                      <p className="text-sm">この患者には特別管理加算の設定がありません</p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {specialTypes.map(typeValue => {
+                      const typeConfig = SPECIAL_MANAGEMENT_TYPES.find(t => t.value === typeValue)
+                      if (!typeConfig) return null
+
+                      return (
+                        <div key={typeValue} className="border rounded-lg p-4">
+                          <h3 className="font-semibold mb-4">{typeConfig.label}</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {typeConfig.fields.map(field => {
+                              const fieldKey = `${typeValue}_${field.name}`
+                              const value = formData.specialManagementData[fieldKey] || ''
+
+                              if (field.type === 'select' && field.options) {
+                                return (
+                                  <div key={fieldKey} className="space-y-2">
+                                    <Label htmlFor={fieldKey}>{field.label}</Label>
+                                    <Select
+                                      value={value}
+                                      onValueChange={(val) => {
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          specialManagementData: {
+                                            ...prev.specialManagementData,
+                                            [fieldKey]: val
+                                          }
+                                        }))
+                                      }}
+                                    >
+                                      <SelectTrigger id={fieldKey}>
+                                        <SelectValue placeholder="選択してください" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {field.options.map(opt => (
+                                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )
+                              }
+
+                              if (field.type === 'number') {
+                                return (
+                                  <div key={fieldKey} className="space-y-2">
+                                    <Label htmlFor={fieldKey}>{field.label}</Label>
+                                    <Input
+                                      id={fieldKey}
+                                      type="number"
+                                      value={value}
+                                      onChange={(e) => {
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          specialManagementData: {
+                                            ...prev.specialManagementData,
+                                            [fieldKey]: e.target.value
+                                          }
+                                        }))
+                                      }}
+                                    />
+                                  </div>
+                                )
+                              }
+
+                              return (
+                                <div key={fieldKey} className="space-y-2">
+                                  <Label htmlFor={fieldKey}>{field.label}</Label>
+                                  <Input
+                                    id={fieldKey}
+                                    type="text"
+                                    value={value}
+                                    onChange={(e) => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        specialManagementData: {
+                                          ...prev.specialManagementData,
+                                          [fieldKey]: e.target.value
+                                        }
+                                      }))
+                                    }}
+                                  />
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </TabsContent>
 
             {/* 写真・メモタブ */}

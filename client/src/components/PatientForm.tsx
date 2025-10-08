@@ -19,9 +19,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 
 import type { Patient, InsertPatient, UpdatePatient, MedicalInstitution, CareManager, Building } from "@shared/schema"
+
+// Special management types definition
+const SPECIAL_MANAGEMENT_TYPES = [
+  { value: "oxygen", label: "在宅酸素療法", insuranceType: "医療2500" },
+  { value: "tracheostomy", label: "気管カニューレ", insuranceType: "医療5000" },
+  { value: "ventilator", label: "人工呼吸器", insuranceType: "医療2500" },
+  { value: "tpn", label: "中心静脈栄養", insuranceType: "医療2500" },
+  { value: "pressure_ulcer", label: "褥瘡管理(D3以上)", insuranceType: "医療2500" },
+  { value: "artificial_anus", label: "人工肛門", insuranceType: "医療2500" },
+] as const
 
 // Form validation schema based on the database schema
 const patientFormSchema = z.object({
@@ -48,6 +59,9 @@ const patientFormSchema = z.object({
   medicalInstitutionId: z.string().optional(),
   careManagerId: z.string().optional(),
   buildingId: z.string().optional(),
+  specialManagementTypes: z.array(z.string()).optional(),
+  specialManagementStartDate: z.date().optional(),
+  specialManagementEndDate: z.date().optional(),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -131,6 +145,9 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       medicalInstitutionId: undefined,
       careManagerId: undefined,
       buildingId: undefined,
+      specialManagementTypes: [],
+      specialManagementStartDate: undefined,
+      specialManagementEndDate: undefined,
     },
   })
 
@@ -160,6 +177,9 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           medicalInstitutionId: patient.medicalInstitutionId || "",
           careManagerId: patient.careManagerId || "",
           buildingId: patient.buildingId || "",
+          specialManagementTypes: patient.specialManagementTypes || [],
+          specialManagementStartDate: patient.specialManagementStartDate ? new Date(patient.specialManagementStartDate + 'T00:00:00') : undefined,
+          specialManagementEndDate: patient.specialManagementEndDate ? new Date(patient.specialManagementEndDate + 'T00:00:00') : undefined,
         })
       } else if (mode === 'create') {
         console.log("Resetting form for create mode")
@@ -184,6 +204,9 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           medicalInstitutionId: "",
           careManagerId: "",
           buildingId: "",
+          specialManagementTypes: [],
+          specialManagementStartDate: undefined,
+          specialManagementEndDate: undefined,
         })
       }
     }
@@ -197,6 +220,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       const patientData: InsertPatient = {
         ...data,
         dateOfBirth: data.dateOfBirth.toISOString().split('T')[0], // Convert to YYYY-MM-DD
+        specialManagementStartDate: data.specialManagementStartDate?.toISOString().split('T')[0],
+        specialManagementEndDate: data.specialManagementEndDate?.toISOString().split('T')[0],
         facilityId: "", // Will be set by the backend
       }
 
@@ -251,6 +276,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       const updateData: UpdatePatient = {
         ...data,
         dateOfBirth: data.dateOfBirth.toISOString().split('T')[0], // Convert to YYYY-MM-DD
+        specialManagementStartDate: data.specialManagementStartDate?.toISOString().split('T')[0],
+        specialManagementEndDate: data.specialManagementEndDate?.toISOString().split('T')[0],
       }
 
       console.log("Sending update data to API:", updateData)
@@ -719,6 +746,149 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                             onCheckedChange={field.onChange}
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 特別管理加算 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">特別管理加算</CardTitle>
+                <CardDescription>特別な医療管理が必要な項目を選択してください</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="specialManagementTypes"
+                  render={() => (
+                    <FormItem>
+                      <div className="mb-4">
+                        <FormLabel className="text-base">管理内容（複数選択可）</FormLabel>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {SPECIAL_MANAGEMENT_TYPES.map((item) => (
+                          <FormField
+                            key={item.value}
+                            control={form.control}
+                            name="specialManagementTypes"
+                            render={({ field }) => {
+                              return (
+                                <FormItem
+                                  key={item.value}
+                                  className="flex flex-row items-start space-x-3 space-y-0"
+                                >
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={field.value?.includes(item.value)}
+                                      onCheckedChange={(checked) => {
+                                        return checked
+                                          ? field.onChange([...(field.value || []), item.value])
+                                          : field.onChange(
+                                              field.value?.filter(
+                                                (value) => value !== item.value
+                                              )
+                                            )
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <div className="space-y-1 leading-none">
+                                    <FormLabel className="font-normal cursor-pointer">
+                                      {item.label}
+                                    </FormLabel>
+                                    <p className="text-xs text-muted-foreground">
+                                      [{item.insuranceType}]
+                                    </p>
+                                  </div>
+                                </FormItem>
+                              )
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Separator className="my-4" />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="specialManagementStartDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>開始日</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="w-full pl-3 text-left font-normal"
+                              >
+                                {field.value ? (
+                                  format(field.value, "yyyy年MM月dd日", { locale: ja })
+                                ) : (
+                                  <span className="text-muted-foreground">開始日を選択</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <DatePickerWithYearMonth
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              disabled={(date) =>
+                                date > new Date() || date < new Date("2000-01-01")
+                              }
+                              minYear={2000}
+                              maxYear={new Date().getFullYear()}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="specialManagementEndDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>終了日（空白は継続中）</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="w-full pl-3 text-left font-normal"
+                              >
+                                {field.value ? (
+                                  format(field.value, "yyyy年MM月dd日", { locale: ja })
+                                ) : (
+                                  <span className="text-muted-foreground">終了日を選択</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <DatePickerWithYearMonth
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              disabled={(date) =>
+                                date < new Date("2000-01-01")
+                              }
+                              minYear={2000}
+                              maxYear={new Date().getFullYear() + 5}
+                            />
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}
