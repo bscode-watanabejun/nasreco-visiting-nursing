@@ -52,35 +52,29 @@ import { useToast } from "@/hooks/use-toast"
 
 import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan } from "@shared/schema"
 
-// Special management types definition (matching PatientForm)
-const SPECIAL_MANAGEMENT_TYPES = [
-  { value: "oxygen", label: "在宅酸素療法", fields: [
-    { name: "flow_rate", label: "酸素流量(L/分)", type: "number" as const },
-    { name: "spo2", label: "SpO2(%)", type: "number" as const },
-    { name: "usage_hours", label: "使用時間", type: "select" as const, options: ["24時間", "夜間のみ", "間欠"] },
-  ]},
-  { value: "tracheostomy", label: "気管カニューレ", fields: [
-    { name: "suction_count", label: "吸引回数", type: "number" as const },
-    { name: "sputum_amount", label: "痰の量", type: "select" as const, options: ["少量", "中等量", "多量"] },
-    { name: "sputum_property", label: "痰の性状", type: "text" as const },
-  ]},
-  { value: "ventilator", label: "人工呼吸器", fields: [
-    { name: "mode", label: "換気モード", type: "text" as const },
-    { name: "respiratory_rate", label: "呼吸回数", type: "number" as const },
-  ]},
-  { value: "tpn", label: "中心静脈栄養", fields: [
-    { name: "infusion_amount", label: "注入量(mL)", type: "number" as const },
-    { name: "insertion_site", label: "刺入部状態", type: "text" as const },
-  ]},
-  { value: "pressure_ulcer", label: "褥瘡管理", fields: [
-    { name: "design_r", label: "DESIGN-R評価", type: "text" as const },
-    { name: "treatment", label: "処置内容", type: "text" as const },
-  ]},
-  { value: "artificial_anus", label: "人工肛門", fields: [
-    { name: "output_amount", label: "排泄量", type: "text" as const },
-    { name: "stoma_condition", label: "ストーマ周囲皮膚状態", type: "text" as const },
-  ]},
-] as const
+// Type definitions for special management (API response)
+type SpecialManagementField = {
+  id: string
+  definitionId: string
+  fieldName: string
+  fieldLabel: string
+  fieldType: "text" | "number" | "select" | "textarea"
+  fieldOptions: { options?: string[] } | null
+  isRequired: boolean
+  displayOrder: number
+}
+
+type SpecialManagementDefinition = {
+  id: string
+  category: string
+  displayName: string
+  insuranceType: "medical_5000" | "medical_2500" | "care_500" | "care_250"
+  monthlyPoints: number
+  description: string | null
+  displayOrder: number
+  isActive: boolean
+  fields?: SpecialManagementField[]
+}
 
 // Display-specific interface for nursing records with patient/nurse names
 interface NursingRecordDisplay extends NursingRecord {
@@ -350,6 +344,17 @@ export function NursingRecords() {
       return response.json()
     },
     enabled: !!formData.patientId && (isCreating || isEditing),
+  })
+
+  // Fetch special management definitions
+  const { data: specialManagementDefinitions = [] } = useQuery<SpecialManagementDefinition[]>({
+    queryKey: ["/api/special-management-definitions"],
+    queryFn: async () => {
+      const response = await fetch("/api/special-management-definitions")
+      if (!response.ok) return []
+      return response.json()
+    },
+    enabled: isCreating || isEditing,
   })
 
   // Filter active doctor orders (not expired)
@@ -1903,21 +1908,21 @@ export function NursingRecords() {
                 return (
                   <div className="space-y-6">
                     {specialTypes.map(typeValue => {
-                      const typeConfig = SPECIAL_MANAGEMENT_TYPES.find(t => t.value === typeValue)
-                      if (!typeConfig) return null
+                      const typeConfig = specialManagementDefinitions.find(t => t.category === typeValue)
+                      if (!typeConfig || !typeConfig.fields) return null
 
                       return (
                         <div key={typeValue} className="border rounded-lg p-4">
-                          <h3 className="font-semibold mb-4">{typeConfig.label}</h3>
+                          <h3 className="font-semibold mb-4">{typeConfig.displayName}</h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {typeConfig.fields.map(field => {
-                              const fieldKey = `${typeValue}_${field.name}`
+                              const fieldKey = `${typeValue}_${field.fieldName}`
                               const value = formData.specialManagementData[fieldKey] || ''
 
-                              if (field.type === 'select' && field.options) {
+                              if (field.fieldType === 'select' && field.fieldOptions?.options) {
                                 return (
                                   <div key={fieldKey} className="space-y-2">
-                                    <Label htmlFor={fieldKey}>{field.label}</Label>
+                                    <Label htmlFor={fieldKey}>{field.fieldLabel}</Label>
                                     <Select
                                       value={value}
                                       onValueChange={(val) => {
@@ -1934,7 +1939,7 @@ export function NursingRecords() {
                                         <SelectValue placeholder="選択してください" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {field.options.map(opt => (
+                                        {field.fieldOptions.options.map(opt => (
                                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                                         ))}
                                       </SelectContent>
@@ -1943,10 +1948,10 @@ export function NursingRecords() {
                                 )
                               }
 
-                              if (field.type === 'number') {
+                              if (field.fieldType === 'number') {
                                 return (
                                   <div key={fieldKey} className="space-y-2">
-                                    <Label htmlFor={fieldKey}>{field.label}</Label>
+                                    <Label htmlFor={fieldKey}>{field.fieldLabel}</Label>
                                     <Input
                                       id={fieldKey}
                                       type="number"
@@ -1965,9 +1970,30 @@ export function NursingRecords() {
                                 )
                               }
 
+                              if (field.fieldType === 'textarea') {
+                                return (
+                                  <div key={fieldKey} className="space-y-2">
+                                    <Label htmlFor={fieldKey}>{field.fieldLabel}</Label>
+                                    <Textarea
+                                      id={fieldKey}
+                                      value={value}
+                                      onChange={(e) => {
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          specialManagementData: {
+                                            ...prev.specialManagementData,
+                                            [fieldKey]: e.target.value
+                                          }
+                                        }))
+                                      }}
+                                    />
+                                  </div>
+                                )
+                              }
+
                               return (
                                 <div key={fieldKey} className="space-y-2">
-                                  <Label htmlFor={fieldKey}>{field.label}</Label>
+                                  <Label htmlFor={fieldKey}>{field.fieldLabel}</Label>
                                   <Input
                                     id={fieldKey}
                                     type="text"

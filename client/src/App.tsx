@@ -30,6 +30,7 @@ import MonthlyStatistics from "@/components/MonthlyStatistics";
 import CarePlanManagement from "@/components/CarePlanManagement";
 import CareReportManagement from "@/components/CareReportManagement";
 import ContractManagement from "@/components/ContractManagement";
+import SpecialManagementSettings from "@/components/SpecialManagementSettings";
 import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
 
@@ -265,6 +266,7 @@ function MainLayout() {
                   <Route path="/care-plans" component={CarePlanManagement} />
                   <Route path="/care-reports" component={CareReportManagement} />
                   <Route path="/contracts" component={ContractManagement} />
+                  <Route path="/special-management-settings" component={SpecialManagementSettings} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                 </>
               ) : (
@@ -285,6 +287,7 @@ function MainLayout() {
                   <Route path="/care-plans" component={CarePlanManagement} />
                   <Route path="/care-reports" component={CareReportManagement} />
                   <Route path="/contracts" component={ContractManagement} />
+                  <Route path="/special-management-settings" component={SpecialManagementSettings} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                 </>
               )}

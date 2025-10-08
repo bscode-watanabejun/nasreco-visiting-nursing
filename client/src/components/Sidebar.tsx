@@ -141,6 +141,12 @@ const facilityNavigationGroups: NavigationGroup[] = [
         icon: CreditCard,
         badge: null,
       },
+      {
+        title: "特管マスタ設定",
+        href: "/special-management-settings",
+        icon: Settings,
+        badge: null,
+      },
     ],
   },
   {

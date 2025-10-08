@@ -24,15 +24,28 @@ import { useToast } from "@/hooks/use-toast"
 
 import type { Patient, InsertPatient, UpdatePatient, MedicalInstitution, CareManager, Building } from "@shared/schema"
 
-// Special management types definition
-const SPECIAL_MANAGEMENT_TYPES = [
-  { value: "oxygen", label: "在宅酸素療法", insuranceType: "医療2500" },
-  { value: "tracheostomy", label: "気管カニューレ", insuranceType: "医療5000" },
-  { value: "ventilator", label: "人工呼吸器", insuranceType: "医療2500" },
-  { value: "tpn", label: "中心静脈栄養", insuranceType: "医療2500" },
-  { value: "pressure_ulcer", label: "褥瘡管理(D3以上)", insuranceType: "医療2500" },
-  { value: "artificial_anus", label: "人工肛門", insuranceType: "医療2500" },
-] as const
+// Type definition for special management
+type SpecialManagementDefinition = {
+  id: string
+  category: string
+  displayName: string
+  insuranceType: "medical_5000" | "medical_2500" | "care_500" | "care_250"
+  monthlyPoints: number
+  description: string | null
+  displayOrder: number
+  isActive: boolean
+}
+
+// Helper function to format insurance type label
+const formatInsuranceType = (insuranceType: string): string => {
+  const map: Record<string, string> = {
+    "medical_5000": "医療5000",
+    "medical_2500": "医療2500",
+    "care_500": "介護500",
+    "care_250": "介護250",
+  }
+  return map[insuranceType] || insuranceType
+}
 
 // Form validation schema based on the database schema
 const patientFormSchema = z.object({
@@ -77,6 +90,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const [isStartDateOpen, setIsStartDateOpen] = useState(false)
+  const [isEndDateOpen, setIsEndDateOpen] = useState(false)
 
   // Fetch medical institutions and care managers
   const { data: medicalInstitutions = [] } = useQuery<MedicalInstitution[]>({
@@ -91,6 +106,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
 
   const { data: buildings = [] } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
+    enabled: isOpen,
+  });
+
+  // Fetch special management definitions
+  const { data: specialManagementDefinitions = [], isLoading: isLoadingSpecialManagement } = useQuery<SpecialManagementDefinition[]>({
+    queryKey: ["/api/special-management-definitions"],
     enabled: isOpen,
   });
 
@@ -769,46 +790,50 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                       <div className="mb-4">
                         <FormLabel className="text-base">管理内容（複数選択可）</FormLabel>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {SPECIAL_MANAGEMENT_TYPES.map((item) => (
-                          <FormField
-                            key={item.value}
-                            control={form.control}
-                            name="specialManagementTypes"
-                            render={({ field }) => {
-                              return (
-                                <FormItem
-                                  key={item.value}
-                                  className="flex flex-row items-start space-x-3 space-y-0"
-                                >
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(item.value)}
-                                      onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...(field.value || []), item.value])
-                                          : field.onChange(
-                                              field.value?.filter(
-                                                (value) => value !== item.value
+                      {isLoadingSpecialManagement ? (
+                        <div className="text-sm text-muted-foreground">読み込み中...</div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {specialManagementDefinitions.map((item) => (
+                            <FormField
+                              key={item.category}
+                              control={form.control}
+                              name="specialManagementTypes"
+                              render={({ field }) => {
+                                return (
+                                  <FormItem
+                                    key={item.category}
+                                    className="flex flex-row items-start space-x-3 space-y-0"
+                                  >
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(item.category)}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([...(field.value || []), item.category])
+                                            : field.onChange(
+                                                field.value?.filter(
+                                                  (value) => value !== item.category
+                                                )
                                               )
-                                            )
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <div className="space-y-1 leading-none">
-                                    <FormLabel className="font-normal cursor-pointer">
-                                      {item.label}
-                                    </FormLabel>
-                                    <p className="text-xs text-muted-foreground">
-                                      [{item.insuranceType}]
-                                    </p>
-                                  </div>
-                                </FormItem>
-                              )
-                            }}
-                          />
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <div className="space-y-1 leading-none">
+                                      <FormLabel className="font-normal cursor-pointer">
+                                        {item.displayName}
+                                      </FormLabel>
+                                      <p className="text-xs text-muted-foreground">
+                                        [{formatInsuranceType(item.insuranceType)}]
+                                      </p>
+                                    </div>
+                                  </FormItem>
+                                )
+                              }}
+                            />
                         ))}
-                      </div>
+                        </div>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -823,7 +848,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>開始日</FormLabel>
-                        <Popover>
+                        <Popover open={isStartDateOpen} onOpenChange={setIsStartDateOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
@@ -842,7 +867,10 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           <PopoverContent className="w-auto p-0" align="start">
                             <DatePickerWithYearMonth
                               selected={field.value}
-                              onSelect={field.onChange}
+                              onSelect={(date) => {
+                                field.onChange(date)
+                                setIsStartDateOpen(false)
+                              }}
                               disabled={(date) =>
                                 date > new Date() || date < new Date("2000-01-01")
                               }
@@ -861,7 +889,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>終了日（空白は継続中）</FormLabel>
-                        <Popover>
+                        <Popover open={isEndDateOpen} onOpenChange={setIsEndDateOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
@@ -880,7 +908,10 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           <PopoverContent className="w-auto p-0" align="start">
                             <DatePickerWithYearMonth
                               selected={field.value}
-                              onSelect={field.onChange}
+                              onSelect={(date) => {
+                                field.onChange(date)
+                                setIsEndDateOpen(false)
+                              }}
                               disabled={(date) =>
                                 date < new Date("2000-01-01")
                               }

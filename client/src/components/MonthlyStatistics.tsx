@@ -28,6 +28,12 @@ type MonthlyStatistic = {
   averageMinutes: number;
   calculatedPoints: number;
   appliedBonuses: any[];
+  specialManagementAdditions?: {
+    category: string;
+    displayName: string;
+    monthlyPoints: number;
+  }[];
+  specialManagementTotalPoints?: number;
   estimatedCost: number;
 };
 
@@ -65,6 +71,7 @@ export default function MonthlyStatistics() {
 
   // Calculate totals
   const totalPoints = stats?.statistics.reduce((sum, stat) => sum + stat.calculatedPoints, 0) || 0;
+  const totalSpecialMgmtPoints = stats?.statistics.reduce((sum, stat) => sum + (stat.specialManagementTotalPoints || 0), 0) || 0;
   const totalCost = stats?.statistics.reduce((sum, stat) => sum + stat.estimatedCost, 0) || 0;
 
   // Helper function to get bonus type name in Japanese
@@ -156,7 +163,7 @@ export default function MonthlyStatistics() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">対象利用者</CardTitle>
@@ -179,11 +186,21 @@ export default function MonthlyStatistics() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">合計算定点数</CardTitle>
+            <CardTitle className="text-sm font-medium">訪問点数</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalPoints.toLocaleString()}点</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">特管点数</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalSpecialMgmtPoints.toLocaleString()}点</div>
           </CardContent>
         </Card>
 
@@ -222,7 +239,8 @@ export default function MonthlyStatistics() {
                   <TableHead className="text-right">訪問回数</TableHead>
                   <TableHead className="text-right">総訪問時間</TableHead>
                   <TableHead className="text-right">平均訪問時間</TableHead>
-                  <TableHead className="text-right">算定点数</TableHead>
+                  <TableHead className="text-right">訪問点数</TableHead>
+                  <TableHead className="text-right">特管点数</TableHead>
                   <TableHead className="text-right">概算金額</TableHead>
                 </TableRow>
               </TableHeader>
@@ -230,17 +248,17 @@ export default function MonthlyStatistics() {
                 {stats.statistics.map((stat) => {
                   const bonusSummary = getBonusSummary(stat.appliedBonuses);
                   const isExpanded = expandedPatient === stat.patientId;
-                  const hasBonus = bonusSummary.length > 0;
+                  const hasDetails = bonusSummary.length > 0 || (stat.specialManagementAdditions && stat.specialManagementAdditions.length > 0);
 
                   return (
                     <>
                       <TableRow
                         key={stat.patientId}
-                        className={hasBonus ? "cursor-pointer hover:bg-muted/50" : ""}
-                        onClick={() => hasBonus && setExpandedPatient(isExpanded ? null : stat.patientId)}
+                        className={hasDetails ? "cursor-pointer hover:bg-muted/50" : ""}
+                        onClick={() => hasDetails && setExpandedPatient(isExpanded ? null : stat.patientId)}
                       >
                         <TableCell>
-                          {hasBonus && (
+                          {hasDetails && (
                             isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
                           )}
                         </TableCell>
@@ -249,24 +267,51 @@ export default function MonthlyStatistics() {
                         <TableCell className="text-right">{stat.totalMinutes}分</TableCell>
                         <TableCell className="text-right">{stat.averageMinutes}分</TableCell>
                         <TableCell className="text-right">{stat.calculatedPoints.toLocaleString()}点</TableCell>
+                        <TableCell className="text-right">
+                          {stat.specialManagementTotalPoints ? (
+                            <span className="text-blue-600 font-medium">{stat.specialManagementTotalPoints.toLocaleString()}点</span>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">¥{stat.estimatedCost.toLocaleString()}</TableCell>
                       </TableRow>
-                      {isExpanded && hasBonus && (
+                      {isExpanded && hasDetails && (
                         <TableRow>
-                          <TableCell colSpan={7} className="bg-muted/30 p-4">
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium text-muted-foreground mb-2">適用加算の内訳</p>
-                              <div className="flex flex-wrap gap-2">
-                                {bonusSummary.map((bonus) => (
-                                  <Badge
-                                    key={bonus.type}
-                                    variant={bonus.totalPoints < 0 ? "destructive" : "secondary"}
-                                    className="text-sm"
-                                  >
-                                    {getBonusName(bonus.type)}: {bonus.count}回 ({bonus.totalPoints > 0 ? '+' : ''}{bonus.totalPoints}点)
-                                  </Badge>
-                                ))}
-                              </div>
+                          <TableCell colSpan={8} className="bg-muted/30 p-4">
+                            <div className="space-y-4">
+                              {bonusSummary.length > 0 && (
+                                <div className="space-y-2">
+                                  <p className="text-sm font-medium text-muted-foreground mb-2">訪問加算の内訳</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {bonusSummary.map((bonus) => (
+                                      <Badge
+                                        key={bonus.type}
+                                        variant={bonus.totalPoints < 0 ? "destructive" : "secondary"}
+                                        className="text-sm"
+                                      >
+                                        {getBonusName(bonus.type)}: {bonus.count}回 ({bonus.totalPoints > 0 ? '+' : ''}{bonus.totalPoints}点)
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {stat.specialManagementAdditions && stat.specialManagementAdditions.length > 0 && (
+                                <div className="space-y-2">
+                                  <p className="text-sm font-medium text-muted-foreground mb-2">特別管理加算（月額固定）</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {stat.specialManagementAdditions.map((mgmt) => (
+                                      <Badge
+                                        key={mgmt.category}
+                                        variant="default"
+                                        className="text-sm bg-blue-600"
+                                      >
+                                        {mgmt.displayName}: {mgmt.monthlyPoints}点/月
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

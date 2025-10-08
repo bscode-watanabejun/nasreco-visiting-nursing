@@ -486,6 +486,38 @@ export const contracts = pgTable("contracts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Special Management Definitions Table (特別管理加算マスタ) ==========
+export const insuranceTypeSpecialEnum = pgEnum("insurance_type_special", ["medical_5000", "medical_2500", "care_500", "care_250"]);
+export const fieldTypeEnum = pgEnum("field_type", ["text", "number", "select", "textarea"]);
+
+export const specialManagementDefinitions = pgTable("special_management_definitions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").references(() => facilities.id), // null = 全施設共通
+  category: varchar("category", { length: 50 }).notNull(), // 'special_001', 'special_002'等（自動生成）
+  displayName: varchar("display_name", { length: 100 }).notNull(), // '在宅酸素療法'
+  insuranceType: insuranceTypeSpecialEnum("insurance_type").notNull(), // 'medical_5000'等
+  monthlyPoints: integer("monthly_points").notNull(), // 月額加算点数（円）
+  description: text("description"), // 説明
+  displayOrder: integer("display_order").notNull().default(0), // 表示順序
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Special Management Fields Table (特管フィールド定義) ==========
+export const specialManagementFields = pgTable("special_management_fields", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  definitionId: varchar("definition_id").notNull().references(() => specialManagementDefinitions.id, { onDelete: "cascade" }),
+  fieldName: varchar("field_name", { length: 50 }).notNull(), // 'flow_rate', 'spo2'等
+  fieldLabel: varchar("field_label", { length: 100 }).notNull(), // '酸素流量(L/分)'
+  fieldType: fieldTypeEnum("field_type").notNull(), // 'number', 'text', 'select'
+  fieldOptions: json("field_options"), // selectの場合の選択肢 ["24時間", "夜間のみ"]
+  isRequired: boolean("is_required").notNull().default(false),
+  displayOrder: integer("display_order").notNull().default(0), // 表示順序
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // ========== Insert Schemas ==========
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
@@ -637,6 +669,19 @@ export const insertContractSchema = createInsertSchema(contracts).omit({
   updatedAt: true,
 });
 
+export const insertSpecialManagementDefinitionSchema = createInsertSchema(specialManagementDefinitions).omit({
+  id: true,
+  facilityId: true, // Set by server from user session (or null for global)
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSpecialManagementFieldSchema = createInsertSchema(specialManagementFields).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -692,6 +737,10 @@ export const updateServiceCarePlanSchema = insertServiceCarePlanSchema.partial()
 export const updateCareReportSchema = insertCareReportSchema.partial();
 
 export const updateContractSchema = insertContractSchema.partial();
+
+export const updateSpecialManagementDefinitionSchema = insertSpecialManagementDefinitionSchema.partial();
+
+export const updateSpecialManagementFieldSchema = insertSpecialManagementFieldSchema.partial();
 
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
@@ -770,6 +819,15 @@ export type UpdateCarePlan = z.infer<typeof updateCarePlanSchema>;
 export type UpdateServiceCarePlan = z.infer<typeof updateServiceCarePlanSchema>;
 export type UpdateCareReport = z.infer<typeof updateCareReportSchema>;
 export type UpdateContract = z.infer<typeof updateContractSchema>;
+
+export type InsertSpecialManagementDefinition = z.infer<typeof insertSpecialManagementDefinitionSchema>;
+export type SpecialManagementDefinition = typeof specialManagementDefinitions.$inferSelect;
+
+export type InsertSpecialManagementField = z.infer<typeof insertSpecialManagementFieldSchema>;
+export type SpecialManagementField = typeof specialManagementFields.$inferSelect;
+
+export type UpdateSpecialManagementDefinition = z.infer<typeof updateSpecialManagementDefinitionSchema>;
+export type UpdateSpecialManagementField = z.infer<typeof updateSpecialManagementFieldSchema>;
 
 // Pagination Types
 export interface PaginationOptions {
@@ -959,5 +1017,20 @@ export const contractsRelations = relations(contracts, ({ one }) => ({
   witnessedBy: one(users, {
     fields: [contracts.witnessedBy],
     references: [users.id],
+  }),
+}));
+
+export const specialManagementDefinitionsRelations = relations(specialManagementDefinitions, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [specialManagementDefinitions.facilityId],
+    references: [facilities.id],
+  }),
+  fields: many(specialManagementFields),
+}));
+
+export const specialManagementFieldsRelations = relations(specialManagementFields, ({ one }) => ({
+  definition: one(specialManagementDefinitions, {
+    fields: [specialManagementFields.definitionId],
+    references: [specialManagementDefinitions.id],
   }),
 }));

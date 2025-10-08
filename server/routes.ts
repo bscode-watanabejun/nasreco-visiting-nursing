@@ -42,6 +42,10 @@ import {
   updateCareReportSchema,
   insertContractSchema,
   updateContractSchema,
+  insertSpecialManagementDefinitionSchema,
+  updateSpecialManagementDefinitionSchema,
+  insertSpecialManagementFieldSchema,
+  updateSpecialManagementFieldSchema,
   nursingRecordAttachments,
   medicalInstitutions,
   careManagers,
@@ -56,6 +60,8 @@ import {
   schedules,
   nursingRecords,
   buildings,
+  specialManagementDefinitions,
+  specialManagementFields,
   type NursingRecordAttachment,
   type MedicalInstitution,
   type CareManager,
@@ -64,7 +70,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, isNotNull, inArray, isNull, not, lt } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -2512,6 +2518,245 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Special Management API (特別管理マスタ) ==========
+
+  // Get all special management definitions
+  app.get("/api/special-management-definitions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+
+      // 自施設のマスタのみ取得（将来的に全施設共通マスタ対応も可能: or(isNull(...), eq(...))）
+      const definitions = await db.query.specialManagementDefinitions.findMany({
+        where: and(
+          eq(specialManagementDefinitions.facilityId, facilityId!),
+          eq(specialManagementDefinitions.isActive, true)
+        ),
+        with: {
+          fields: {
+            orderBy: [asc(specialManagementFields.displayOrder)]
+          }
+        },
+        orderBy: [asc(specialManagementDefinitions.displayOrder)]
+      });
+
+      res.json(definitions);
+    } catch (error) {
+      console.error("Get special management definitions error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get a single special management definition by ID
+  app.get("/api/special-management-definitions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const definition = await db.query.specialManagementDefinitions.findFirst({
+        where: and(
+          eq(specialManagementDefinitions.id, id),
+          eq(specialManagementDefinitions.isActive, true)
+        ),
+        with: {
+          fields: {
+            orderBy: [asc(specialManagementFields.displayOrder)]
+          }
+        }
+      });
+
+      if (!definition) {
+        return res.status(404).json({ error: "特管マスタが見つかりません" });
+      }
+
+      res.json(definition);
+    } catch (error) {
+      console.error("Get special management definition error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create a new special management definition
+  app.post("/api/special-management-definitions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const data = insertSpecialManagementDefinitionSchema.parse(req.body);
+
+      // カテゴリの自動生成（special_001, special_002, ...）
+      let generatedCategory = data.category;
+      if (!generatedCategory) {
+        // 既存のカテゴリから最大番号を取得
+        const existingDefinitions = await db
+          .select({ category: specialManagementDefinitions.category })
+          .from(specialManagementDefinitions)
+          .where(eq(specialManagementDefinitions.facilityId, facilityId!));
+
+        const maxNumber = existingDefinitions
+          .map(d => d.category)
+          .filter(c => c.startsWith('special_'))
+          .map(c => parseInt(c.replace('special_', '')) || 0)
+          .reduce((max, num) => Math.max(max, num), 0);
+
+        generatedCategory = `special_${String(maxNumber + 1).padStart(3, '0')}`;
+      }
+
+      const [definition] = await db
+        .insert(specialManagementDefinitions)
+        .values({
+          ...data,
+          category: generatedCategory,
+          facilityId: facilityId, // 自施設専用マスタとして管理
+        })
+        .returning();
+
+      // フィールド定義も一緒に作成する場合
+      if (req.body.fields && Array.isArray(req.body.fields)) {
+        const fieldsData = req.body.fields.map((field: any, index: number) => {
+          // フィールド名の自動生成（field_001, field_002, ...）
+          const fieldName = field.fieldName || `field_${String(index + 1).padStart(3, '0')}`;
+
+          return {
+            definitionId: definition.id,
+            fieldName: fieldName,
+            fieldLabel: field.fieldLabel,
+            fieldType: field.fieldType,
+            fieldOptions: field.fieldOptions || null,
+            isRequired: field.isRequired || false,
+            displayOrder: field.displayOrder ?? index,
+          };
+        });
+
+        await db.insert(specialManagementFields).values(fieldsData);
+      }
+
+      // 作成したデータをフィールド付きで返す
+      const createdDefinition = await db.query.specialManagementDefinitions.findFirst({
+        where: eq(specialManagementDefinitions.id, definition.id),
+        with: {
+          fields: {
+            orderBy: [asc(specialManagementFields.displayOrder)]
+          }
+        }
+      });
+
+      res.json(createdDefinition);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "入力データが不正です", details: error.errors });
+      }
+      console.error("Create special management definition error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update a special management definition
+  app.put("/api/special-management-definitions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+      const data = updateSpecialManagementDefinitionSchema.parse(req.body);
+
+      const [updated] = await db
+        .update(specialManagementDefinitions)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(specialManagementDefinitions.id, id),
+          eq(specialManagementDefinitions.facilityId, facilityId!)
+        ))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "特管マスタが見つかりません" });
+      }
+
+      // フィールド定義も一緒に更新する場合
+      if (req.body.fields && Array.isArray(req.body.fields)) {
+        // 既存のフィールドを削除して新しいフィールドを挿入
+        await db
+          .delete(specialManagementFields)
+          .where(eq(specialManagementFields.definitionId, id));
+
+        const fieldsData = req.body.fields.map((field: any, index: number) => {
+          // フィールド名の自動生成（field_001, field_002, ...）
+          const fieldName = field.fieldName || `field_${String(index + 1).padStart(3, '0')}`;
+
+          return {
+            definitionId: id,
+            fieldName: fieldName,
+            fieldLabel: field.fieldLabel,
+            fieldType: field.fieldType,
+            fieldOptions: field.fieldOptions || null,
+            isRequired: field.isRequired || false,
+            displayOrder: field.displayOrder ?? index,
+          };
+        });
+
+        await db.insert(specialManagementFields).values(fieldsData);
+      }
+
+      // 更新したデータをフィールド付きで返す
+      const updatedDefinition = await db.query.specialManagementDefinitions.findFirst({
+        where: eq(specialManagementDefinitions.id, id),
+        with: {
+          fields: {
+            orderBy: [asc(specialManagementFields.displayOrder)]
+          }
+        }
+      });
+
+      res.json(updatedDefinition);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "入力データが不正です", details: error.errors });
+      }
+      console.error("Update special management definition error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete a special management definition (soft delete)
+  app.delete("/api/special-management-definitions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const [deleted] = await db
+        .update(specialManagementDefinitions)
+        .set({
+          isActive: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(specialManagementDefinitions.id, id))
+        .returning();
+
+      if (!deleted) {
+        return res.status(404).json({ error: "特管マスタが見つかりません" });
+      }
+
+      res.json({ message: "特管マスタを削除しました" });
+    } catch (error) {
+      console.error("Delete special management definition error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get fields for a specific definition
+  app.get("/api/special-management-definitions/:id/fields", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const fields = await db.query.specialManagementFields.findMany({
+        where: eq(specialManagementFields.definitionId, id),
+        orderBy: [asc(specialManagementFields.displayOrder)]
+      });
+
+      res.json(fields);
+    } catch (error) {
+      console.error("Get special management fields error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Doctor Orders API (訪問看護指示書) ==========
 
   // Get all doctor orders (with optional patient filter)
@@ -3227,6 +3472,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ]
       });
 
+      // Get unique patient IDs from records
+      const uniquePatientIds = Array.from(new Set(records.map(r => r.patientId)));
+
+      // Fetch all patients with their special management info
+      const patientsWithSpecialMgmt = await db.query.patients.findMany({
+        where: and(
+          eq(patients.facilityId, facilityId!),
+          inArray(patients.id, uniquePatientIds)
+        )
+      });
+
+      // Fetch special management definitions for this facility
+      const specialMgmtDefs = await db.query.specialManagementDefinitions.findMany({
+        where: eq(specialManagementDefinitions.facilityId, facilityId!)
+      });
+
+      // Create a map for quick lookup
+      const specialMgmtDefsMap = new Map(specialMgmtDefs.map(def => [def.category, def]));
+
       // Group records by patient
       const patientStats = new Map<string, {
         patientId: string;
@@ -3236,6 +3500,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         records: typeof records;
         calculatedPoints: number;
         appliedBonuses: any[];
+        specialManagementAdditions: any[];
+        specialManagementTotalPoints: number;
       }>();
 
       for (const record of records) {
@@ -3248,7 +3514,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             totalMinutes: 0,
             records: [],
             calculatedPoints: 0,
-            appliedBonuses: []
+            appliedBonuses: [],
+            specialManagementAdditions: [],
+            specialManagementTotalPoints: 0
           });
         }
 
@@ -3274,6 +3542,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Calculate special management additions for each patient
+      for (const patient of patientsWithSpecialMgmt) {
+        const stats = patientStats.get(patient.id);
+        if (!stats) continue;
+
+        // Check if special management is active for this month
+        if (patient.specialManagementTypes && patient.specialManagementTypes.length > 0) {
+          const isActiveInMonth =
+            (!patient.specialManagementStartDate || new Date(patient.specialManagementStartDate) <= endDate) &&
+            (!patient.specialManagementEndDate || new Date(patient.specialManagementEndDate) >= startDate);
+
+          if (isActiveInMonth) {
+            // Add each special management type
+            for (const category of patient.specialManagementTypes) {
+              const definition = specialMgmtDefsMap.get(category);
+              if (definition) {
+                stats.specialManagementAdditions.push({
+                  category: definition.category,
+                  displayName: definition.displayName,
+                  monthlyPoints: definition.monthlyPoints
+                });
+                stats.specialManagementTotalPoints += definition.monthlyPoints;
+              }
+            }
+          }
+        }
+      }
+
       // Convert to array
       const statistics = Array.from(patientStats.values()).map(stat => ({
         patientId: stat.patientId,
@@ -3283,7 +3579,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         averageMinutes: stat.visitCount > 0 ? Math.round(stat.totalMinutes / stat.visitCount) : 0,
         calculatedPoints: stat.calculatedPoints,
         appliedBonuses: stat.appliedBonuses,
-        estimatedCost: stat.calculatedPoints * 10, // 1点 = 10円
+        specialManagementAdditions: stat.specialManagementAdditions,
+        specialManagementTotalPoints: stat.specialManagementTotalPoints,
+        estimatedCost: (stat.calculatedPoints + stat.specialManagementTotalPoints) * 10, // 1点 = 10円
       }));
 
       res.json({
@@ -3335,6 +3633,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )
       });
 
+      // Fetch patients with special management info
+      const patientsWithSpecialMgmt = await db.query.patients.findMany({
+        where: and(
+          eq(patients.facilityId, facilityId!),
+          inArray(patients.id, patientIds)
+        )
+      });
+
+      // Fetch special management definitions
+      const specialMgmtDefs = await db.query.specialManagementDefinitions.findMany({
+        where: eq(specialManagementDefinitions.facilityId, facilityId!)
+      });
+      const specialMgmtDefsMap = new Map(specialMgmtDefs.map(def => [def.category, def]));
+
+      // Calculate special management for each patient
+      const patientSpecialMgmt = new Map<string, { items: string[]; totalPoints: number }>();
+      for (const patient of patientsWithSpecialMgmt) {
+        if (patient.specialManagementTypes && patient.specialManagementTypes.length > 0) {
+          const isActiveInMonth =
+            (!patient.specialManagementStartDate || new Date(patient.specialManagementStartDate) <= endDate) &&
+            (!patient.specialManagementEndDate || new Date(patient.specialManagementEndDate) >= startDate);
+
+          if (isActiveInMonth) {
+            const items: string[] = [];
+            let totalPoints = 0;
+            for (const category of patient.specialManagementTypes) {
+              const definition = specialMgmtDefsMap.get(category);
+              if (definition) {
+                items.push(`${definition.displayName}(${definition.monthlyPoints}点)`);
+                totalPoints += definition.monthlyPoints;
+              }
+            }
+            patientSpecialMgmt.set(patient.id, { items, totalPoints });
+          }
+        }
+      }
+
       // Create CSV header
       const csvRows: string[] = [];
       csvRows.push([
@@ -3350,6 +3685,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         '担当看護師',
         '算定点数',
         '適用加算',
+        '特別管理加算',
+        '特管点数',
         '金額（円）'
       ].join(','));
 
@@ -3370,10 +3707,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           duration = minutes.toString();
         }
 
-        // Format bonuses
-        const bonuses = record.appliedBonuses
-          ? JSON.stringify(record.appliedBonuses).replace(/,/g, '；') // Replace commas to avoid CSV issues
+        // Format bonuses in human-readable format
+        const bonuses = record.appliedBonuses && Array.isArray(record.appliedBonuses)
+          ? record.appliedBonuses
+              .map((bonus: any) => {
+                const bonusNames: Record<string, string> = {
+                  'multiple_visit': '複数回訪問加算',
+                  'emergency_visit': '緊急訪問加算',
+                  'long_visit': '長時間訪問加算',
+                  'same_building_discount': '同一建物減算',
+                };
+                return `${bonusNames[bonus.type] || bonus.type}(${bonus.points > 0 ? '+' : ''}${bonus.points}点)`;
+              })
+              .join('、')
           : '';
+
+        // Get special management for this patient
+        const specialMgmt = patientSpecialMgmt.get(patient.id);
+        const specialMgmtItems = specialMgmt?.items.join('、') || '';
+        const specialMgmtPoints = specialMgmt?.totalPoints || 0;
 
         csvRows.push([
           patient.patientNumber || patient.id,
@@ -3388,7 +3740,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           record.nurse?.fullName || '',
           (record.calculatedPoints || 0).toString(),
           bonuses,
-          ((record.calculatedPoints || 0) * 10).toString()
+          specialMgmtItems,
+          specialMgmtPoints.toString(),
+          (((record.calculatedPoints || 0) + specialMgmtPoints) * 10).toString()
         ].map(field => `"${field}"`).join(','));
       }
 
