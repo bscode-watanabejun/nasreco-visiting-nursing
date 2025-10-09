@@ -548,17 +548,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/facilities", async (req: AuthenticatedRequest, res: Response) => {
     try {
       let facilities: any[] = [];
+      const userFacility = await storage.getFacility(req.user.facilityId);
 
       if (req.isCorporateAdmin) {
         // Corporate admin can see all facilities in their company
-        const userFacility = await storage.getFacility(req.user.facilityId);
         if (userFacility) {
           facilities = await storage.getFacilitiesByCompany(userFacility.companyId);
         }
+      } else if (userFacility?.isHeadquarters && ['admin', 'manager'].includes(req.user.role)) {
+        // Headquarters admin/manager can see all facilities in their company
+        facilities = await storage.getFacilitiesByCompany(userFacility.companyId);
       } else if (['admin', 'manager'].includes(req.user.role)) {
-        // Facility admin/manager can see their own facility
-        const facility = await storage.getFacility(req.user.facilityId);
-        facilities = facility ? [facility] : [];
+        // Facility admin/manager can see their own facility only
+        facilities = userFacility ? [userFacility] : [];
       } else {
         return res.status(403).json({ error: "権限がありません" });
       }
@@ -592,6 +594,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       console.error("Create facility error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update facility
+  app.put("/api/facilities/:id", async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userFacility = await storage.getFacility(req.user.facilityId);
+
+      // Check permissions: corporate admin OR headquarters admin/manager
+      const canUpdate = req.isCorporateAdmin ||
+                       (userFacility?.isHeadquarters && ['admin', 'manager'].includes(req.user.role));
+
+      if (!canUpdate) {
+        return res.status(403).json({ error: "施設を更新する権限がありません" });
+      }
+
+      // Get the facility to update
+      const existingFacility = await storage.getFacility(id);
+      if (!existingFacility) {
+        return res.status(404).json({ error: "施設が見つかりません" });
+      }
+
+      // Ensure facility belongs to the same company
+      if (userFacility && existingFacility.companyId !== userFacility.companyId) {
+        return res.status(403).json({ error: "他社の施設を更新することはできません" });
+      }
+
+      // Validate and update
+      const updateData = insertFacilitySchema.partial().parse(req.body);
+      const updatedFacility = await storage.updateFacility(id, updateData);
+
+      res.json(updatedFacility);
+
+    } catch (error) {
+      console.error("Update facility error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

@@ -62,7 +62,7 @@ interface DisplayUser {
 }
 
 // Convert API user to display format
-function mapApiUserToDisplay(user: ApiUser): DisplayUser {
+function mapApiUserToDisplay(user: any): DisplayUser {
   return {
     id: user.id,
     name: user.fullName,
@@ -70,7 +70,7 @@ function mapApiUserToDisplay(user: ApiUser): DisplayUser {
     phone: user.phone || '',
     role: user.role,
     status: user.isActive ? 'active' : 'inactive',
-    facility: '東京本院', // TODO: Get from facilities API when available
+    facility: user.facility?.name || 'ステーション',
     createdDate: user.createdAt ? new Date(user.createdAt).toLocaleDateString('ja-JP') : '',
     lastLogin: user.updatedAt ? new Date(user.updatedAt).toLocaleString('ja-JP') : '',
     username: user.username,
@@ -387,12 +387,14 @@ export function UserManagement() {
                   </div>
                   <div>
                     <Label>所属施設 *</Label>
-                    <Select defaultValue="東京本院" disabled>
+                    <Select value={selectedUser?.facility || currentUser?.facility?.name || 'ステーション'} disabled>
                       <SelectTrigger>
                         <SelectValue placeholder="施設を選択" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="東京本院">東京本院</SelectItem>
+                        <SelectItem value={selectedUser?.facility || currentUser?.facility?.name || 'ステーション'}>
+                          {selectedUser?.facility || currentUser?.facility?.name || 'ステーション'}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground mt-1">

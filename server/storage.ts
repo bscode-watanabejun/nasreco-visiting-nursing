@@ -523,11 +523,34 @@ export class PostgreSQLStorage implements IStorage {
     };
   }
 
-  async getUsersByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<User>> {
+  async getUsersByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<any>> {
     const offset = (options.page - 1) * options.limit;
-    
+
     const [data, totalResult] = await Promise.all([
-      db.select().from(users)
+      db.select({
+        id: users.id,
+        facilityId: users.facilityId,
+        username: users.username,
+        password: users.password,
+        email: users.email,
+        fullName: users.fullName,
+        role: users.role,
+        accessLevel: users.accessLevel,
+        licenseNumber: users.licenseNumber,
+        phone: users.phone,
+        isActive: users.isActive,
+        mustChangePassword: users.mustChangePassword,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        facility: {
+          id: facilities.id,
+          name: facilities.name,
+          slug: facilities.slug,
+          isHeadquarters: facilities.isHeadquarters,
+          companyId: facilities.companyId,
+        }
+      }).from(users)
+        .leftJoin(facilities, eq(users.facilityId, facilities.id))
         .where(eq(users.facilityId, facilityId))
         .orderBy(desc(users.createdAt))
         .limit(options.limit)

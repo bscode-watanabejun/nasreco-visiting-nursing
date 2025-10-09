@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -70,30 +70,33 @@ function MainLayout() {
   const { facility, company, isLoading: tenantLoading } = useTenant();
   const isHeadquarters = useIsHeadquarters();
   const isUserBasedHeadquarters = useUserBasedHeadquarters();
-  const [currentFacility, setCurrentFacility] = useState(facility?.name || '東京本院');
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   // Get current user information
   const { data: currentUser, isLoading: userLoading, error: userError } = useCurrentUser();
 
   // Use user-based headquarters detection as the primary indicator
-  const shouldShowHeadquartersFeatures = isUserBasedHeadquarters || isHeadquarters;
+  // Only evaluate after user data is loaded
+  const shouldShowHeadquartersFeatures = currentUser ? (isUserBasedHeadquarters || isHeadquarters) : false;
+
+  // Get current facility name from user's facility information
+  const currentFacility = currentUser?.facility?.name || facility?.name || 'ステーション';
 
   // Set authentication state based on user data
   useEffect(() => {
     if (currentUser) {
       setIsAuthenticated(true);
+      // After login, ensure user is on the correct dashboard
+      const currentPath = window.location.pathname;
+      if (currentPath === '/' || currentPath === '/dashboard') {
+        // User is already on dashboard, no redirect needed
+        return;
+      }
     } else if (userError && !userLoading) {
       setIsAuthenticated(false);
     }
   }, [currentUser, userError, userLoading]);
-
-  // Update current facility when tenant info changes
-  useEffect(() => {
-    if (facility) {
-      setCurrentFacility(facility.name);
-    }
-  }, [facility]);
 
   // Get user role display string
   const getUserRoleDisplay = (user: any) => {
@@ -134,7 +137,14 @@ function MainLayout() {
         }
 
         // Invalidate user query to refetch user data after login
-        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+        await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+
+        // Wait a bit for the query to refetch
+        setTimeout(() => {
+          // Redirect to dashboard
+          setLocation('/');
+        }, 100);
+
         setLoginError(undefined); // Clear error on success
         console.log('ログイン成功:', data);
       } else {
@@ -160,8 +170,8 @@ function MainLayout() {
   };
 
   const handleFacilityChange = (facility: string) => {
-    setCurrentFacility(facility);
     console.log('施設変更:', facility);
+    // TODO: Implement facility switching functionality
   };
 
   const handleLogout = async () => {

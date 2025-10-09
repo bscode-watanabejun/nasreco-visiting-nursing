@@ -23,6 +23,19 @@ import {
 import { facilityApi } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 
+interface Facility {
+  id: string;
+  companyId: string;
+  name: string;
+  slug: string;
+  isHeadquarters: boolean;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
 interface FacilityStats {
   id: string;
   name: string;
@@ -34,53 +47,32 @@ interface FacilityStats {
   isOnline: boolean;
 }
 
-// Mock data for demonstration
-const mockFacilityStats: FacilityStats[] = [
-  {
-    id: "1",
-    name: "東京本院",
-    slug: "tokyo-honin",
-    totalPatients: 156,
-    activeUsers: 24,
-    upcomingVisits: 18,
-    completedVisits: 89,
-    isOnline: true,
-  },
-  {
-    id: "2",
-    name: "さくら訪問看護ステーション",
-    slug: "sakura-station",
-    totalPatients: 89,
-    activeUsers: 12,
-    upcomingVisits: 7,
-    completedVisits: 45,
-    isOnline: true,
-  },
-  {
-    id: "3",
-    name: "横浜支部",
-    slug: "yokohama-shibu",
-    totalPatients: 67,
-    activeUsers: 8,
-    upcomingVisits: 12,
-    completedVisits: 34,
-    isOnline: false,
-  },
-];
-
 export function HeadquartersDashboard() {
   const [selectedTimeRange, setSelectedTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [selectedFacility, setSelectedFacility] = useState<string>('all');
   const { company, generateFacilityUrl } = useTenant();
 
   // Fetch facilities data
-  const { data: facilities, isLoading: facilitiesLoading } = useQuery({
+  const { data: facilities, isLoading: facilitiesLoading } = useQuery<Facility[]>({
     queryKey: ["facilities"],
     queryFn: facilityApi.getFacilities,
   });
 
+  // Convert facilities to stats format with placeholder data
+  // TODO: Implement real-time statistics from backend
+  const facilityStats: FacilityStats[] = (facilities || []).map(facility => ({
+    id: facility.id,
+    name: facility.name,
+    slug: facility.slug,
+    totalPatients: 0, // TODO: Fetch from backend
+    activeUsers: 0, // TODO: Fetch from backend
+    upcomingVisits: 0, // TODO: Fetch from backend
+    completedVisits: 0, // TODO: Fetch from backend
+    isOnline: true, // TODO: Implement online status check
+  }));
+
   // Calculate aggregated statistics
-  const totalStats = mockFacilityStats.reduce(
+  const totalStats = facilityStats.reduce(
     (acc, facility) => ({
       totalPatients: acc.totalPatients + facility.totalPatients,
       totalUsers: acc.totalUsers + facility.activeUsers,
@@ -206,8 +198,17 @@ export function HeadquartersDashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {mockFacilityStats.map((facility) => (
+              {facilitiesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+                </div>
+              ) : facilityStats.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  施設データがありません
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {facilityStats.map((facility) => (
                   <Card key={facility.id} className="transition-colors hover:bg-muted/50">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
@@ -256,8 +257,9 @@ export function HeadquartersDashboard() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
