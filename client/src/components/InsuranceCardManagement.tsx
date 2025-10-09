@@ -23,6 +23,10 @@ import { Plus, Pencil, Trash2, CreditCard, ExternalLink, Download } from "lucide
 import { InsuranceCardDialog } from "./InsuranceCardDialog";
 import type { InsuranceCard, Patient } from "@shared/schema";
 
+type InsuranceCardWithPatient = InsuranceCard & {
+  patient: Patient;
+};
+
 export default function InsuranceCardManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null);
@@ -42,7 +46,7 @@ export default function InsuranceCardManagement() {
     : ((patientsData as { data: Patient[] })?.data || []);
 
   // Fetch insurance cards
-  const { data: cards = [], isLoading } = useQuery<InsuranceCard[]>({
+  const { data: cards = [], isLoading } = useQuery<InsuranceCardWithPatient[]>({
     queryKey: ["/api/insurance-cards", selectedPatientId],
     queryFn: async () => {
       const url = selectedPatientId && selectedPatientId !== "all"
@@ -114,8 +118,12 @@ export default function InsuranceCardManagement() {
     }
   };
 
-  const getPatientName = (patientId: string) => {
-    const patient = patients.find(p => p.id === patientId);
+  const getPatientName = (card: InsuranceCardWithPatient) => {
+    if (card.patient) {
+      return `${card.patient.lastName} ${card.patient.firstName}`;
+    }
+    // Fallback to patients array
+    const patient = patients.find(p => p.id === card.patientId);
     return patient ? `${patient.lastName} ${patient.firstName}` : "不明";
   };
 
@@ -191,7 +199,7 @@ export default function InsuranceCardManagement() {
                       onClick={() => setExpandedRow(expandedRow === card.id ? null : card.id)}
                       className="cursor-pointer hover:bg-muted/50"
                     >
-                      <TableCell className="font-medium">{getPatientName(card.patientId)}</TableCell>
+                      <TableCell className="font-medium">{getPatientName(card)}</TableCell>
                       <TableCell>
                         <Badge variant={card.cardType === "medical" ? "default" : "secondary"}>
                           {card.cardType === "medical" ? "医療保険" : "介護保険"}

@@ -240,11 +240,20 @@ const FIELD_DEFINITIONS: Record<string, FieldDefinition[]> = {
   ],
 };
 
-async function seedSpecialManagement() {
+async function seedSpecialManagement(facilityId?: string) {
   console.log("🌱 特管マスタデータの初期投入を開始します...");
 
+  // facilityIdが指定されていない場合はエラー
+  if (!facilityId) {
+    console.error("❌ エラー: facilityIdを指定してください");
+    console.log("使用例: tsx server/seed-special-management.ts <facilityId>");
+    process.exit(1);
+  }
+
+  console.log(`  🏢 施設ID: ${facilityId}`);
+
   try {
-    // facilityIdをnullとして定義を挿入（全施設共通のマスタデータとして扱う）
+    // 指定された施設のマスタデータとして定義を挿入
     for (const definition of INITIAL_DEFINITIONS) {
       console.log(`  📝 ${definition.displayName} を追加中...`);
 
@@ -252,7 +261,7 @@ async function seedSpecialManagement() {
         .insert(specialManagementDefinitions)
         .values({
           ...definition,
-          facilityId: null, // 全施設共通
+          facilityId: facilityId,
         })
         .returning();
 
@@ -285,5 +294,6 @@ async function seedSpecialManagement() {
   process.exit(0);
 }
 
-// スクリプト実行
-seedSpecialManagement();
+// スクリプト実行（コマンドライン引数からfacilityIdを取得）
+const facilityId = process.argv[2];
+seedSpecialManagement(facilityId);

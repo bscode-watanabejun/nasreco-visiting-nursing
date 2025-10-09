@@ -54,6 +54,7 @@ type SpecialManagementDefinition = {
   description: string | null;
   displayOrder: number;
   isActive: boolean;
+  facilityId: string | null;
   fields?: SpecialManagementField[];
 };
 
@@ -130,7 +131,10 @@ export default function SpecialManagementSettings() {
         body: JSON.stringify({ ...data.definition, fields: data.fields }),
         credentials: "include",
       });
-      if (!response.ok) throw new Error("特管マスタの更新に失敗しました");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "特管マスタの更新に失敗しました");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -150,7 +154,10 @@ export default function SpecialManagementSettings() {
         method: "DELETE",
         credentials: "include",
       });
-      if (!response.ok) throw new Error("特管マスタの削除に失敗しました");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "特管マスタの削除に失敗しました");
+      }
       return response.json();
     },
     onSuccess: () => {

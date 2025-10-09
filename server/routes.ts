@@ -70,7 +70,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc } from "drizzle-orm";
+import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -2743,7 +2743,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const facilityId = req.session.facilityId;
 
-      // 自施設のマスタのみ取得（将来的に全施設共通マスタ対応も可能: or(isNull(...), eq(...))）
+      // 自施設のマスタのみ取得
       const definitions = await db.query.specialManagementDefinitions.findMany({
         where: and(
           eq(specialManagementDefinitions.facilityId, facilityId!),
@@ -2872,6 +2872,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const facilityId = req.session.facilityId;
       const data = updateSpecialManagementDefinitionSchema.parse(req.body);
 
+      // 自施設のマスタのみ更新可能
       const [updated] = await db
         .update(specialManagementDefinitions)
         .set({
@@ -2885,7 +2886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .returning();
 
       if (!updated) {
-        return res.status(404).json({ error: "特管マスタが見つかりません" });
+        return res.status(404).json({ error: "特管マスタの更新に失敗しました" });
       }
 
       // フィールド定義も一緒に更新する場合
@@ -2937,14 +2938,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/special-management-definitions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
+      const facilityId = req.session.facilityId;
 
+      // 自施設のマスタのみ削除可能
       const [deleted] = await db
         .update(specialManagementDefinitions)
         .set({
           isActive: false,
           updatedAt: new Date(),
         })
-        .where(eq(specialManagementDefinitions.id, id))
+        .where(and(
+          eq(specialManagementDefinitions.id, id),
+          eq(specialManagementDefinitions.facilityId, facilityId!)
+        ))
         .returning();
 
       if (!deleted) {
@@ -3337,6 +3343,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const cards = await db.query.insuranceCards.findMany({
         where: and(...whereConditions),
+        with: {
+          patient: true
+        },
         orderBy: (insuranceCards, { desc }) => [desc(insuranceCards.validFrom)]
       });
 
