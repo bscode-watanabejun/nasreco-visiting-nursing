@@ -910,14 +910,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
-      
+
       if (page < 1 || limit < 1) {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
-      const result = await storage.getPatientsByFacilityPaginated(req.user.facilityId, { page, limit });
-      res.json(result);
-      
+      // Check for isCritical filter
+      const isCritical = req.query.isCritical === 'true';
+
+      if (isCritical) {
+        // Get only critical patients without pagination
+        const criticalPatients = await db.query.patients.findMany({
+          where: and(
+            eq(patients.facilityId, req.user.facilityId),
+            eq(patients.isCritical, true),
+            eq(patients.isActive, true)
+          ),
+          orderBy: [desc(patients.updatedAt)],
+        });
+
+        res.json({
+          data: criticalPatients,
+          pagination: {
+            page: 1,
+            limit: criticalPatients.length,
+            total: criticalPatients.length,
+            totalPages: 1,
+            hasNext: false,
+            hasPrev: false,
+          }
+        });
+      } else {
+        const result = await storage.getPatientsByFacilityPaginated(req.user.facilityId, { page, limit });
+        res.json(result);
+      }
+
     } catch (error) {
       console.error("Get patients error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
