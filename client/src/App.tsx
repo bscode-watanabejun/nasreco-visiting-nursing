@@ -33,6 +33,7 @@ import ContractManagement from "@/components/ContractManagement";
 import SpecialManagementSettings from "@/components/SpecialManagementSettings";
 import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
+import ComingSoon from "@/components/ComingSoon";
 
 // Theme provider for dark/light mode
 function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -268,6 +269,12 @@ function MainLayout() {
                   <Route path="/contracts" component={ContractManagement} />
                   <Route path="/special-management-settings" component={SpecialManagementSettings} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
+                  <Route path="/reports">
+                    {() => <ComingSoon featureName="統合レポート機能" />}
+                  </Route>
+                  <Route path="/settings">
+                    {() => <ComingSoon featureName="システム設定機能" />}
+                  </Route>
                 </>
               ) : (
                 /* Facility-specific routes */
@@ -289,6 +296,15 @@ function MainLayout() {
                   <Route path="/contracts" component={ContractManagement} />
                   <Route path="/special-management-settings" component={SpecialManagementSettings} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
+                  <Route path="/reports">
+                    {() => <ComingSoon featureName="レポート機能" />}
+                  </Route>
+                  <Route path="/attendance">
+                    {() => <ComingSoon featureName="出勤管理機能" />}
+                  </Route>
+                  <Route path="/settings">
+                    {() => <ComingSoon featureName="設定機能" />}
+                  </Route>
                 </>
               )}
               <Route component={NotFound} />

@@ -30,6 +30,7 @@ import { DoctorOrderDialog } from "./DoctorOrderDialog"
 import { InsuranceCardDialog } from "./InsuranceCardDialog"
 import { ServiceCarePlanDialog } from "./ServiceCarePlanDialog"
 import { CarePlanDialog } from "./CarePlanDialog"
+import { PatientForm } from "./PatientForm"
 import { useToast } from "@/hooks/use-toast"
 
 type PatientWithRelations = Patient & {
@@ -68,6 +69,7 @@ export function PatientDetail() {
   const [editingServiceCarePlan, setEditingServiceCarePlan] = useState<ServiceCarePlan | null>(null)
   const [carePlanDialogOpen, setCarePlanDialogOpen] = useState(false)
   const [editingCarePlan, setEditingCarePlan] = useState<CarePlan | null>(null)
+  const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
 
   // Fetch patient data
   const { data: patientData, isLoading: isPatientLoading } = useQuery<PatientWithRelations>({
@@ -145,6 +147,18 @@ export function PatientDetail() {
       return response.json()
     },
     enabled: !!id,
+  })
+
+  // Fetch special management definitions for display
+  const { data: specialManagementDefinitions = [] } = useQuery<any[]>({
+    queryKey: ["/api/special-management-definitions"],
+    queryFn: async () => {
+      const response = await fetch("/api/special-management-definitions")
+      if (!response.ok) {
+        throw new Error("特別管理加算定義の取得に失敗しました")
+      }
+      return response.json()
+    },
   })
 
   const records = recordsData?.data || []
@@ -299,8 +313,20 @@ export function PatientDetail() {
         <TabsContent value="basic" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>基本情報</CardTitle>
-              <CardDescription>患者の基本的な情報</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>基本情報</CardTitle>
+                  <CardDescription>患者の基本的な情報</CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsPatientFormOpen(true)}
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  編集
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -311,6 +337,10 @@ export function PatientDetail() {
                     個人情報
                   </h3>
                   <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">患者番号</p>
+                      <p className="font-medium">{patient.patientNumber || '未登録'}</p>
+                    </div>
                     <div>
                       <p className="text-sm text-muted-foreground">生年月日</p>
                       <p className="font-medium">
@@ -338,15 +368,49 @@ export function PatientDetail() {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">住所</p>
-                      <p className="font-medium">{patient.address || '未登録'}</p>
+                      <p className="font-medium whitespace-pre-wrap">{patient.address || '未登録'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">建物</p>
                       <p className="font-medium">{patient.building?.name || '未登録'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">緊急連絡先</p>
+                      <p className="text-sm text-muted-foreground">保険番号</p>
+                      <p className="font-medium">{patient.insuranceNumber || '未登録'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">緊急連絡先（氏名）</p>
                       <p className="font-medium">{patient.emergencyContact || '未登録'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">緊急連絡先（電話番号）</p>
+                      <p className="font-medium">{patient.emergencyPhone || '未登録'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Medical Institution and Care Manager */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    医療機関・ケアマネ情報
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">主治医・医療機関</p>
+                      <p className="font-medium">
+                        {patient.medicalInstitution
+                          ? `${patient.medicalInstitution.name} - ${patient.medicalInstitution.doctorName}`
+                          : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">ケアマネージャー</p>
+                      <p className="font-medium">
+                        {patient.careManager
+                          ? `${patient.careManager.officeName} - ${patient.careManager.managerName}`
+                          : '未登録'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -374,6 +438,20 @@ export function PatientDetail() {
                       <p className="text-sm text-muted-foreground">アレルギー情報</p>
                       <p className="font-medium whitespace-pre-wrap">{patient.allergies || 'なし'}</p>
                     </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">現在の服薬</p>
+                      <p className="font-medium whitespace-pre-wrap">{patient.currentMedications || '未登録'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">重要患者設定</p>
+                      <p className="font-medium">
+                        {patient.isCritical ? (
+                          <Badge className="bg-red-100 text-red-800 border-red-200">重要患者</Badge>
+                        ) : (
+                          '通常'
+                        )}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -384,6 +462,53 @@ export function PatientDetail() {
                     <div>
                       <p className="text-sm text-muted-foreground">ケアに関する注意事項</p>
                       <p className="font-medium whitespace-pre-wrap">{patient.careNotes || 'なし'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Special Management */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" />
+                    特別管理加算
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">管理内容</p>
+                      <div className="font-medium">
+                        {patient.specialManagementTypes && patient.specialManagementTypes.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {patient.specialManagementTypes.map((category: string) => {
+                              const definition = specialManagementDefinitions.find(
+                                (def: any) => def.category === category
+                              )
+                              return (
+                                <Badge key={category} variant="outline">
+                                  {definition?.displayName || category}
+                                </Badge>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          '設定なし'
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">開始日</p>
+                      <p className="font-medium">
+                        {patient.specialManagementStartDate
+                          ? new Date(patient.specialManagementStartDate).toLocaleDateString('ja-JP')
+                          : '未設定'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">終了日</p>
+                      <p className="font-medium">
+                        {patient.specialManagementEndDate
+                          ? new Date(patient.specialManagementEndDate).toLocaleDateString('ja-JP')
+                          : '継続中'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1423,6 +1548,14 @@ export function PatientDetail() {
         onOpenChange={setCarePlanDialogOpen}
         patientId={id!}
         plan={editingCarePlan}
+      />
+
+      {/* Patient Form Dialog */}
+      <PatientForm
+        isOpen={isPatientFormOpen}
+        onClose={() => setIsPatientFormOpen(false)}
+        patient={patient}
+        mode="edit"
       />
     </div>
   )

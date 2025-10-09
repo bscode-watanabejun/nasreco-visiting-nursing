@@ -271,6 +271,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
+      queryClient.invalidateQueries({ queryKey: ["patient"] })
       toast({
         title: "患者登録完了",
         description: "新しい患者が正常に登録されました。",
@@ -326,6 +327,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
+      queryClient.invalidateQueries({ queryKey: ["patient"] })
       toast({
         title: "更新完了",
         description: "患者情報が正常に更新されました。",

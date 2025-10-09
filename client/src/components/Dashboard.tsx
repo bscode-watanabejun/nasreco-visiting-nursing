@@ -181,7 +181,7 @@ export function Dashboard() {
     queryKey: ["/api/patients/critical"],
     queryFn: async () => {
       const response = await fetch("/api/patients?isCritical=true")
-      if (!response.ok) throw new Error("要注意患者の取得に失敗しました")
+      if (!response.ok) throw new Error("重要患者の取得に失敗しました")
       const result = await response.json()
       return result.data || []
     },
@@ -382,7 +382,7 @@ export function Dashboard() {
         <Card className="p-3 sm:p-auto">
           <div className="flex flex-col sm:block">
             <div className="flex items-center justify-between mb-2 sm:hidden">
-              <span className="text-xs text-muted-foreground">要注意アラート</span>
+              <span className="text-xs text-muted-foreground">重要アラート</span>
               <AlertTriangle className="h-4 w-4 text-orange-500" />
             </div>
             <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
@@ -567,7 +567,7 @@ export function Dashboard() {
       {/* Quick Navigation Tabs - Mobile */}
       <div className="flex justify-center gap-6 py-2 sm:hidden">
         <button className="text-sm text-muted-foreground hover:text-primary">訪問スケジュール</button>
-        <button className="text-sm text-muted-foreground hover:text-primary">要注意患者</button>
+        <button className="text-sm text-muted-foreground hover:text-primary">重要患者</button>
         <button className="text-sm text-muted-foreground hover:text-primary">最近の記録</button>
       </div>
 
@@ -575,7 +575,7 @@ export function Dashboard() {
       <Tabs defaultValue="visits" className="space-y-4">
         <TabsList className="hidden sm:grid w-full grid-cols-3 h-10">
           <TabsTrigger value="visits" data-testid="tab-visits">本日の訪問</TabsTrigger>
-          <TabsTrigger value="alerts" data-testid="tab-alerts">要注意患者</TabsTrigger>
+          <TabsTrigger value="alerts" data-testid="tab-alerts">重要患者</TabsTrigger>
           <TabsTrigger value="recent" data-testid="tab-recent">最近の記録</TabsTrigger>
         </TabsList>
 
@@ -724,14 +724,14 @@ export function Dashboard() {
         <TabsContent value="alerts">
           <Card>
             <CardHeader>
-              <CardTitle>要注意患者</CardTitle>
+              <CardTitle>重要患者</CardTitle>
               <CardDescription>重点的な観察が必要な利用者</CardDescription>
             </CardHeader>
             <CardContent>
               {criticalPatients.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <AlertTriangle className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                  <p>現在、要注意患者はいません</p>
+                  <p>現在、重要患者はいません</p>
                 </div>
               ) : (
                 <div className="space-y-3 sm:space-y-4">
