@@ -160,7 +160,7 @@ export default function CareManagerManagement() {
   };
 
   return (
-    <div className="container mx-auto py-6">
+    <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
