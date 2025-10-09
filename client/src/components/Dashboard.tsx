@@ -165,10 +165,34 @@ export function Dashboard() {
     },
   })
 
+  // Fetch recent nursing records
+  const { data: recentRecordsData } = useQuery<any[]>({
+    queryKey: ["/api/nursing-records/recent"],
+    queryFn: async () => {
+      const response = await fetch("/api/nursing-records?limit=5&sortBy=recordDate&sortOrder=desc")
+      if (!response.ok) throw new Error("最近の記録の取得に失敗しました")
+      const result = await response.json()
+      return result.data || []
+    },
+  })
+
+  // Fetch critical patients
+  const { data: criticalPatientsData } = useQuery<Patient[]>({
+    queryKey: ["/api/patients/critical"],
+    queryFn: async () => {
+      const response = await fetch("/api/patients?isCritical=true")
+      if (!response.ok) throw new Error("要注意患者の取得に失敗しました")
+      const result = await response.json()
+      return result.data || []
+    },
+  })
+
   const schedules = schedulesData?.data || []
   const patients = patientsData?.data || []
   const users = usersData?.data || []
   const pendingRecordsCount = schedulesWithoutRecords?.length || 0
+  const recentRecords = recentRecordsData || []
+  const criticalPatients = criticalPatientsData || []
 
   // Calculate expiring contracts (within 30 days or already expired)
   const nowDate = new Date()
@@ -700,30 +724,36 @@ export function Dashboard() {
         <TabsContent value="alerts">
           <Card>
             <CardHeader>
-              <CardTitle>重要アラート</CardTitle>
-              <CardDescription>確認が必要な項目</CardDescription>
+              <CardTitle>要注意患者</CardTitle>
+              <CardDescription>重点的な観察が必要な利用者</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3 sm:space-y-4">
-                <div className="flex items-start gap-3 p-3 border rounded-lg border-destructive/20 bg-destructive/5">
-                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm sm:text-base">薬物投与エラーの可能性</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      佐藤太郎さん - 薬物重複チェックが必要
-                    </p>
-                  </div>
+              {criticalPatients.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <AlertTriangle className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                  <p>現在、要注意患者はいません</p>
                 </div>
-                <div className="flex items-start gap-3 p-3 border rounded-lg border-destructive/20 bg-destructive/5">
-                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm sm:text-base">バイタルサイン異常</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      鈴木花子さん - 血圧値が基準値を超過
-                    </p>
-                  </div>
+              ) : (
+                <div className="space-y-3 sm:space-y-4">
+                  {criticalPatients.map((patient) => (
+                    <div
+                      key={patient.id}
+                      className="flex items-start gap-3 p-3 border rounded-lg border-destructive/20 bg-destructive/5 hover:bg-destructive/10 cursor-pointer transition-colors"
+                      onClick={() => setLocation(`/patients/${patient.id}`)}
+                    >
+                      <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm sm:text-base truncate">
+                          {getFullName(patient)}
+                        </p>
+                        <p className="text-xs sm:text-sm text-muted-foreground">
+                          {patient.careNotes || '重点的な観察が必要な利用者です'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -735,41 +765,46 @@ export function Dashboard() {
               <CardDescription>直近の訪問記録一覧</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3 p-3 border rounded-lg">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm sm:text-base truncate">佐藤太郎さん</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      2024/09/25 09:00 - 定期訪問
-                    </p>
-                  </div>
-                  <Badge className={`${getStatusColor('completed')} flex-shrink-0 text-xs`}>
-                    完了
-                  </Badge>
+              {recentRecords.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ClipboardList className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                  <p>記録がありません</p>
                 </div>
-                <div className="flex items-center justify-between gap-3 p-3 border rounded-lg">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm sm:text-base truncate">田中明さん</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      2024/09/24 14:30 - アセスメント
-                    </p>
-                  </div>
-                  <Badge className={`${getStatusColor('completed')} flex-shrink-0 text-xs`}>
-                    完了
-                  </Badge>
+              ) : (
+                <div className="space-y-3">
+                  {recentRecords.map((record: any) => {
+                    const patient = patients.find((p: Patient) => p.id === record.patientId)
+                    const patientName = patient ? getFullName(patient) : '患者不明'
+                    const recordDate = new Date(record.recordDate)
+                    const formattedDate = recordDate.toLocaleString('ja-JP', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })
+                    const statusText = getStatusText(record.status)
+
+                    return (
+                      <div
+                        key={record.id}
+                        className="flex items-center justify-between gap-3 p-3 border rounded-lg hover:bg-accent cursor-pointer transition-colors"
+                        onClick={() => setLocation(`/records?id=${record.id}`)}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm sm:text-base truncate">{patientName}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground">
+                            {formattedDate} - {record.title || '訪問記録'}
+                          </p>
+                        </div>
+                        <Badge className={`${getStatusColor(record.status)} flex-shrink-0 text-xs`}>
+                          {statusText}
+                        </Badge>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="flex items-center justify-between gap-3 p-3 border rounded-lg">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm sm:text-base truncate">伊藤みどりさん</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      2024/09/24 10:15 - 定期訪問
-                    </p>
-                  </div>
-                  <Badge className={`${getStatusColor('completed')} flex-shrink-0 text-xs`}>
-                    完了
-                  </Badge>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
