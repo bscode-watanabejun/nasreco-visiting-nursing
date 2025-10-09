@@ -131,6 +131,14 @@ npm run db:push     # Drizzleでデータベーススキーマ変更をPostgreSQ
 - drizzle-zodでDrizzleテーブルからZodスキーマ生成
 - API入力の実行時バリデーション
 
+## Git運用ルール
+
+**⚠️ 重要**: Gitコミットは**ユーザーの明示的な指示があるまで実行しない**
+- 実装完了後、`npm run check` で型チェックは実行する
+- 変更内容の説明や確認は行う
+- コミットメッセージの準備はする
+- **ただし `git commit` コマンドはユーザーが「コミットして」と指示するまで実行しない**
+
 ## 📋 実装ロードマップ
 
 訪問看護アプリとして実運用可能にするための必須機能実装計画は [/docs/implementation-roadmap.md](/docs/implementation-roadmap.md) を参照してください。

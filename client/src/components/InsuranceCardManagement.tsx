@@ -26,7 +26,7 @@ import type { InsuranceCard, Patient } from "@shared/schema";
 export default function InsuranceCardManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -45,7 +45,7 @@ export default function InsuranceCardManagement() {
   const { data: cards = [], isLoading } = useQuery<InsuranceCard[]>({
     queryKey: ["/api/insurance-cards", selectedPatientId],
     queryFn: async () => {
-      const url = selectedPatientId
+      const url = selectedPatientId && selectedPatientId !== "all"
         ? `/api/insurance-cards?patientId=${selectedPatientId}`
         : "/api/insurance-cards";
       const response = await fetch(url);
@@ -134,13 +134,14 @@ export default function InsuranceCardManagement() {
         </div>
         <div className="flex gap-2">
           <Select
-            value={selectedPatientId || undefined}
-            onValueChange={(value) => setSelectedPatientId(value || "")}
+            value={selectedPatientId}
+            onValueChange={(value) => setSelectedPatientId(value)}
           >
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="全利用者" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">全利用者</SelectItem>
               {patients.map((patient) => (
                 <SelectItem key={patient.id} value={patient.id}>
                   {patient.lastName} {patient.firstName}
