@@ -263,14 +263,6 @@ export function Dashboard() {
               <Plus className="mr-2 h-4 w-4" />
               新規記録登録
             </Button>
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              data-testid="button-schedule"
-            >
-              <Calendar className="mr-2 h-4 w-4" />
-              スケジュール
-            </Button>
           </div>
         </div>
 
@@ -285,15 +277,6 @@ export function Dashboard() {
             <Bell className="h-4 w-4" />
             <span className="text-sm">通知</span>
             <Badge className="ml-1 bg-orange-500 text-white px-1.5 py-0 h-5 rounded-full text-xs">3</Badge>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1 px-3 py-1.5"
-            data-testid="button-schedule"
-          >
-            <Calendar className="h-4 w-4" />
-            <span className="text-sm">カレンダー</span>
           </Button>
           <Button
             size="sm"
