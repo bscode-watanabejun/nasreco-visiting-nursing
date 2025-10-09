@@ -261,19 +261,24 @@ export default function SpecialManagementSettings() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">特別管理マスタ設定</h1>
+          <p className="text-muted-foreground">特別管理加算の項目とフィールドを管理します</p>
+        </div>
+        <Button onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-4 w-4" />
+          新規作成
+        </Button>
+      </div>
+
+      {/* Special Management Definitions Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle>特別管理マスタ設定</CardTitle>
-            <CardDescription>
-              特別管理加算の項目とフィールドを管理します
-            </CardDescription>
-          </div>
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="mr-2 h-4 w-4" />
-            新規作成
-          </Button>
+        <CardHeader>
+          <CardTitle>特別管理加算一覧</CardTitle>
+          <CardDescription>登録されている特別管理加算の項目</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (

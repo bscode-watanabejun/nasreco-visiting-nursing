@@ -161,18 +161,23 @@ export default function CareManagerManagement() {
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">ケアマネージャーマスタ</h1>
+          <p className="text-muted-foreground">ケアマネージャーの情報を管理します</p>
+        </div>
+        <Button onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-4 w-4" />
+          新規登録
+        </Button>
+      </div>
+
+      {/* Care Managers Table */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>ケアマネージャーマスタ</CardTitle>
-              <CardDescription>ケアマネージャーの情報を管理します</CardDescription>
-            </div>
-            <Button onClick={() => handleOpenDialog()}>
-              <Plus className="mr-2 h-4 w-4" />
-              新規登録
-            </Button>
-          </div>
+          <CardTitle>ケアマネージャー一覧</CardTitle>
+          <CardDescription>登録されているケアマネージャーの情報</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (

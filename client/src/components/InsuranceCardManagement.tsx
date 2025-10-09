@@ -126,35 +126,40 @@ export default function InsuranceCardManagement() {
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">保険証管理</h1>
+          <p className="text-muted-foreground">利用者の医療保険・介護保険証を管理します</p>
+        </div>
+        <div className="flex gap-2">
+          <Select
+            value={selectedPatientId || undefined}
+            onValueChange={(value) => setSelectedPatientId(value || "")}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="全利用者" />
+            </SelectTrigger>
+            <SelectContent>
+              {patients.map((patient) => (
+                <SelectItem key={patient.id} value={patient.id}>
+                  {patient.lastName} {patient.firstName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="mr-2 h-4 w-4" />
+            新規登録
+          </Button>
+        </div>
+      </div>
+
+      {/* Insurance Cards Table */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>保険証管理</CardTitle>
-              <CardDescription>利用者の医療保険・介護保険証を管理します</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Select
-                value={selectedPatientId || undefined}
-                onValueChange={(value) => setSelectedPatientId(value || "")}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="全利用者" />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map((patient) => (
-                    <SelectItem key={patient.id} value={patient.id}>
-                      {patient.lastName} {patient.firstName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button onClick={() => handleOpenDialog()}>
-                <Plus className="mr-2 h-4 w-4" />
-                新規登録
-              </Button>
-            </div>
-          </div>
+          <CardTitle>保険証一覧</CardTitle>
+          <CardDescription>登録されている保険証の情報</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (

@@ -164,18 +164,23 @@ export default function MedicalInstitutionManagement() {
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">医療機関マスタ</h1>
+          <p className="text-muted-foreground">主治医・医療機関の情報を管理します</p>
+        </div>
+        <Button onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-4 w-4" />
+          新規登録
+        </Button>
+      </div>
+
+      {/* Medical Institutions Table */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>医療機関マスタ</CardTitle>
-              <CardDescription>主治医・医療機関の情報を管理します</CardDescription>
-            </div>
-            <Button onClick={() => handleOpenDialog()}>
-              <Plus className="mr-2 h-4 w-4" />
-              新規登録
-            </Button>
-          </div>
+          <CardTitle>医療機関一覧</CardTitle>
+          <CardDescription>登録されている医療機関・主治医の情報</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
