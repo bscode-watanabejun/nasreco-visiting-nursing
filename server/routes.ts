@@ -358,6 +358,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get notification details list (top 5 per category)
+  app.get("/api/notifications/list", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      if (!facilityId) {
+        return res.status(401).json({ error: "施設IDが見つかりません" });
+      }
+
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+
+      // 1. Get schedules without records (top 5)
+      const allSchedules = await db.query.schedules.findMany({
+        where: and(
+          eq(schedules.facilityId, facilityId),
+          not(inArray(schedules.status, ["cancelled"] as const)),
+          lte(schedules.scheduledDate, today)
+        ),
+        with: {
+          patient: {
+            columns: {
+              id: true,
+              lastName: true,
+              firstName: true,
+            }
+          },
+          nurse: {
+            columns: {
+              id: true,
+              fullName: true,
+            }
+          }
+        },
+        orderBy: [desc(schedules.scheduledDate)],
+      });
+
+      const schedulesWithRecords = await db.query.nursingRecords.findMany({
+        where: and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNotNull(nursingRecords.scheduleId)
+        ),
+        columns: { scheduleId: true }
+      });
+
+      const scheduleIdsWithRecords = new Set(
+        schedulesWithRecords
+          .map(r => r.scheduleId)
+          .filter((id): id is string => id !== null)
+      );
+
+      const schedulesWithoutRecordsData = allSchedules
+        .filter(s => !scheduleIdsWithRecords.has(s.id))
+        .slice(0, 5)
+        .map(schedule => ({
+          id: schedule.id,
+          scheduledDate: schedule.scheduledDate,
+          scheduledStartTime: schedule.scheduledStartTime,
+          scheduledEndTime: schedule.scheduledEndTime,
+          purpose: schedule.purpose,
+          patient: schedule.patient,
+          nurse: schedule.nurse,
+        }));
+
+      // 2. Get doctor orders expiring within 14 days (top 5)
+      const fourteenDaysFromNow = new Date();
+      fourteenDaysFromNow.setDate(today.getDate() + 14);
+      const todayStr = today.toISOString().split('T')[0];
+      const fourteenDaysStr = fourteenDaysFromNow.toISOString().split('T')[0];
+
+      const expiringDoctorOrdersData = await db.query.doctorOrders.findMany({
+        where: and(
+          eq(doctorOrders.facilityId, facilityId),
+          gte(doctorOrders.endDate, todayStr),
+          lte(doctorOrders.endDate, fourteenDaysStr)
+        ),
+        with: {
+          patient: {
+            columns: {
+              id: true,
+              lastName: true,
+              firstName: true,
+            }
+          },
+          medicalInstitution: {
+            columns: {
+              id: true,
+              name: true,
+              doctorName: true,
+            }
+          }
+        },
+        orderBy: [asc(doctorOrders.endDate)],
+        limit: 5,
+      });
+
+      // Calculate days remaining for each doctor order
+      const doctorOrdersWithDays = expiringDoctorOrdersData.map(order => {
+        const endDate = new Date(order.endDate);
+        const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return {
+          ...order,
+          daysRemaining,
+        };
+      });
+
+      // 3. Get insurance cards expiring within 30 days (top 5)
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      const thirtyDaysStr = thirtyDaysFromNow.toISOString().split('T')[0];
+
+      const expiringInsuranceCardsData = await db.query.insuranceCards.findMany({
+        where: and(
+          eq(insuranceCards.facilityId, facilityId),
+          isNotNull(insuranceCards.validUntil),
+          gte(insuranceCards.validUntil, todayStr),
+          lte(insuranceCards.validUntil, thirtyDaysStr)
+        ),
+        with: {
+          patient: {
+            columns: {
+              id: true,
+              lastName: true,
+              firstName: true,
+            }
+          }
+        },
+        orderBy: [asc(insuranceCards.validUntil)],
+        limit: 5,
+      });
+
+      // Calculate days remaining for each insurance card
+      const insuranceCardsWithDays = expiringInsuranceCardsData.map(card => {
+        const validUntil = new Date(card.validUntil!);
+        const daysRemaining = Math.ceil((validUntil.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return {
+          ...card,
+          daysRemaining,
+        };
+      });
+
+      res.json({
+        schedulesWithoutRecords: schedulesWithoutRecordsData,
+        expiringDoctorOrders: doctorOrdersWithDays,
+        expiringInsuranceCards: insuranceCardsWithDays,
+      });
+
+    } catch (error) {
+      console.error("Get notification list error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Enhanced Middleware for authenticated routes ==========
   // Use hierarchical access control middleware from separate file
 

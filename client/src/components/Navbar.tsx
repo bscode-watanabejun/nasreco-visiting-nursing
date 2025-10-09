@@ -7,9 +7,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Bell, Settings, LogOut, Building2, ChevronDown, Heart } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { NotificationPanel } from "@/components/NotificationPanel"
+import { useState } from "react"
 
 interface NavbarProps {
   currentFacility?: string
@@ -26,6 +33,8 @@ export function Navbar({
   onFacilityChange = () => console.log('Facility change clicked'),
   onLogout = () => console.log('Logout clicked')
 }: NavbarProps) {
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false)
+
   // Fetch notification count
   const { data: notificationData } = useQuery<{
     total: number
@@ -73,25 +82,32 @@ export function Navbar({
           </Button>
 
           {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="通知"
-            data-testid="button-notifications"
-            className="h-8 w-8 sm:h-9 sm:w-9"
-          >
-            <div className="relative">
-              <Bell className="h-4 w-4" />
-              {notificationCount > 0 && (
-                <Badge
-                  variant="destructive"
-                  className="absolute -top-2 -right-2 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[10px] sm:text-xs"
-                >
-                  {notificationCount}
-                </Badge>
-              )}
-            </div>
-          </Button>
+          <Popover open={isNotificationOpen} onOpenChange={setIsNotificationOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="通知"
+                data-testid="button-notifications"
+                className="h-8 w-8 sm:h-9 sm:w-9"
+              >
+                <div className="relative">
+                  <Bell className="h-4 w-4" />
+                  {notificationCount > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -top-2 -right-2 h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center p-0 text-[10px] sm:text-xs"
+                    >
+                      {notificationCount}
+                    </Badge>
+                  )}
+                </div>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-80 sm:w-96" align="end">
+              <NotificationPanel onClose={() => setIsNotificationOpen(false)} />
+            </PopoverContent>
+          </Popover>
 
           {/* User Menu */}
           <DropdownMenu>
