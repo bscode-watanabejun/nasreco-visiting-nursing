@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
-import { Building, Edit, Plus, Trash2 } from "lucide-react"
+import { Building, Pencil, Plus, Trash2 } from "lucide-react"
 import type { Building as BuildingType } from "@shared/schema"
 
 export default function BuildingManagement() {
@@ -243,14 +243,14 @@ export default function BuildingManagement() {
                       <div className="flex gap-2 justify-end">
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="ghost"
                           onClick={() => handleOpenDialog(building)}
                         >
-                          <Edit className="h-4 w-4" />
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           size="sm"
-                          variant="destructive"
+                          variant="ghost"
                           onClick={() => handleDelete(building)}
                         >
                           <Trash2 className="h-4 w-4" />
