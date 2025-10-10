@@ -395,6 +395,17 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async deleteSchedule(id: string): Promise<boolean> {
+    // Check if there are any nursing records referencing this schedule
+    const referencingRecords = await db
+      .select()
+      .from(nursingRecords)
+      .where(eq(nursingRecords.scheduleId, id))
+      .limit(1);
+
+    if (referencingRecords.length > 0) {
+      throw new Error("このスケジュールに紐付いた看護記録が存在するため削除できません");
+    }
+
     const result = await db.delete(schedules).where(eq(schedules.id, id));
     return (result.rowCount ?? 0) > 0;
   }

@@ -1696,6 +1696,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       console.error("Delete schedule error:", error);
+      if (error instanceof Error && error.message.includes("看護記録が存在するため削除できません")) {
+        return res.status(400).json({ error: error.message });
+      }
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

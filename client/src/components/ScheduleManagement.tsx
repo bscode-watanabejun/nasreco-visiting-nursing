@@ -311,12 +311,16 @@ export function ScheduleManagement() {
         method: "DELETE",
       })
       if (!response.ok) {
-        throw new Error("スケジュール削除に失敗しました")
+        const error = await response.json()
+        throw new Error(error.error || "スケジュール削除に失敗しました")
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] })
       queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+    },
+    onError: (error) => {
+      alert(`削除エラー: ${error.message}`)
     },
   })
 
