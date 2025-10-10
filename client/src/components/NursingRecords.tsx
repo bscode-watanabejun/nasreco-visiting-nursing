@@ -160,10 +160,18 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     ...(Object.keys(formData.specialManagementData).length > 0 && {
       specialManagementData: formData.specialManagementData
     }),
-
-    // スケジュールIDの紐付け
-    ...(formData.selectedScheduleId && formData.selectedScheduleId !== 'none' ? { scheduleId: formData.selectedScheduleId } : {})
   }
+
+  // スケジュールIDの紐付け - always include for proper tracking
+  // Include scheduleId if it has a value (not 'none' and not empty string)
+  if (formData.selectedScheduleId && formData.selectedScheduleId !== 'none') {
+    apiData.scheduleId = formData.selectedScheduleId;
+  }
+
+  // DEBUG: Log scheduleId in API data
+  console.log('🔍 DEBUG - convertFormDataToApiFormat');
+  console.log('  - formData.selectedScheduleId:', formData.selectedScheduleId);
+  console.log('  - apiData.scheduleId:', apiData.scheduleId);
 
   return apiData
 }
@@ -618,7 +626,7 @@ export function NursingRecords() {
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
-      selectedScheduleId: '',
+      selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {}
     })
 
@@ -654,7 +662,7 @@ export function NursingRecords() {
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
-      selectedScheduleId: '',
+      selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {}
     })
   }
@@ -677,7 +685,11 @@ export function NursingRecords() {
       }
 
       // Refresh the records list
-      queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/list"] })
       toast({
         title: "削除完了",
         description: "記録を削除しました",
@@ -750,6 +762,7 @@ export function NursingRecords() {
       }
 
       const apiData = convertFormDataToApiFormat(formData, 'draft')
+      console.log('🔍 DEBUG - Creating draft record, API payload:', JSON.stringify({ scheduleId: apiData.scheduleId }, null, 2));
       const response = await fetch('/api/nursing-records', {
         method: 'POST',
         headers: {
@@ -774,6 +787,10 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/list"] })
       toast({
         title: "保存完了",
         description: "下書きとして保存しました",
@@ -852,8 +869,11 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
       await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
       await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/list"] })
       toast({
         title: "保存完了",
         description: isEditing ? '記録を更新しました' : '記録を完成しました',
@@ -891,6 +911,7 @@ export function NursingRecords() {
 
       const apiData = convertFormDataToApiFormat(formData, status as 'draft' | 'completed')
 
+      console.log('🔍 DEBUG - Updating record, API payload:', JSON.stringify({ id: selectedRecord.id, scheduleId: apiData.scheduleId, status }, null, 2));
       const response = await fetch(`/api/nursing-records/${selectedRecord.id}`, {
         method: 'PUT',
         headers: {
@@ -915,7 +936,11 @@ export function NursingRecords() {
 
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] })
       await queryClient.invalidateQueries({ queryKey: ["nursing-record-attachments", selectedRecord.id] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/list"] })
       toast({
         title: "更新完了",
         description: "記録を更新しました",
