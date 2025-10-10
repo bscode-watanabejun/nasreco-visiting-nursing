@@ -675,7 +675,7 @@ export function Dashboard() {
                 {/* Desktop layout */}
                 <div className="hidden sm:flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="text-center min-w-[4rem]">
+                    <div className="text-left min-w-[4rem]">
                       <div className="font-semibold">{visit.time}</div>
                       <div className="text-xs text-muted-foreground">{visit.type}</div>
                     </div>
