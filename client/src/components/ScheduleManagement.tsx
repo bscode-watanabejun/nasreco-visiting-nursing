@@ -109,9 +109,6 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
     queryKey: ["nursing-record-by-schedule", schedule.id],
     queryFn: async () => {
       const response = await fetch(`/api/schedules/${schedule.id}/nursing-record`)
-      if (response.status === 404) {
-        return { hasRecord: false }
-      }
       if (!response.ok) {
         return { hasRecord: false }
       }

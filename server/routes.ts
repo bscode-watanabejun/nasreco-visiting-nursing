@@ -1356,7 +1356,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!record) {
-        return res.status(404).json({ error: "記録が見つかりません", hasRecord: false });
+        // Return 200 with hasRecord: false instead of 404
+        return res.json({ hasRecord: false });
       }
 
       res.json({ hasRecord: true, record });
