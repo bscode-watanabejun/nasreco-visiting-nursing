@@ -3162,7 +3162,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "施設IDが見つかりません" });
       }
 
-      const validatedData = insertDoctorOrderSchema.parse(req.body);
+      // When using multipart/form-data, convert numeric fields from strings
+      const bodyData = { ...req.body };
+      if (bodyData.weeklyVisitLimit !== undefined && bodyData.weeklyVisitLimit !== '') {
+        bodyData.weeklyVisitLimit = parseInt(bodyData.weeklyVisitLimit);
+      } else if (bodyData.weeklyVisitLimit === '') {
+        // Remove empty string to allow null/undefined
+        delete bodyData.weeklyVisitLimit;
+      }
+
+      const validatedData = insertDoctorOrderSchema.parse(bodyData);
 
       const orderData: any = {
         ...validatedData,
@@ -3205,7 +3214,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const facilityId = req.session.facilityId;
 
-      const validatedData = updateDoctorOrderSchema.parse(req.body);
+      // When using multipart/form-data, convert numeric fields from strings
+      const bodyData = { ...req.body };
+      if (bodyData.weeklyVisitLimit !== undefined && bodyData.weeklyVisitLimit !== '') {
+        bodyData.weeklyVisitLimit = parseInt(bodyData.weeklyVisitLimit);
+      } else if (bodyData.weeklyVisitLimit === '') {
+        // Remove empty string to allow null/undefined
+        delete bodyData.weeklyVisitLimit;
+      }
+
+      const validatedData = updateDoctorOrderSchema.parse(bodyData);
 
       const updateData: any = {
         ...validatedData,
