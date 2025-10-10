@@ -1224,10 +1224,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/schedules/without-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const facilityId = req.session.facilityId;
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, nurseId } = req.query;
 
       console.log("=== 記録未作成スケジュール検索 ===");
       console.log("検索期間:", startDate, "～", endDate);
+      console.log("担当看護師ID:", nurseId);
 
       // Build query conditions
       const whereConditions = [
@@ -1236,6 +1237,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Exclude cancelled schedules
         not(inArray(schedules.status, ["cancelled"] as const)),
       ];
+
+      // Filter by nurse if specified
+      if (nurseId && typeof nurseId === 'string') {
+        whereConditions.push(eq(schedules.nurseId, nurseId));
+      }
 
       const today = new Date();
       today.setHours(23, 59, 59, 999); // End of today

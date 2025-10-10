@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AlertCircle, Plus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -33,6 +40,12 @@ type ScheduleWithoutRecord = {
   };
 };
 
+type User = {
+  id: string;
+  fullName: string;
+  role: string;
+};
+
 export default function SchedulesWithoutRecords() {
   const [, setLocation] = useLocation();
   const today = new Date();
@@ -41,13 +54,28 @@ export default function SchedulesWithoutRecords() {
 
   const [startDate, setStartDate] = useState(thirtyDaysAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+  const [nurseId, setNurseId] = useState<string>("all");
+
+  // Fetch nurses list
+  const { data: usersData } = useQuery<{ data: User[] }>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const response = await fetch("/api/users?limit=100");
+      if (!response.ok) throw new Error("ユーザー一覧の取得に失敗しました");
+      return response.json();
+    },
+  });
+
+  // Filter nurses only
+  const nurses = usersData?.data.filter(user => user.role === 'nurse') || [];
 
   const { data: schedulesWithoutRecords, isLoading } = useQuery<ScheduleWithoutRecord[]>({
-    queryKey: ["/api/schedules/without-records", startDate, endDate],
+    queryKey: ["/api/schedules/without-records", startDate, endDate, nurseId],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
+      if (nurseId && nurseId !== "all") params.append('nurseId', nurseId);
 
       const response = await fetch(`/api/schedules/without-records?${params}`);
       if (!response.ok) throw new Error("記録未作成スケジュールの取得に失敗しました");
@@ -92,10 +120,10 @@ export default function SchedulesWithoutRecords() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>期間指定</CardTitle>
+          <CardTitle>絞り込み条件</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4 max-w-md">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <Label htmlFor="startDate">開始日</Label>
               <Input
@@ -113,6 +141,22 @@ export default function SchedulesWithoutRecords() {
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
+            </div>
+            <div>
+              <Label htmlFor="nurseId">担当看護師</Label>
+              <Select value={nurseId} onValueChange={setNurseId}>
+                <SelectTrigger id="nurseId">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">すべて</SelectItem>
+                  {nurses.map((nurse) => (
+                    <SelectItem key={nurse.id} value={nurse.id}>
+                      {nurse.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
