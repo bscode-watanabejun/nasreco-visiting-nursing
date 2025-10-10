@@ -761,18 +761,12 @@ export function ScheduleManagement() {
                                       </div>
                                       <div className="text-xs text-muted-foreground line-clamp-1">{schedule.purpose}</div>
                                     </div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-1">
-                                    <RecordActionButton schedule={schedule} showLabel className="text-xs h-8" />
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setSelectedSchedule(schedule)}
-                                      className="text-xs h-8"
-                                    >
-                                      <Edit className="h-3 w-3 mr-1" />
-                                      編集
-                                    </Button>
+                                    <div className="flex gap-1 flex-shrink-0">
+                                      <RecordActionButton schedule={schedule} variant="ghost" />
+                                      <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                        <Edit className="h-3 w-3" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
 
@@ -809,27 +803,29 @@ export function ScheduleManagement() {
                                     <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                   </div>
                                   <div className="flex gap-1 flex-shrink-0">
-                                    <RecordActionButton schedule={schedule} />
+                                    <RecordActionButton schedule={schedule} showLabel />
                                     {schedule.isRecurring && schedule.parentScheduleId && (
                                       <Button
                                         size="sm"
-                                        variant="ghost"
+                                        variant="outline"
                                         onClick={() => handleDeleteRecurringSeries(schedule.parentScheduleId!)}
                                         title="シリーズ全体を削除"
                                       >
                                         <Repeat className="h-3 w-3 mr-1" />
-                                        <Trash2 className="h-3 w-3" />
+                                        シリーズ削除
                                       </Button>
                                     )}
-                                    <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
-                                      <Edit className="h-3 w-3" />
+                                    <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      編集
                                     </Button>
                                     <Button
                                       size="sm"
-                                      variant="ghost"
+                                      variant="outline"
                                       onClick={() => handleDeleteSchedule(schedule)}
                                     >
-                                      <Trash2 className="h-3 w-3" />
+                                      <Trash2 className="h-3 w-3 mr-1" />
+                                      削除
                                     </Button>
                                   </div>
                                 </div>
