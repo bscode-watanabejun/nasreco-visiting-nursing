@@ -1958,6 +1958,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const recordData = insertNursingRecordSchema.parse(req.body);
 
+      // DEBUG: Log scheduleId before and after parsing
+      console.log('🔍 DEBUG - POST /api/nursing-records');
+      console.log('  - req.body.scheduleId:', req.body.scheduleId);
+      console.log('  - recordData.scheduleId (after parse):', recordData.scheduleId);
+
       // If scheduleId is provided, auto-fill schedule information
       if (recordData.scheduleId) {
         const schedule = await storage.getScheduleById(recordData.scheduleId);
@@ -1980,8 +1985,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       recordData.calculatedPoints = calculatedPoints;
       recordData.appliedBonuses = appliedBonuses;
 
+      // DEBUG: Log before saving to database
+      console.log('  - recordData before save (scheduleId):', recordData.scheduleId);
+
       // Pass facility ID and nurse ID separately
       const record = await storage.createNursingRecord(recordData, req.user.facilityId, req.user.id);
+
+      // DEBUG: Log after saving to database
+      console.log('  - record saved (scheduleId):', record.scheduleId);
+      console.log('  - record saved (id):', record.id);
+
       res.status(201).json(record);
 
     } catch (error) {
@@ -2008,8 +2021,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
 
+      // DEBUG: Log scheduleId before and after parsing
+      console.log('🔍 DEBUG - PUT /api/nursing-records/:id');
+      console.log('  - record id:', id);
+      console.log('  - existingRecord.scheduleId (before):', existingRecord.scheduleId);
+      console.log('  - req.body.scheduleId:', req.body.scheduleId);
+
       // Validate update data with Zod schema
       const validatedData = updateNursingRecordSchema.parse(req.body);
+
+      console.log('  - validatedData.scheduleId (after parse):', validatedData.scheduleId);
 
       // Cross-tenant reference validation
       if (validatedData.patientId) {
@@ -2037,10 +2058,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       validatedData.calculatedPoints = calculatedPoints;
       validatedData.appliedBonuses = appliedBonuses;
 
+      console.log('  - validatedData before update (scheduleId):', validatedData.scheduleId);
+
       const record = await storage.updateNursingRecord(id, validatedData);
       if (!record) {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
+
+      console.log('  - record after update (scheduleId):', record.scheduleId);
 
       res.json(record);
 
