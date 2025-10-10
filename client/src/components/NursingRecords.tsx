@@ -391,16 +391,13 @@ export function NursingRecords() {
     queryFn: async () => {
       if (!formData.patientId || !formData.visitDate) return { data: [] }
 
-      // Get the visit date range in ISO format
-      const visitDate = new Date(formData.visitDate)
-      visitDate.setHours(0, 0, 0, 0)
-      const nextDay = new Date(visitDate)
-      nextDay.setDate(nextDay.getDate() + 1)
+      // Create Date objects for start and end of day in JST
+      // formData.visitDate is in format "2025-10-09" (local date)
+      const localDate = new Date(formData.visitDate + 'T00:00:00')
+      const startOfDay = new Date(localDate.getFullYear(), localDate.getMonth(), localDate.getDate(), 0, 0, 0, 0)
+      const endOfDay = new Date(localDate.getFullYear(), localDate.getMonth(), localDate.getDate(), 23, 59, 59, 999)
 
-      const startOfDay = visitDate.toISOString()
-      const endOfDay = nextDay.toISOString()
-
-      const url = `/api/schedules?patientId=${formData.patientId}&startDate=${startOfDay}&endDate=${endOfDay}`
+      const url = `/api/schedules?patientId=${formData.patientId}&startDate=${encodeURIComponent(startOfDay.toISOString())}&endDate=${encodeURIComponent(endOfDay.toISOString())}`
       const response = await fetch(url)
       if (!response.ok) return { data: [] }
       return response.json()
@@ -410,16 +407,27 @@ export function NursingRecords() {
 
   const patientSchedules = (patientSchedulesData?.data || []) as any[]
 
-  // Fetch the selected schedule if it exists and is not in patientSchedules
+  // Fetch the selected schedule if it exists and validate its date
   const { data: selectedScheduleData } = useQuery({
-    queryKey: ["selectedSchedule", formData.selectedScheduleId],
+    queryKey: ["selectedSchedule", formData.selectedScheduleId, formData.visitDate],
     queryFn: async () => {
       if (!formData.selectedScheduleId) return null
       const response = await fetch(`/api/schedules/${formData.selectedScheduleId}`)
       if (!response.ok) return null
-      return response.json()
+      const schedule = await response.json()
+
+      // Validate that the schedule date matches the current visit date
+      if (formData.visitDate) {
+        const scheduleDate = new Date(schedule.scheduledDate)
+        const visitDateLocal = `${scheduleDate.getFullYear()}-${String(scheduleDate.getMonth() + 1).padStart(2, '0')}-${String(scheduleDate.getDate()).padStart(2, '0')}`
+        if (visitDateLocal !== formData.visitDate) {
+          return null // Don't use schedule if date doesn't match
+        }
+      }
+
+      return schedule
     },
-    enabled: !!formData.selectedScheduleId && !patientSchedules.find((s: any) => s.id === formData.selectedScheduleId),
+    enabled: !!formData.selectedScheduleId,
   })
 
   // Combine schedules: if we have selectedScheduleData and it's not in patientSchedules, add it
@@ -429,19 +437,30 @@ export function NursingRecords() {
 
   const selectedSchedule = allSchedules.find((s: any) => s.id === formData.selectedScheduleId)
 
+  // Track previous values to detect actual user changes (not initial load)
+  const prevVisitDateRef = useRef('')
+  const prevPatientIdRef = useRef('')
+
   // Reset schedule selection when visit date or patient changes
   useEffect(() => {
-    if ((isCreating || isEditing) && formData.selectedScheduleId) {
-      // Check if the currently selected schedule is still in the list
-      const isStillValid = allSchedules.some((s: any) => s.id === formData.selectedScheduleId)
-      if (!isStillValid) {
-        setFormData(prev => ({
-          ...prev,
-          selectedScheduleId: ''
-        }))
-      }
+    // Check if visit date or patient actually changed (not initial load from URL)
+    const visitDateChanged = prevVisitDateRef.current !== formData.visitDate && prevVisitDateRef.current !== ''
+    const patientIdChanged = prevPatientIdRef.current !== formData.patientId && prevPatientIdRef.current !== ''
+
+    if ((visitDateChanged || patientIdChanged) && formData.selectedScheduleId) {
+      // Clear all selected schedule query caches
+      queryClient.removeQueries({ queryKey: ["selectedSchedule"] })
+
+      setFormData(prev => ({
+        ...prev,
+        selectedScheduleId: ''
+      }))
     }
-  }, [formData.visitDate, formData.patientId])
+
+    // Update refs for next comparison
+    prevVisitDateRef.current = formData.visitDate
+    prevPatientIdRef.current = formData.patientId
+  }, [formData.visitDate, formData.patientId, formData.selectedScheduleId, queryClient])
 
   // Auto-select schedule when only one is available
   useEffect(() => {
@@ -472,7 +491,9 @@ export function NursingRecords() {
       const schedule = scheduleFromUrl
       const startTime = schedule.scheduledStartTime ? new Date(schedule.scheduledStartTime) : new Date()
       const endTime = schedule.scheduledEndTime ? new Date(schedule.scheduledEndTime) : new Date()
-      const visitDate = schedule.scheduledDate ? new Date(schedule.scheduledDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      // Get local date from UTC timestamp to avoid timezone offset issues
+      const scheduleDate = schedule.scheduledDate ? new Date(schedule.scheduledDate) : new Date()
+      const visitDate = `${scheduleDate.getFullYear()}-${String(scheduleDate.getMonth() + 1).padStart(2, '0')}-${String(scheduleDate.getDate()).padStart(2, '0')}`
 
       setCameFromUrl(true) // Mark that we came from URL
       setIsCreating(true)
@@ -925,7 +946,7 @@ export function NursingRecords() {
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">
               {isCreating ? '新規訪問記録登録' : isEditing ? '訪問記録編集' : '訪問記録詳細'}
             </h1>
-            <p className="text-sm sm:text-base text-muted-foreground">
+            <div className="text-sm sm:text-base text-muted-foreground">
               {isCreating ? (
                 formData.selectedScheduleId ? (
                   <span className="flex items-center gap-2">
@@ -940,7 +961,7 @@ export function NursingRecords() {
               ) : (
                 `${selectedRecord?.patientName}さんの記録`
               )}
-            </p>
+            </div>
           </div>
           <Button
             variant="outline"
@@ -1024,51 +1045,37 @@ export function NursingRecords() {
                   <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
                     <span className="text-sm text-muted-foreground">患者を選択してください</span>
                   </div>
-                ) : allSchedules.length === 0 ? (
+                ) : allSchedules.length === 0 || !formData.selectedScheduleId ? (
                   <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
                     <span className="text-sm text-muted-foreground">予定なし（予定外訪問）</span>
                   </div>
                 ) : allSchedules.length === 1 ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
-                      <span className="text-sm">
-                        {allSchedules[0].scheduledStartTime && allSchedules[0].scheduledEndTime
-                          ? `${new Date(allSchedules[0].scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(allSchedules[0].scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
-                          : '予定時間未設定'}
-                      </span>
-                    </div>
-                    {formData.selectedScheduleId && (
-                      <p className="text-xs text-blue-600">
-                        ✓ スケジュールID: {formData.selectedScheduleId}
-                      </p>
-                    )}
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                    <span className="text-sm">
+                      {selectedSchedule?.scheduledStartTime && selectedSchedule?.scheduledEndTime
+                        ? `${new Date(selectedSchedule.scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(selectedSchedule.scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+                        : '予定時間未設定'}
+                    </span>
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    <Select
-                      value={formData.selectedScheduleId}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, selectedScheduleId: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="予定を選択してください" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allSchedules.map((sched: any) => (
-                          <SelectItem key={sched.id} value={sched.id}>
-                            {sched.scheduledStartTime && sched.scheduledEndTime
-                              ? `${new Date(sched.scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(sched.scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
-                              : '予定時間未設定'}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="none">予定なし（予定外訪問）</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {formData.selectedScheduleId && formData.selectedScheduleId !== 'none' && (
-                      <p className="text-xs text-blue-600">
-                        ✓ スケジュールID: {formData.selectedScheduleId}
-                      </p>
-                    )}
-                  </div>
+                  <Select
+                    value={formData.selectedScheduleId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, selectedScheduleId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="予定を選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allSchedules.map((sched: any) => (
+                        <SelectItem key={sched.id} value={sched.id}>
+                          {sched.scheduledStartTime && sched.scheduledEndTime
+                            ? `${new Date(sched.scheduledStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - ${new Date(sched.scheduledEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+                            : '予定時間未設定'}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="none">予定なし（予定外訪問）</SelectItem>
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
 

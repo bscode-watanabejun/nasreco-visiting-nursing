@@ -345,9 +345,9 @@ export class PostgreSQLStorage implements IStorage {
     }
 
     if (filters?.startDate && filters?.endDate) {
-      // Filter by date range using scheduledStartTime
-      conditions.push(gte(schedules.scheduledStartTime, new Date(filters.startDate)));
-      conditions.push(lte(schedules.scheduledStartTime, new Date(filters.endDate)));
+      // Filter by date range using scheduledDate to avoid timezone issues
+      conditions.push(gte(schedules.scheduledDate, new Date(filters.startDate)));
+      conditions.push(lte(schedules.scheduledDate, new Date(filters.endDate)));
     }
 
     // Get total count
