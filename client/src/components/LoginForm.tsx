@@ -94,19 +94,7 @@ export function LoginForm({
             </div>
             
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="password" className="text-sm font-medium">パスワード</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="px-0 font-normal text-primary text-xs sm:text-sm underline hover:no-underline"
-                  onClick={onForgotPassword}
-                  data-testid="link-forgot-password"
-                >
-                  パスワードをお忘れですか？
-                </Button>
-              </div>
+              <Label htmlFor="password" className="text-sm font-medium">パスワード</Label>
               <div className="relative">
                 <Input
                   id="password"
