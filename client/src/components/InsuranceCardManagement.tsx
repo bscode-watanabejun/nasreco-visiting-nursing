@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, CreditCard, ExternalLink, Download } from "lucide-react";
 import { InsuranceCardDialog } from "./InsuranceCardDialog";
@@ -140,29 +141,39 @@ export default function InsuranceCardManagement() {
           <h1 className="text-3xl font-bold tracking-tight">保険証管理</h1>
           <p className="text-muted-foreground">利用者の医療保険・介護保険証を管理します</p>
         </div>
-        <div className="flex gap-2">
-          <Select
-            value={selectedPatientId}
-            onValueChange={(value) => setSelectedPatientId(value)}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="全利用者" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全利用者</SelectItem>
-              {patients.map((patient) => (
-                <SelectItem key={patient.id} value={patient.id}>
-                  {patient.lastName} {patient.firstName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="mr-2 h-4 w-4" />
-            新規登録
-          </Button>
-        </div>
+        <Button onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-4 w-4" />
+          新規登録
+        </Button>
       </div>
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>絞り込み</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="w-64">
+            <Label>利用者</Label>
+            <Select
+              value={selectedPatientId}
+              onValueChange={(value) => setSelectedPatientId(value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="全ての利用者" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全ての利用者</SelectItem>
+                {patients.map((patient) => (
+                  <SelectItem key={patient.id} value={patient.id}>
+                    {patient.lastName} {patient.firstName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Insurance Cards Table */}
       <Card>
