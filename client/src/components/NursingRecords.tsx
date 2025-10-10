@@ -372,6 +372,7 @@ export function NursingRecords() {
   const scheduleIdFromUrl = urlParams.get('scheduleId')
   const patientIdFromUrl = urlParams.get('patientId')
   const modeFromUrl = urlParams.get('mode')
+  const recordIdFromUrl = urlParams.get('recordId')
 
   const { data: scheduleFromUrl } = useQuery({
     queryKey: ["schedule", scheduleIdFromUrl],
@@ -501,6 +502,33 @@ export function NursingRecords() {
       window.history.replaceState({}, '', '/records')
     }
   }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl, patientIdFromUrl])
+
+  // Handle recordId from URL to open record detail view
+  useEffect(() => {
+    if (recordIdFromUrl && rawRecords.length > 0 && !isCreating && !selectedRecord) {
+      // Find the record with the given ID
+      const targetRecord = rawRecords.find(r => r.id === recordIdFromUrl)
+
+      if (targetRecord) {
+        // Transform to display format and open detail view
+        const patient = patients.find(p => p.id === targetRecord.patientId)
+        const patientName = patient ? `${patient.lastName} ${patient.firstName}` : '不明'
+        const nurse = users.find(u => u.id === targetRecord.nurseId)
+
+        const recordToView: NursingRecordDisplay = {
+          ...targetRecord,
+          patientName,
+          nurseName: nurse?.fullName || '担当者不明'
+        }
+
+        // Open the record detail view
+        handleViewRecord(recordToView)
+
+        // Clear URL parameters
+        window.history.replaceState({}, '', '/records')
+      }
+    }
+  }, [recordIdFromUrl, rawRecords, patients, users, isCreating, selectedRecord])
 
   // Transform records to include patient and nurse names
   const records: NursingRecordDisplay[] = rawRecords.map(record => {

@@ -26,9 +26,10 @@ import {
   Repeat,
   AlertCircle,
   FileText,
-  Search
+  Search,
+  Eye
 } from "lucide-react"
-import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
+import type { Schedule, Patient, User as UserType, PaginatedResult, NursingRecord } from "@shared/schema"
 
 // Helper function to get full name
 const getFullName = (patient: Patient): string => {
@@ -89,6 +90,79 @@ const getMonthDates = (currentDate: Date): Date[] => {
   }
 
   return dates
+}
+
+// Record Action Button Component - shows different button based on record existence
+interface RecordActionButtonProps {
+  schedule: Schedule
+  variant?: "default" | "ghost"
+  size?: "sm" | "default"
+  showLabel?: boolean
+  className?: string
+}
+
+function RecordActionButton({ schedule, variant = "default", size = "sm", showLabel = false, className = "" }: RecordActionButtonProps) {
+  const [, setLocation] = useLocation()
+
+  // Fetch nursing record for this schedule
+  const { data: recordData, isLoading } = useQuery<{ hasRecord: boolean; record?: NursingRecord }>({
+    queryKey: ["nursing-record-by-schedule", schedule.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/schedules/${schedule.id}/nursing-record`)
+      if (response.status === 404) {
+        return { hasRecord: false }
+      }
+      if (!response.ok) {
+        return { hasRecord: false }
+      }
+      return response.json()
+    },
+    staleTime: 5000, // Cache for 5 seconds (reduced from 30s for faster updates)
+  })
+
+  const hasRecord = recordData?.hasRecord ?? false
+  const recordId = recordData?.record?.id
+
+  const handleClick = () => {
+    if (hasRecord && recordId) {
+      // Navigate to view/edit existing record
+      setLocation(`/records?recordId=${recordId}`)
+    } else {
+      // Navigate to create new record
+      setLocation(`/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}`)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Button size={size} variant={variant} disabled className={className}>
+        <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
+        {showLabel && "..."}
+      </Button>
+    )
+  }
+
+  return (
+    <Button
+      size={size}
+      variant={variant}
+      onClick={handleClick}
+      title={hasRecord ? "訪問記録を確認" : "訪問記録を作成"}
+      className={className}
+    >
+      {hasRecord ? (
+        <>
+          <Eye className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
+          {showLabel && "記録確認"}
+        </>
+      ) : (
+        <>
+          <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
+          {showLabel && "記録"}
+        </>
+      )}
+    </Button>
+  )
 }
 
 export function ScheduleManagement() {
@@ -198,9 +272,11 @@ export function ScheduleManagement() {
       if (!response.ok) throw new Error("ステータス更新に失敗しました")
       return response.json()
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] })
       queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      // Invalidate nursing record cache for this schedule
+      queryClient.invalidateQueries({ queryKey: ["nursing-record-by-schedule", variables.id] })
     },
   })
 
@@ -304,10 +380,6 @@ export function ScheduleManagement() {
   const handleDeleteRecurringSeries = (parentId: string) => {
     setSelectedParentScheduleId(parentId)
     setDeleteRecurringDialogOpen(true)
-  }
-
-  const handleCreateRecord = (schedule: Schedule) => {
-    setLocation(`/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}`)
   }
 
   const weekDates = viewMode === 'week' ? getWeekDates(currentDate) : [currentDate]
@@ -520,9 +592,7 @@ export function ScheduleManagement() {
                                     <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                   </div>
                                   <div className="flex gap-1">
-                                    <Button size="sm" variant="ghost" onClick={() => handleCreateRecord(schedule)}>
-                                      <FileText className="h-3 w-3" />
-                                    </Button>
+                                    <RecordActionButton schedule={schedule} variant="ghost" />
                                     <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
                                       <Edit className="h-3 w-3" />
                                     </Button>
@@ -605,9 +675,7 @@ export function ScheduleManagement() {
                                           <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                         </div>
                                         <div className="flex gap-1">
-                                          <Button size="sm" variant="ghost" onClick={() => handleCreateRecord(schedule)}>
-                                            <FileText className="h-3 w-3" />
-                                          </Button>
+                                          <RecordActionButton schedule={schedule} variant="ghost" />
                                           <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
                                             <Edit className="h-3 w-3" />
                                           </Button>
@@ -694,15 +762,7 @@ export function ScheduleManagement() {
                                     </div>
                                   </div>
                                   <div className="grid grid-cols-2 gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      onClick={() => handleCreateRecord(schedule)}
-                                      className="text-xs h-8"
-                                    >
-                                      <FileText className="h-3 w-3 mr-1" />
-                                      記録
-                                    </Button>
+                                    <RecordActionButton schedule={schedule} showLabel className="text-xs h-8" />
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -748,14 +808,7 @@ export function ScheduleManagement() {
                                     <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                   </div>
                                   <div className="flex gap-1 flex-shrink-0">
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      onClick={() => handleCreateRecord(schedule)}
-                                      title="訪問記録を作成"
-                                    >
-                                      <FileText className="h-3 w-3" />
-                                    </Button>
+                                    <RecordActionButton schedule={schedule} />
                                     {schedule.isRecurring && schedule.parentScheduleId && (
                                       <Button
                                         size="sm"
@@ -884,15 +937,7 @@ export function ScheduleManagement() {
                                 </Button>
                               </div>
                               <div className="flex gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  onClick={() => handleCreateRecord(schedule)}
-                                  title="訪問記録を作成"
-                                >
-                                  <FileText className="mr-1 h-3 w-3" />
-                                  記録作成
-                                </Button>
+                                <RecordActionButton schedule={schedule} showLabel />
                               </div>
                               <div className="flex gap-1">
                                 <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>

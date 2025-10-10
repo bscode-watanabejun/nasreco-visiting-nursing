@@ -1340,6 +1340,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get nursing record by schedule ID
+  app.get("/api/schedules/:id/nursing-record", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.user.facilityId;
+
+      // Find nursing record associated with this schedule
+      const record = await db.query.nursingRecords.findFirst({
+        where: and(
+          eq(nursingRecords.scheduleId, id),
+          eq(nursingRecords.facilityId, facilityId!),
+          isNull(nursingRecords.deletedAt)
+        ),
+      });
+
+      if (!record) {
+        return res.status(404).json({ error: "記録が見つかりません", hasRecord: false });
+      }
+
+      res.json({ hasRecord: true, record });
+    } catch (error) {
+      console.error("Get nursing record by schedule error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Create schedule
   app.post("/api/schedules", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
