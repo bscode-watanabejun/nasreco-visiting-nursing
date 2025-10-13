@@ -39,7 +39,8 @@ import {
   Loader2,
   Download,
   ZoomIn,
-  ExternalLink
+  ExternalLink,
+  CheckCircle
 } from "lucide-react"
 import {
   Accordion,
@@ -959,6 +960,56 @@ export function NursingRecords() {
     }
   }
 
+  // Mark record as reviewed (admin only)
+  const handleMarkAsReviewed = async () => {
+    if (!selectedRecord) return
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
+      toast({
+        title: "権限エラー",
+        description: "管理者のみが記録を確認済みにできます",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const response = await fetch(`/api/nursing-records/${selectedRecord.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'reviewed' })
+      })
+
+      if (!response.ok) {
+        throw new Error('確認済みステータスへの変更に失敗しました')
+      }
+
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/notifications/list"] })
+
+      toast({
+        title: "確認完了",
+        description: "記録を確認済みにしました",
+      })
+
+      // Close the detail view
+      setSelectedRecord(null)
+      setIsCreating(false)
+      setIsEditing(false)
+    } catch (error) {
+      console.error('Mark as reviewed error:', error)
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : '確認済み処理中にエラーが発生しました',
+        variant: "destructive"
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   if (isCreating || selectedRecord) {
     const selectedPatient = patients.find(p => p.id === formData.patientId)
 
@@ -1513,6 +1564,18 @@ export function NursingRecords() {
                 <Button onClick={() => handleEditRecord(selectedRecord)}>
                   <Edit className="mr-1 h-4 w-4" />
                   編集
+                </Button>
+              )}
+              {selectedRecord.status === 'completed' &&
+               currentUser &&
+               (currentUser.role === 'admin' || currentUser.role === 'manager') && (
+                <Button
+                  variant="default"
+                  onClick={handleMarkAsReviewed}
+                  disabled={isSaving}
+                >
+                  <CheckCircle className="mr-1 h-4 w-4" />
+                  {isSaving ? '処理中...' : '確認済みにする'}
                 </Button>
               )}
               <Button variant="outline" onClick={() => {
