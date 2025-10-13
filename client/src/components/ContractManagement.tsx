@@ -406,7 +406,7 @@ export default function ContractManagement() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(contract.filePath!, '_blank')}
+                                    onClick={() => window.open(`/api/contracts/${contract.id}/attachment/download`, '_blank')}
                                   >
                                     <ExternalLink className="mr-1 h-3 w-3" />
                                     プレビュー
@@ -414,7 +414,7 @@ export default function ContractManagement() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.location.href = `/api/contracts/${contract.id}/attachment/download`}
+                                    onClick={() => window.location.href = `/api/contracts/${contract.id}/attachment/download?download=true`}
                                   >
                                     <Download className="mr-1 h-3 w-3" />
                                     ダウンロード

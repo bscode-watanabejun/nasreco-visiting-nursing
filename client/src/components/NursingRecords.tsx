@@ -1674,13 +1674,13 @@ export function NursingRecords() {
                             <div className="border rounded-md overflow-hidden">
                               {order.filePath.toLowerCase().endsWith('.pdf') ? (
                                 <iframe
-                                  src={order.filePath}
+                                  src={`/api/doctor-orders/${order.id}/attachment/download`}
                                   className="w-full h-[600px]"
                                   title="指示書PDF"
                                 />
                               ) : (
                                 <img
-                                  src={order.filePath}
+                                  src={`/api/doctor-orders/${order.id}/attachment/download`}
                                   alt="指示書"
                                   className="w-full h-auto"
                                 />
@@ -1770,13 +1770,13 @@ export function NursingRecords() {
                         <div className="border rounded-md overflow-hidden">
                           {latestCarePlan.filePath.toLowerCase().endsWith('.pdf') ? (
                             <iframe
-                              src={latestCarePlan.filePath}
+                              src={`/api/service-care-plans/${latestCarePlan.id}/attachment/download`}
                               className="w-full h-[600px]"
                               title="ケアプランPDF"
                             />
                           ) : (
                             <img
-                              src={latestCarePlan.filePath}
+                              src={`/api/service-care-plans/${latestCarePlan.id}/attachment/download`}
                               alt="ケアプラン"
                               className="w-full h-auto"
                             />

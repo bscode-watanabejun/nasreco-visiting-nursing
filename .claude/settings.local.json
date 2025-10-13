@@ -23,7 +23,8 @@
       "Bash(fi)",
       "WebFetch(domain:docs.replit.com)",
       "WebFetch(domain:blog.replit.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

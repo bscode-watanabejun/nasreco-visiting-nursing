@@ -635,7 +635,7 @@ export function PatientDetail() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => window.open(order.filePath!, '_blank')}
+                                        onClick={() => window.open(`/api/doctor-orders/${order.id}/attachment/download`, '_blank')}
                                       >
                                         <ExternalLink className="mr-2 h-4 w-4" />
                                         プレビュー
@@ -644,7 +644,7 @@ export function PatientDetail() {
                                         size="sm"
                                         variant="outline"
                                         onClick={() => {
-                                          window.location.href = `/api/doctor-orders/${order.id}/attachment/download`;
+                                          window.location.href = `/api/doctor-orders/${order.id}/attachment/download?download=true`;
                                         }}
                                       >
                                         <Download className="mr-2 h-4 w-4" />
@@ -848,7 +848,7 @@ export function PatientDetail() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => window.open(card.filePath!, '_blank')}
+                                        onClick={() => window.open(`/api/insurance-cards/${card.id}/attachment/download`, '_blank')}
                                       >
                                         <ExternalLink className="mr-2 h-4 w-4" />
                                         プレビュー
@@ -857,7 +857,7 @@ export function PatientDetail() {
                                         size="sm"
                                         variant="outline"
                                         onClick={() => {
-                                          window.location.href = `/api/insurance-cards/${card.id}/attachment/download`;
+                                          window.location.href = `/api/insurance-cards/${card.id}/attachment/download?download=true`;
                                         }}
                                       >
                                         <Download className="mr-2 h-4 w-4" />
@@ -1346,7 +1346,7 @@ export function PatientDetail() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => window.open(plan.filePath!, '_blank')}
+                                onClick={() => window.open(`/api/service-care-plans/${plan.id}/attachment/download`, '_blank')}
                               >
                                 <ExternalLink className="mr-1 h-3 w-3" />
                                 プレビュー
@@ -1355,7 +1355,7 @@ export function PatientDetail() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  window.location.href = `/api/service-care-plans/${plan.id}/attachment/download`
+                                  window.location.href = `/api/service-care-plans/${plan.id}/attachment/download?download=true`
                                 }}
                               >
                                 <Download className="mr-1 h-3 w-3" />
@@ -1459,7 +1459,7 @@ export function PatientDetail() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => window.open(plan.filePath!, '_blank')}
+                                onClick={() => window.open(`/api/care-plans/${plan.id}/attachment/download`, '_blank')}
                               >
                                 <ExternalLink className="mr-1 h-3 w-3" />
                                 プレビュー
@@ -1468,7 +1468,7 @@ export function PatientDetail() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  window.location.href = `/api/care-plans/${plan.id}/attachment/download`
+                                  window.location.href = `/api/care-plans/${plan.id}/attachment/download?download=true`
                                 }}
                               >
                                 <Download className="mr-1 h-3 w-3" />

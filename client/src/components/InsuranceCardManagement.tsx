@@ -308,7 +308,7 @@ export default function InsuranceCardManagement() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(card.filePath!, '_blank')}
+                                    onClick={() => window.open(`/api/insurance-cards/${card.id}/attachment/download`, '_blank')}
                                   >
                                     <ExternalLink className="mr-1 h-3 w-3" />
                                     プレビュー
@@ -317,7 +317,7 @@ export default function InsuranceCardManagement() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      window.location.href = `/api/insurance-cards/${card.id}/attachment/download`;
+                                      window.location.href = `/api/insurance-cards/${card.id}/attachment/download?download=true`;
                                     }}
                                   >
                                     <Download className="mr-1 h-3 w-3" />

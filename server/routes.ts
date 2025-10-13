@@ -7,6 +7,7 @@ import fs from "fs";
 import crypto from "crypto";
 import PDFDocument from "pdfkit";
 import { storage } from "./storage";
+import { uploadFile, downloadFile, deleteFile } from "./object-storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import {
   insertUserSchema,
@@ -92,26 +93,7 @@ interface AuthenticatedRequest extends Request {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // ========== Multer Configuration for File Uploads ==========
-  const uploadStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      const nursingRecordId = req.params.id || 'temp';
-      const uploadDir = path.join(process.cwd(), 'uploads', 'nursing-records', nursingRecordId);
-
-      // Create directory if it doesn't exist
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      // Generate unique filename with timestamp and random string
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-      const ext = path.extname(file.originalname);
-      cb(null, `${uniqueSuffix}${ext}`);
-    }
-  });
-
+  // Using memoryStorage to upload files to Object Storage instead of local filesystem
   const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 
@@ -123,7 +105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   const upload = multer({
-    storage: uploadStorage,
+    storage: multer.memoryStorage(),
     limits: {
       fileSize: 10 * 1024 * 1024, // 10MB
     },
@@ -143,24 +125,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Multer setup for doctor orders and insurance cards
-  const documentStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadDir = path.join(process.cwd(), 'uploads', 'documents');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
-      const ext = path.extname(file.originalname);
-      cb(null, `${uniqueSuffix}${ext}`);
-    }
-  });
+  // Helper function to upload document file to Object Storage
+  async function uploadDocumentFile(file: Express.Multer.File, documentType: string): Promise<{ filePath: string; originalFileName: string }> {
+    const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+    const ext = path.extname(file.originalname);
+    const fileName = `${uniqueSuffix}${ext}`;
+    const objectKey = `documents/${documentType}/${fileName}`;
 
+    await uploadFile(objectKey, file.buffer, file.mimetype);
+
+    return {
+      filePath: objectKey,
+      originalFileName: decodeFilename(file.originalname)
+    };
+  }
+
+  // Multer setup for doctor orders and insurance cards
   const documentUpload = multer({
-    storage: documentStorage,
+    storage: multer.memoryStorage(),
     limits: {
       fileSize: 10 * 1024 * 1024, // 10MB
     },
@@ -2144,13 +2126,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const file = files[i];
         const caption = captionsArray[i] || null;
 
+        // Generate unique file key for Object Storage
+        const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+        const ext = path.extname(file.originalname);
+        const fileName = `${uniqueSuffix}${ext}`;
+        const objectKey = `nursing-records/${id}/${fileName}`;
+
+        // Upload to Object Storage
+        await uploadFile(objectKey, file.buffer, file.mimetype);
+
         const [attachment] = await db.insert(nursingRecordAttachments).values({
           nursingRecordId: id,
-          fileName: file.filename,
+          fileName: fileName,
           originalFileName: file.originalname,
           fileType: file.mimetype,
           fileSize: file.size,
-          filePath: path.join('nursing-records', id, file.filename),
+          filePath: objectKey,
           caption: caption
         }).returning();
 
@@ -2207,19 +2198,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "アクセス権限がありません" });
       }
 
-      const filePath = path.join(process.cwd(), 'uploads', attachment.filePath);
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(attachment.filePath);
 
-      if (!fs.existsSync(filePath)) {
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
       // Set appropriate content type
       res.setHeader('Content-Type', attachment.fileType);
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.originalFileName)}"`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
 
-      // Stream file to response
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
+      // Send file buffer
+      res.send(fileBuffer);
 
     } catch (error) {
       console.error("Get attachment file error:", error);
@@ -2246,11 +2238,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "アクセス権限がありません" });
       }
 
-      // Delete file from filesystem
-      const filePath = path.join(process.cwd(), 'uploads', attachment.filePath);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      // Delete file from Object Storage
+      await deleteFile(attachment.filePath);
 
       // Delete record from database
       await db.delete(nursingRecordAttachments).where(eq(nursingRecordAttachments.id, id));
@@ -3183,23 +3172,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Add file path and original filename if file was uploaded
       if (req.file) {
-        orderData.filePath = `/uploads/documents/${req.file.filename}`;
-        orderData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'doctor-orders');
+        orderData.filePath = uploaded.filePath;
+        orderData.originalFileName = uploaded.originalFileName;
       }
 
       const [order] = await db.insert(doctorOrders).values(orderData).returning();
 
       res.status(201).json(order);
     } catch (error) {
-      // Clean up uploaded file if there was an error
-      if (req.file) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          console.error('Error deleting file:', unlinkError);
-        }
-      }
-
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: "入力データが正しくありません",
@@ -3244,20 +3225,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ))
           .limit(1);
 
-        // Delete old file if exists
+        // Delete old file from Object Storage if exists
         if (currentOrder?.filePath) {
-          const oldFilePath = path.join(process.cwd(), currentOrder.filePath);
           try {
-            if (fs.existsSync(oldFilePath)) {
-              fs.unlinkSync(oldFilePath);
-            }
+            await deleteFile(currentOrder.filePath);
           } catch (fileError) {
             console.error('Error deleting old file:', fileError);
           }
         }
 
-        updateData.filePath = `/uploads/documents/${req.file.filename}`;
-        updateData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'doctor-orders');
+        updateData.filePath = uploaded.filePath;
+        updateData.originalFileName = uploaded.originalFileName;
       }
 
       const [order] = await db.update(doctorOrders)
@@ -3269,14 +3248,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .returning();
 
       if (!order) {
-        // Clean up uploaded file if order not found
-        if (req.file) {
-          try {
-            fs.unlinkSync(req.file.path);
-          } catch (unlinkError) {
-            console.error('Error deleting file:', unlinkError);
-          }
-        }
         return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
       }
 
@@ -3340,16 +3311,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "添付ファイルがありません" });
       }
 
-      const filePath = path.join(process.cwd(), order.filePath);
-      if (!fs.existsSync(filePath)) {
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(order.filePath);
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
+
+      // Check if download is requested
+      const forceDownload = req.query.download === 'true';
 
       // Set Content-Disposition header with RFC 5987 encoding for international filenames
       const filename = order.originalFileName || order.filePath.split('/').pop() || 'download';
       const encodedFilename = encodeURIComponent(filename);
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-      res.sendFile(filePath);
+      const disposition = forceDownload ? 'attachment' : 'inline';
+      res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+
+      // Determine content type from file extension
+      const ext = path.extname(filename).toLowerCase();
+      const contentType = ext === '.pdf' ? 'application/pdf' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+
+      res.send(fileBuffer);
     } catch (error) {
       console.error("Download doctor order attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -3375,13 +3358,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "訪問看護指示書が見つかりません" });
       }
 
-      // Delete physical file if exists
+      // Delete file from Object Storage if exists
       if (currentOrder.filePath) {
-        const filePath = path.join(process.cwd(), currentOrder.filePath);
         try {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          await deleteFile(currentOrder.filePath);
         } catch (fileError) {
           console.error('Error deleting file:', fileError);
         }
@@ -3528,22 +3508,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Add file path and original filename if file was uploaded
       if (req.file) {
-        cardData.filePath = `/uploads/documents/${req.file.filename}`;
-        cardData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'insurance-cards');
+        cardData.filePath = uploaded.filePath;
+        cardData.originalFileName = uploaded.originalFileName;
       }
 
       const [card] = await db.insert(insuranceCards).values(cardData).returning();
 
       res.status(201).json(card);
     } catch (error) {
-      // Clean up uploaded file if there was an error
-      if (req.file) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          console.error('Error deleting file:', unlinkError);
-        }
-      }
 
       if (error instanceof z.ZodError) {
         return res.status(400).json({
@@ -3580,20 +3553,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ))
           .limit(1);
 
-        // Delete old file if exists
+        // Delete old file from Object Storage if exists
         if (currentCard?.filePath) {
-          const oldFilePath = path.join(process.cwd(), currentCard.filePath);
           try {
-            if (fs.existsSync(oldFilePath)) {
-              fs.unlinkSync(oldFilePath);
-            }
+            await deleteFile(currentCard.filePath);
           } catch (fileError) {
             console.error('Error deleting old file:', fileError);
           }
         }
 
-        updateData.filePath = `/uploads/documents/${req.file.filename}`;
-        updateData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'insurance-cards');
+        updateData.filePath = uploaded.filePath;
+        updateData.originalFileName = uploaded.originalFileName;
       }
 
       const [card] = await db.update(insuranceCards)
@@ -3605,14 +3576,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .returning();
 
       if (!card) {
-        // Clean up uploaded file if card not found
-        if (req.file) {
-          try {
-            fs.unlinkSync(req.file.path);
-          } catch (unlinkError) {
-            console.error('Error deleting file:', unlinkError);
-          }
-        }
         return res.status(404).json({ error: "保険証情報が見つかりません" });
       }
 
@@ -3677,17 +3640,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "添付ファイルが見つかりません" });
       }
 
-      const filePath = path.join(process.cwd(), card.filePath);
-
-      if (!fs.existsSync(filePath)) {
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(card.filePath);
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
-      // Set Content-Disposition header with RFC 5987 encoding for international filenames
+      // Check if download is requested
+      const forceDownload = req.query.download === 'true';
+
+      // Set headers
       const filename = card.originalFileName || card.filePath.split('/').pop() || 'download';
       const encodedFilename = encodeURIComponent(filename);
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-      res.sendFile(filePath);
+      const disposition = forceDownload ? 'attachment' : 'inline';
+      res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+
+      // Determine content type
+      const ext = path.extname(filename).toLowerCase();
+      const contentType = ext === '.pdf' ? 'application/pdf' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+
+      res.send(fileBuffer);
     } catch (error) {
       console.error("Download insurance card attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -3713,15 +3687,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "保険証情報が見つかりません" });
       }
 
-      // Delete physical file if exists
+      // Delete file from Object Storage if exists
       if (currentCard.filePath) {
-        const filePath = path.join(process.cwd(), currentCard.filePath);
         try {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          await deleteFile(currentCard.filePath);
         } catch (fileError) {
-          console.error('Error deleting file:', fileError);
+          console.error('Error deleting file from Object Storage:', fileError);
         }
       }
 
@@ -4151,8 +4122,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       if (req.file) {
-        planData.filePath = `/uploads/documents/${req.file.filename}`;
-        planData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'care-plans');
+        planData.filePath = uploaded.filePath;
+        planData.originalFileName = uploaded.originalFileName;
       }
 
       const [plan] = await db.insert(carePlans).values(planData).returning();
@@ -4204,19 +4176,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ))
           .limit(1);
 
+        // Delete old file from Object Storage if exists
         if (currentPlan?.filePath) {
-          const oldFilePath = path.join(process.cwd(), currentPlan.filePath);
           try {
-            if (fs.existsSync(oldFilePath)) {
-              fs.unlinkSync(oldFilePath);
-            }
+            await deleteFile(currentPlan.filePath);
           } catch (fileError) {
             console.error('Error deleting old file:', fileError);
           }
         }
 
-        updateData.filePath = `/uploads/documents/${req.file.filename}`;
-        updateData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'care-plans');
+        updateData.filePath = uploaded.filePath;
+        updateData.originalFileName = uploaded.originalFileName;
       }
 
       const [plan] = await db.update(carePlans)
@@ -4278,16 +4249,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "添付ファイルが見つかりません" });
       }
 
-      const filePath = path.join(process.cwd(), plan.filePath);
-
-      if (!fs.existsSync(filePath)) {
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(plan.filePath);
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
+      // Check if download is requested
+      const forceDownload = req.query.download === 'true';
+
+      // Set headers
       const filename = plan.originalFileName || plan.filePath.split('/').pop() || 'download';
       const encodedFilename = encodeURIComponent(filename);
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-      res.sendFile(filePath);
+      const disposition = forceDownload ? 'attachment' : 'inline';
+      res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+
+      // Determine content type
+      const ext = path.extname(filename).toLowerCase();
+      const contentType = ext === '.pdf' ? 'application/pdf' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+
+      res.send(fileBuffer);
     } catch (error) {
       console.error("Download care plan attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -4313,13 +4296,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (currentPlan.filePath) {
-        const filePath = path.join(process.cwd(), currentPlan.filePath);
         try {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          await deleteFile(currentPlan.filePath);
         } catch (fileError) {
-          console.error('Error deleting file:', fileError);
+          console.error('Error deleting file from Object Storage:', fileError);
         }
       }
 
@@ -4441,8 +4421,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       if (req.file) {
-        planData.filePath = `/uploads/documents/${req.file.filename}`;
-        planData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'care-plan-versions');
+        planData.filePath = uploaded.filePath;
+        planData.originalFileName = uploaded.originalFileName;
       }
 
       const [plan] = await db.insert(serviceCarePlans).values(planData).returning();
@@ -4485,8 +4466,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       if (req.file) {
-        updateData.filePath = `/uploads/documents/${req.file.filename}`;
-        updateData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'care-plan-versions');
+        updateData.filePath = uploaded.filePath;
+        updateData.originalFileName = uploaded.originalFileName;
       }
 
       const [plan] = await db.update(serviceCarePlans)
@@ -4537,14 +4519,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
-      const filePath = path.join(process.cwd(), plan.filePath);
-
-      if (!fs.existsSync(filePath)) {
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(plan.filePath);
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
-      const fileName = plan.originalFileName || path.basename(plan.filePath);
-      res.download(filePath, fileName);
+      // Check if download is requested
+      const forceDownload = req.query.download === 'true';
+
+      // Set headers
+      const filename = plan.originalFileName || plan.filePath.split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename);
+      const disposition = forceDownload ? 'attachment' : 'inline';
+      res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+
+      // Determine content type
+      const ext = path.extname(filename).toLowerCase();
+      const contentType = ext === '.pdf' ? 'application/pdf' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+
+      res.send(fileBuffer);
     } catch (error) {
       console.error("Download service care plan attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -4569,9 +4565,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (plan.filePath) {
-        const filePath = path.join(process.cwd(), plan.filePath);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
+        try {
+          await deleteFile(plan.filePath);
+        } catch (fileError) {
+          console.error('Error deleting file from Object Storage:', fileError);
         }
       }
 
@@ -4705,8 +4702,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       if (req.file) {
-        reportData.filePath = `/uploads/documents/${req.file.filename}`;
-        reportData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'visit-reports');
+        reportData.filePath = uploaded.filePath;
+        reportData.originalFileName = uploaded.originalFileName;
       }
 
       const [report] = await db.insert(careReports).values(reportData).returning();
@@ -4763,19 +4761,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ))
           .limit(1);
 
+        // Delete old file from Object Storage if exists
         if (currentReport?.filePath) {
-          const oldFilePath = path.join(process.cwd(), currentReport.filePath);
           try {
-            if (fs.existsSync(oldFilePath)) {
-              fs.unlinkSync(oldFilePath);
-            }
+            await deleteFile(currentReport.filePath);
           } catch (fileError) {
             console.error('Error deleting old file:', fileError);
           }
         }
 
-        updateData.filePath = `/uploads/documents/${req.file.filename}`;
-        updateData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'visit-reports');
+        updateData.filePath = uploaded.filePath;
+        updateData.originalFileName = uploaded.originalFileName;
       }
 
       const [report] = await db.update(careReports)
@@ -4837,16 +4834,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "添付ファイルが見つかりません" });
       }
 
-      const filePath = path.join(process.cwd(), report.filePath);
-
-      if (!fs.existsSync(filePath)) {
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(report.filePath);
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
+      // Check if download is requested
+      const forceDownload = req.query.download === 'true';
+
+      // Set headers
       const filename = report.originalFileName || report.filePath.split('/').pop() || 'download';
       const encodedFilename = encodeURIComponent(filename);
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-      res.sendFile(filePath);
+      const disposition = forceDownload ? 'attachment' : 'inline';
+      res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+
+      // Determine content type
+      const ext = path.extname(filename).toLowerCase();
+      const contentType = ext === '.pdf' ? 'application/pdf' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+
+      res.send(fileBuffer);
     } catch (error) {
       console.error("Download care report attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -4872,13 +4881,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (currentReport.filePath) {
-        const filePath = path.join(process.cwd(), currentReport.filePath);
         try {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          await deleteFile(currentReport.filePath);
         } catch (fileError) {
-          console.error('Error deleting file:', fileError);
+          console.error('Error deleting file from Object Storage:', fileError);
         }
       }
 
@@ -5168,8 +5174,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Add file path and original filename if file was uploaded
       if (req.file) {
-        contractData.filePath = `/uploads/documents/${req.file.filename}`;
-        contractData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'contracts');
+        contractData.filePath = uploaded.filePath;
+        contractData.originalFileName = uploaded.originalFileName;
       }
 
       const [contract] = await db.insert(contracts)
@@ -5226,20 +5233,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ))
           .limit(1);
 
-        // Delete old file if exists
+        // Delete old file from Object Storage if exists
         if (currentContract?.filePath) {
-          const oldFilePath = path.join(process.cwd(), currentContract.filePath);
           try {
-            if (fs.existsSync(oldFilePath)) {
-              fs.unlinkSync(oldFilePath);
-            }
+            await deleteFile(currentContract.filePath);
           } catch (fileError) {
             console.error('Error deleting old file:', fileError);
           }
         }
 
-        updateData.filePath = `/uploads/documents/${req.file.filename}`;
-        updateData.originalFileName = decodeFilename(req.file.originalname);
+        const uploaded = await uploadDocumentFile(req.file, 'contracts');
+        updateData.filePath = uploaded.filePath;
+        updateData.originalFileName = uploaded.originalFileName;
       }
 
       const [contract] = await db.update(contracts)
@@ -5303,17 +5308,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "添付ファイルが見つかりません" });
       }
 
-      const filePath = path.join(process.cwd(), contract.filePath);
-
-      if (!fs.existsSync(filePath)) {
+      // Download from Object Storage
+      const fileBuffer = await downloadFile(contract.filePath);
+      if (!fileBuffer) {
         return res.status(404).json({ error: "ファイルが見つかりません" });
       }
 
-      // Set Content-Disposition header with RFC 5987 encoding for international filenames
+      // Check if download is requested
+      const forceDownload = req.query.download === 'true';
+
+      // Set headers
       const filename = contract.originalFileName || contract.filePath.split('/').pop() || 'download';
       const encodedFilename = encodeURIComponent(filename);
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-      res.sendFile(filePath);
+      const disposition = forceDownload ? 'attachment' : 'inline';
+      res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodedFilename}`);
+      res.setHeader('Content-Length', fileBuffer.length.toString());
+
+      // Determine content type
+      const ext = path.extname(filename).toLowerCase();
+      const contentType = ext === '.pdf' ? 'application/pdf' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+
+      res.send(fileBuffer);
     } catch (error) {
       console.error("Download contract attachment error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -5339,15 +5355,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "契約書が見つかりません" });
       }
 
-      // Delete physical file if exists
+      // Delete file from Object Storage if exists
       if (currentContract.filePath) {
-        const filePath = path.join(process.cwd(), currentContract.filePath);
         try {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          await deleteFile(currentContract.filePath);
         } catch (fileError) {
-          console.error('Error deleting file:', fileError);
+          console.error('Error deleting file from Object Storage:', fileError);
         }
       }
 

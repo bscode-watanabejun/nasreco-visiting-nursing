@@ -417,7 +417,7 @@ export default function CarePlanManagement() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(plan.filePath!, '_blank')}
+                                    onClick={() => window.open(`/api/care-plans/${plan.id}/attachment/download`, '_blank')}
                                   >
                                     <ExternalLink className="mr-1 h-3 w-3" />
                                     プレビュー
@@ -426,7 +426,7 @@ export default function CarePlanManagement() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      window.location.href = `/api/care-plans/${plan.id}/attachment/download`;
+                                      window.location.href = `/api/care-plans/${plan.id}/attachment/download?download=true`;
                                     }}
                                   >
                                     <Download className="mr-1 h-3 w-3" />
