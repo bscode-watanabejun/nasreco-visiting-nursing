@@ -20,7 +20,10 @@
       "Bash(then)",
       "Bash(else)",
       "Bash(exit 1)",
-      "Bash(fi)"
+      "Bash(fi)",
+      "WebFetch(domain:docs.replit.com)",
+      "WebFetch(domain:blog.replit.com)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
