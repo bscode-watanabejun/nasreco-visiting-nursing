@@ -556,7 +556,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create facility (corporate admin only)
-  app.post("/api/facilities", requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/facilities", requireAuth, requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validatedData = insertFacilitySchema.parse(req.body);
 

@@ -527,6 +527,7 @@ export const insertCompanySchema = createInsertSchema(companies).omit({
 
 export const insertFacilitySchema = createInsertSchema(facilities).omit({
   id: true,
+  companyId: true, // Set by server from user session
   createdAt: true,
   updatedAt: true,
 });

@@ -30,7 +30,7 @@ export interface IStorage {
   getFacilityBySlug(companyId: string, slug: string): Promise<Facility | undefined>;
   getFacilities(): Promise<Facility[]>;
   getFacilitiesByCompany(companyId: string): Promise<Facility[]>;
-  createFacility(facility: InsertFacility): Promise<Facility>;
+  createFacility(facility: InsertFacility & { companyId: string }): Promise<Facility>;
   updateFacility(id: string, facility: Partial<InsertFacility>): Promise<Facility | undefined>;
   deleteFacility(id: string): Promise<boolean>;
 
@@ -164,7 +164,7 @@ export class PostgreSQLStorage implements IStorage {
     return await db.select().from(facilities).where(eq(facilities.companyId, companyId));
   }
 
-  async createFacility(facility: InsertFacility): Promise<Facility> {
+  async createFacility(facility: InsertFacility & { companyId: string }): Promise<Facility> {
     const result = await db.insert(facilities).values(facility).returning();
     return result[0];
   }
