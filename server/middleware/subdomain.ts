@@ -57,8 +57,16 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
     } else {
       // Production environment
       if (hostParts.length >= 3) {
-        subdomain = hostParts[0];
-        baseDomain = hostParts.slice(1).join('.');
+        // Check if this is the main domain (visit.nasreco.com)
+        // Treat 'visit' as the main domain, not a subdomain
+        if (hostParts[0] === 'visit' && hostParts.slice(1).join('.') === 'nasreco.com') {
+          subdomain = undefined;
+          baseDomain = host;
+          console.log(`Treating ${host} as main domain (not subdomain)`);
+        } else {
+          subdomain = hostParts[0];
+          baseDomain = hostParts.slice(1).join('.');
+        }
       } else if (hostParts.length === 2) {
         // Main domain without subdomain
         baseDomain = host;
