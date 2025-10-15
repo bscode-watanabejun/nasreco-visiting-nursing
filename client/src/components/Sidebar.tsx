@@ -30,7 +30,8 @@ import {
   FileEdit,
   FileCheck,
   FileSignature,
-  AlertTriangle
+  AlertTriangle,
+  Calculator
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
@@ -145,6 +146,12 @@ const facilityNavigationGroups: NavigationGroup[] = [
         title: "特管マスタ設定",
         href: "/special-management-settings",
         icon: Settings,
+        badge: null,
+      },
+      {
+        title: "加算マスタ管理",
+        href: "/bonus-masters",
+        icon: Calculator,
         badge: null,
       },
     ],

@@ -47,6 +47,8 @@ import {
   updateSpecialManagementDefinitionSchema,
   insertSpecialManagementFieldSchema,
   updateSpecialManagementFieldSchema,
+  insertBonusMasterSchema,
+  updateBonusMasterSchema,
   nursingRecordAttachments,
   medicalInstitutions,
   careManagers,
@@ -56,6 +58,7 @@ import {
   serviceCarePlans,
   careReports,
   contracts,
+  bonusMaster,
   patients,
   users,
   schedules,
@@ -67,11 +70,12 @@ import {
   type MedicalInstitution,
   type CareManager,
   type DoctorOrder,
-  type InsuranceCard
+  type InsuranceCard,
+  type BonusMaster
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc } from "drizzle-orm";
+import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc, ne } from "drizzle-orm";
 
 // Extend Express session data
 declare module "express-session" {
@@ -1812,124 +1816,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Helper function: Calculate bonuses and points for nursing record
-  async function calculateBonusesAndPoints(recordData: any, facilityId: string) {
+  // Helper function: Calculate bonuses and points for nursing record (Phase 4 - Rule Engine)
+  async function calculateBonusesAndPoints(recordData: any, facilityId: string, nursingRecordId?: string) {
     const appliedBonuses: any[] = [];
     let calculatedPoints = 0;
 
     // Base visit points (訪問看護基本療養費) - simplified, needs actual tariff table
-    const basePoints = 500; // Example: 基本点数（実際の診療報酬点数表に基づいて設定）
+    // NOTE: In Phase 4-4/4-5, this will also come from bonus_master as a separate bonus type
+    const basePoints = 500;
     calculatedPoints += basePoints;
 
-    // 1. Multiple visit bonus (複数回訪問加算) - Check if this is 2nd+ visit on same day
-    if (recordData.isSecondVisit || recordData.multipleVisitReason) {
+    // Get patient information for context
+    const patient = await db.query.patients.findFirst({
+      where: eq(patients.id, recordData.patientId)
+    });
+
+    if (!patient) {
+      return { calculatedPoints, appliedBonuses };
+    }
+
+    // Calculate patient age
+    let patientAge: number | undefined;
+    if (patient.dateOfBirth) {
+      const birthDate = new Date(patient.dateOfBirth);
       const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
-      const startOfDay = new Date(visitDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(visitDate);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      // Count visits on the same day for the same patient
-      const sameDayVisits = await db.query.nursingRecords.findMany({
-        where: and(
-          eq(nursingRecords.facilityId, facilityId),
-          eq(nursingRecords.patientId, recordData.patientId),
-          gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
-          lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
-          isNull(nursingRecords.deletedAt)
-        )
-      });
-
-      if (sameDayVisits.length >= 1) { // 2回目以降の訪問
-        const multipleVisitBonus = 100; // 複数回訪問加算（例: 100点）
-        calculatedPoints += multipleVisitBonus;
-        appliedBonuses.push({
-          type: 'multiple_visit',
-          points: multipleVisitBonus,
-          reason: recordData.multipleVisitReason || '複数回訪問',
-          visitNumber: sameDayVisits.length + 1
-        });
+      patientAge = visitDate.getFullYear() - birthDate.getFullYear();
+      const monthDiff = visitDate.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && visitDate.getDate() < birthDate.getDate())) {
+        patientAge--;
       }
     }
 
-    // 2. Emergency visit bonus (緊急訪問加算)
-    if (recordData.emergencyVisitReason) {
-      const emergencyBonus = 200; // 緊急訪問加算（例: 200点）
-      calculatedPoints += emergencyBonus;
+    // Count same-day visits for dailyVisitCount
+    const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
+    const startOfDay = new Date(visitDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(visitDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const sameDayVisits = await db.query.nursingRecords.findMany({
+      where: and(
+        eq(nursingRecords.facilityId, facilityId),
+        eq(nursingRecords.patientId, recordData.patientId),
+        gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
+        lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
+        isNull(nursingRecords.deletedAt)
+      )
+    });
+
+    const dailyVisitCount = sameDayVisits.length + 1; // +1 for current visit
+
+    // Build bonus calculation context
+    const context = {
+      nursingRecordId: nursingRecordId || "",
+      patientId: recordData.patientId,
+      facilityId,
+      visitDate: visitDate,
+      visitStartTime: recordData.actualStartTime ? new Date(recordData.actualStartTime) : null,
+      visitEndTime: recordData.actualEndTime ? new Date(recordData.actualEndTime) : null,
+      isSecondVisit: recordData.isSecondVisit || false,
+      emergencyVisitReason: recordData.emergencyVisitReason,
+      multipleVisitReason: recordData.multipleVisitReason,
+      longVisitReason: recordData.longVisitReason,
+      patientAge,
+      buildingId: patient.buildingId,
+      insuranceType: (patient.insuranceType || "medical") as "medical" | "care",
+      dailyVisitCount,
+    };
+
+    // Calculate bonuses using the new rule engine
+    const { calculateBonuses, saveBonusCalculationHistory } = await import("./bonus-engine");
+    const bonusResults = await calculateBonuses(context);
+
+    // Convert results to old format for backward compatibility
+    for (const result of bonusResults) {
+      calculatedPoints += result.calculatedPoints;
       appliedBonuses.push({
-        type: 'emergency_visit',
-        points: emergencyBonus,
-        reason: recordData.emergencyVisitReason
+        bonusCode: result.bonusCode,
+        bonusName: result.bonusName,
+        type: result.bonusCode, // For backward compatibility
+        points: result.calculatedPoints,
+        version: result.appliedVersion,
+        details: result.calculationDetails,
       });
     }
 
-    // 3. Long visit bonus (長時間訪問加算) - 90 minutes or more
-    if (recordData.actualStartTime && recordData.actualEndTime) {
-      const startTime = new Date(recordData.actualStartTime);
-      const endTime = new Date(recordData.actualEndTime);
-      const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
-
-      if (durationMinutes >= 90) {
-        const longVisitBonus = 150; // 長時間訪問加算（例: 150点）
-        calculatedPoints += longVisitBonus;
-        appliedBonuses.push({
-          type: 'long_visit',
-          points: longVisitBonus,
-          duration: durationMinutes,
-          reason: recordData.longVisitReason || `${durationMinutes}分の訪問`
-        });
-      }
-    }
-
-    // 4. Same building discount (同一建物減算)
-    if (recordData.patientId) {
-      const patient = await db.query.patients.findFirst({
-        where: eq(patients.id, recordData.patientId),
-        with: {
-          building: true
-        }
-      });
-
-      if (patient?.buildingId) {
-        // Check if other patients in the same building were visited on the same day
-        const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
-        const startOfDay = new Date(visitDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(visitDate);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        // Get other patients in the same building
-        const patientsInSameBuilding = await db.query.patients.findMany({
-          where: and(
-            eq(patients.buildingId, patient.buildingId),
-            eq(patients.facilityId, facilityId)
-          )
-        });
-
-        const patientIdsInBuilding = patientsInSameBuilding.map(p => p.id);
-
-        // Count visits to same building on the same day
-        const sameBuildingVisits = await db.query.nursingRecords.findMany({
-          where: and(
-            eq(nursingRecords.facilityId, facilityId),
-            inArray(nursingRecords.patientId, patientIdsInBuilding),
-            gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
-            lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
-            isNull(nursingRecords.deletedAt)
-          )
-        });
-
-        if (sameBuildingVisits.length >= 1) { // 同一建物で複数訪問
-          const sameBuildingDiscount = -50; // 同一建物減算（例: -50点）
-          calculatedPoints += sameBuildingDiscount;
-          appliedBonuses.push({
-            type: 'same_building_discount',
-            points: sameBuildingDiscount,
-            buildingName: patient.building?.name,
-            visitCount: sameBuildingVisits.length + 1
-          });
-        }
-      }
+    // Save calculation history if nursingRecordId is provided
+    if (nursingRecordId) {
+      await saveBonusCalculationHistory(nursingRecordId, bonusResults);
     }
 
     return {
@@ -1965,7 +1939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Calculate bonuses and points
+      // Calculate bonuses and points (first pass without record ID)
       const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(recordData, req.user.facilityId);
       recordData.calculatedPoints = calculatedPoints;
       recordData.appliedBonuses = appliedBonuses;
@@ -1979,6 +1953,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // DEBUG: Log after saving to database
       console.log('  - record saved (scheduleId):', record.scheduleId);
       console.log('  - record saved (id):', record.id);
+
+      // Recalculate and save bonus history with record ID (Phase 4)
+      await calculateBonusesAndPoints(recordData, req.user.facilityId, record.id);
 
       res.status(201).json(record);
 
@@ -2051,6 +2028,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log('  - record after update (scheduleId):', record.scheduleId);
+
+      // Recalculate and save bonus history with record ID (Phase 4)
+      await calculateBonusesAndPoints(mergedData, req.user.facilityId, id);
 
       res.json(record);
 
@@ -5422,6 +5402,229 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(patientContracts);
     } catch (error) {
       console.error("Get patient contracts error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ==================== Bonus Master Management ====================
+
+  // Get all bonus masters (global + facility-specific)
+  app.get("/api/bonus-masters", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { insuranceType, isActive } = req.query;
+
+      let conditions: any[] = [
+        or(
+          isNull(bonusMaster.facilityId),
+          eq(bonusMaster.facilityId, facilityId!)
+        )
+      ];
+
+      if (insuranceType && (insuranceType === 'medical' || insuranceType === 'care')) {
+        conditions.push(eq(bonusMaster.insuranceType, insuranceType as "medical" | "care"));
+      }
+
+      if (isActive !== undefined) {
+        conditions.push(eq(bonusMaster.isActive, isActive === 'true'));
+      }
+
+      const bonuses = await db.select()
+        .from(bonusMaster)
+        .where(and(...conditions))
+        .orderBy(bonusMaster.displayOrder, bonusMaster.bonusCode);
+
+      res.json(bonuses);
+    } catch (error) {
+      console.error("Get bonus masters error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create bonus master (admin only)
+  app.post("/api/bonus-masters", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const bonusData = insertBonusMasterSchema.parse(req.body);
+
+      // Set facilityId to null for global bonuses, or use facility ID from request body
+      const dataToInsert = {
+        ...bonusData,
+        facilityId: req.body.facilityId || null,
+      };
+
+      // Check for overlapping periods with same bonusCode
+      // Build facility condition based on whether facilityId is null
+      const facilityCondition = dataToInsert.facilityId
+        ? or(
+            eq(bonusMaster.facilityId, dataToInsert.facilityId),
+            isNull(bonusMaster.facilityId)
+          )
+        : isNull(bonusMaster.facilityId);
+
+      const overlappingBonuses = await db.select()
+        .from(bonusMaster)
+        .where(
+          and(
+            eq(bonusMaster.bonusCode, dataToInsert.bonusCode),
+            eq(bonusMaster.isActive, true),
+            facilityCondition
+          )
+        );
+
+      // Check for period overlap
+      for (const existing of overlappingBonuses) {
+        const newFrom = new Date(dataToInsert.validFrom);
+        const newTo = dataToInsert.validTo ? new Date(dataToInsert.validTo) : null;
+        const existingFrom = new Date(existing.validFrom);
+        const existingTo = existing.validTo ? new Date(existing.validTo) : null;
+
+        // Check if periods overlap
+        // Overlap if: newFrom <= existingTo (or null) AND newTo (or null) >= existingFrom
+        const overlaps =
+          (existingTo === null || newFrom <= existingTo) &&
+          (newTo === null || newTo >= existingFrom);
+
+        if (overlaps) {
+          const existingPeriod = `${existing.validFrom}${existingTo ? ' 〜 ' + existing.validTo : ' 〜 （無期限）'}`;
+          const newPeriod = `${dataToInsert.validFrom}${newTo ? ' 〜 ' + dataToInsert.validTo : ' 〜 （無期限）'}`;
+          return res.status(400).json({
+            error: `加算コード「${dataToInsert.bonusCode}」の有効期間が重複しています。\n既存: ${existingPeriod}\n新規: ${newPeriod}\n\n有効期間が重複しないように設定してください。`
+          });
+        }
+      }
+
+      const [newBonus] = await db.insert(bonusMaster)
+        .values(dataToInsert)
+        .returning();
+
+      res.json(newBonus);
+    } catch (error: any) {
+      console.error("Create bonus master error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "入力データが不正です", details: error.errors });
+      }
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update bonus master (admin only)
+  app.put("/api/bonus-masters/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+      const bonusData = updateBonusMasterSchema.parse(req.body);
+
+      // Check if bonus exists and user has permission
+      const existing = await db.select()
+        .from(bonusMaster)
+        .where(and(
+          eq(bonusMaster.id, id),
+          or(
+            isNull(bonusMaster.facilityId),
+            eq(bonusMaster.facilityId, facilityId!)
+          )
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "加算マスタが見つかりません" });
+      }
+
+      // Check for overlapping periods with same bonusCode (if bonusCode is being updated)
+      if (bonusData.bonusCode || bonusData.validFrom || bonusData.validTo !== undefined) {
+        const currentBonus = existing[0];
+        const updatedBonusCode = bonusData.bonusCode || currentBonus.bonusCode;
+        const updatedValidFrom = bonusData.validFrom || currentBonus.validFrom;
+        const updatedValidTo = bonusData.validTo !== undefined ? bonusData.validTo : currentBonus.validTo;
+        const updatedFacilityId = currentBonus.facilityId; // facilityId is not updatable
+
+        // Build facility condition based on whether facilityId is null
+        const facilityCondition = updatedFacilityId
+          ? or(
+              eq(bonusMaster.facilityId, updatedFacilityId),
+              isNull(bonusMaster.facilityId)
+            )
+          : isNull(bonusMaster.facilityId);
+
+        const overlappingBonuses = await db.select()
+          .from(bonusMaster)
+          .where(
+            and(
+              eq(bonusMaster.bonusCode, updatedBonusCode),
+              eq(bonusMaster.isActive, true),
+              ne(bonusMaster.id, id), // Exclude self
+              facilityCondition
+            )
+          );
+
+        // Check for period overlap
+        for (const existingBonus of overlappingBonuses) {
+          const newFrom = new Date(updatedValidFrom);
+          const newTo = updatedValidTo ? new Date(updatedValidTo) : null;
+          const existingFrom = new Date(existingBonus.validFrom);
+          const existingTo = existingBonus.validTo ? new Date(existingBonus.validTo) : null;
+
+          // Check if periods overlap
+          const overlaps =
+            (existingTo === null || newFrom <= existingTo) &&
+            (newTo === null || newTo >= existingFrom);
+
+          if (overlaps) {
+            const existingPeriod = `${existingBonus.validFrom}${existingTo ? ' 〜 ' + existingBonus.validTo : ' 〜 （無期限）'}`;
+            const newPeriod = `${updatedValidFrom}${newTo ? ' 〜 ' + updatedValidTo : ' 〜 （無期限）'}`;
+            return res.status(400).json({
+              error: `加算コード「${updatedBonusCode}」の有効期間が重複しています。\n既存: ${existingPeriod}\n更新後: ${newPeriod}\n\n有効期間が重複しないように設定してください。`
+            });
+          }
+        }
+      }
+
+      const [updatedBonus] = await db.update(bonusMaster)
+        .set({ ...bonusData, updatedAt: new Date() })
+        .where(eq(bonusMaster.id, id))
+        .returning();
+
+      res.json(updatedBonus);
+    } catch (error: any) {
+      console.error("Update bonus master error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "入力データが不正です", details: error.errors });
+      }
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete bonus master (logical delete, admin only)
+  app.delete("/api/bonus-masters/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Check if bonus exists and user has permission
+      const existing = await db.select()
+        .from(bonusMaster)
+        .where(and(
+          eq(bonusMaster.id, id),
+          or(
+            isNull(bonusMaster.facilityId),
+            eq(bonusMaster.facilityId, facilityId!)
+          )
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "加算マスタが見つかりません" });
+      }
+
+      const [deletedBonus] = await db.update(bonusMaster)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(bonusMaster.id, id))
+        .returning();
+
+      res.json({ message: "加算マスタを削除しました", bonus: deletedBonus });
+    } catch (error) {
+      console.error("Delete bonus master error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });

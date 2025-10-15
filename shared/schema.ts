@@ -518,6 +518,186 @@ export const specialManagementFields = pgTable("special_management_fields", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Phase 4: Bonus Master Tables (加算マスタ・改定対応) ==========
+
+// Enums for bonus master
+export const bonusPointsTypeEnum = pgEnum("bonus_points_type", ["fixed", "conditional"]);
+export const bonusConditionalPatternEnum = pgEnum("bonus_conditional_pattern", [
+  "monthly_14day_threshold",    // 月14日目までと以降で変動（緊急訪問等）
+  "building_occupancy",          // 同一建物1-2人/3人以上
+  "time_based",                  // 時間帯別（夜間・深夜等）
+  "duration_based",              // 訪問時間長（90分超等）
+  "age_based",                   // 年齢区分（6歳未満等）
+  "visit_count",                 // 訪問回数（1日2回/3回以上等）
+  "combination_control",         // 併算定制御
+  "custom"                       // カスタム（JSONルール使用）
+]);
+export const frequencyLimitEnum = pgEnum("frequency_limit", [
+  "unlimited",
+  "weekly_1",
+  "weekly_3",
+  "monthly_1",
+  "monthly_2",
+  "daily_1"
+]);
+
+// Bonus Master Table (加算マスタ)
+export const bonusMaster = pgTable("bonus_master", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").references(() => facilities.id), // null = 全施設共通
+
+  // 基本情報
+  bonusCode: varchar("bonus_code", { length: 50 }).notNull(), // 'emergency_visit', 'long_visit', etc.
+  bonusName: text("bonus_name").notNull(), // '緊急訪問看護加算'
+  bonusCategory: varchar("bonus_category", { length: 50 }).notNull(), // 'visit_care', 'management', 'information', etc.
+  insuranceType: insuranceTypeEnum("insurance_type").notNull(), // 'medical' or 'care'
+
+  // 点数設定
+  pointsType: bonusPointsTypeEnum("points_type").notNull().default("fixed"), // 'fixed' or 'conditional'
+  fixedPoints: integer("fixed_points"), // 固定点数の場合
+
+  // 条件分岐パターン
+  conditionalPattern: bonusConditionalPatternEnum("conditional_pattern"), // 事前定義パターン
+  pointsConfig: json("points_config"), // パターンごとの点数設定（JSON）
+  /*
+  例: monthly_14day_threshold の場合
+  {
+    "up_to_14": 2650,
+    "after_14": 2000
+  }
+
+  例: building_occupancy の場合
+  {
+    "occupancy_1_2": 4500,
+    "occupancy_3_plus": 4000
+  }
+  */
+
+  // 算定制限
+  frequencyLimit: frequencyLimitEnum("frequency_limit").default("unlimited"),
+
+  // 算定条件（事前定義、管理画面では表示のみ）
+  predefinedConditions: json("predefined_conditions"), // システム側で管理
+  /*
+  [
+    {"type": "field_not_empty", "field": "emergencyVisitReason"},
+    {"type": "visit_duration_gte", "value": 90}
+  ]
+  */
+
+  // 高度なルール（システム管理者のみ編集可能）
+  advancedRules: json("advanced_rules"), // null の場合は predefinedConditions を使用
+
+  // 併算定制御
+  canCombineWith: text("can_combine_with").array(), // 併算定可能な加算コード配列
+  cannotCombineWith: text("cannot_combine_with").array(), // 併算定不可の加算コード配列
+
+  // バージョン管理
+  version: varchar("version", { length: 20 }).notNull(), // '2024', '2026'
+  validFrom: date("valid_from").notNull(), // 2024-04-01
+  validTo: date("valid_to"), // 2026-03-31（nullは現行版）
+
+  // 説明・備考
+  requirementsDescription: text("requirements_description"), // 人間が読める算定要件説明
+  notes: text("notes"), // 内部メモ
+
+  // メタ情報
+  displayOrder: integer("display_order").default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// Bonus Calculation History Table (加算計算履歴)
+export const bonusCalculationHistory = pgTable("bonus_calculation_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  nursingRecordId: varchar("nursing_record_id").notNull().references(() => nursingRecords.id, { onDelete: "cascade" }),
+  bonusMasterId: varchar("bonus_master_id").notNull().references(() => bonusMaster.id),
+
+  // 計算結果
+  calculatedPoints: integer("calculated_points").notNull(),
+  appliedVersion: varchar("applied_version", { length: 20 }).notNull(), // '2024'
+
+  // 計算根拠（監査用）
+  calculationDetails: json("calculation_details"), // どの条件で何点になったか
+  /*
+  {
+    "bonusCode": "emergency_visit",
+    "bonusName": "緊急訪問看護加算",
+    "matchedCondition": {
+      "monthlyVisitCount": 10,
+      "rule": "visitCount <= 14",
+      "points": 2650
+    },
+    "checksPassed": ["emergencyVisitReason is not empty"],
+    "timestamp": "2025-10-15T10:30:00Z"
+  }
+  */
+
+  // 手動調整
+  isManuallyAdjusted: boolean("is_manually_adjusted").default(false),
+  manualAdjustmentReason: text("manual_adjustment_reason"),
+  adjustedBy: varchar("adjusted_by").references(() => users.id),
+  adjustedAt: timestamp("adjusted_at", { withTimezone: true }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// Monthly Receipts Table (月次レセプトサマリ)
+export const monthlyReceipts = pgTable("monthly_receipts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+
+  // 対象期間
+  targetYear: integer("target_year").notNull(), // 2025
+  targetMonth: integer("target_month").notNull(), // 10
+
+  // 保険種別
+  insuranceType: insuranceTypeEnum("insurance_type").notNull(),
+
+  // 訪問実績
+  visitCount: integer("visit_count").notNull().default(0), // 訪問回数
+  totalVisitPoints: integer("total_visit_points").notNull().default(0), // 訪問点数合計
+
+  // 特管点数
+  specialManagementPoints: integer("special_management_points").default(0), // 特管点数
+
+  // 加算点数内訳（JSON）
+  bonusBreakdown: json("bonus_breakdown"), // 加算別の点数内訳
+  /*
+  [
+    {"bonusCode": "emergency_visit", "bonusName": "緊急訪問看護加算", "count": 2, "points": 5300},
+    {"bonusCode": "long_visit", "bonusName": "長時間訪問看護加算", "count": 1, "points": 5200}
+  ]
+  */
+
+  // 合計
+  totalPoints: integer("total_points").notNull(), // 総点数
+  totalAmount: integer("total_amount").notNull(), // 総金額（点数 × 10円）
+
+  // レセプトステータス
+  isConfirmed: boolean("is_confirmed").default(false), // 確定済み
+  confirmedBy: varchar("confirmed_by").references(() => users.id),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+
+  isSent: boolean("is_sent").default(false), // 送信済み
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+
+  // エラー・警告
+  hasErrors: boolean("has_errors").default(false),
+  hasWarnings: boolean("has_warnings").default(false),
+  errorMessages: json("error_messages"), // エラーメッセージ配列
+  warningMessages: json("warning_messages"), // 警告メッセージ配列
+
+  // 備考
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // ========== Insert Schemas ==========
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
@@ -683,6 +863,26 @@ export const insertSpecialManagementFieldSchema = createInsertSchema(specialMana
   updatedAt: true,
 });
 
+// Phase 4: Bonus Master Insert Schemas
+export const insertBonusMasterSchema = createInsertSchema(bonusMaster).omit({
+  id: true,
+  facilityId: true, // Set by server from user session (or null for global)
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBonusCalculationHistorySchema = createInsertSchema(bonusCalculationHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMonthlyReceiptSchema = createInsertSchema(monthlyReceipts).omit({
+  id: true,
+  facilityId: true, // Set by server from user session
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -742,6 +942,13 @@ export const updateContractSchema = insertContractSchema.partial();
 export const updateSpecialManagementDefinitionSchema = insertSpecialManagementDefinitionSchema.partial();
 
 export const updateSpecialManagementFieldSchema = insertSpecialManagementFieldSchema.partial();
+
+// Phase 4: Bonus Master Update Schemas
+export const updateBonusMasterSchema = insertBonusMasterSchema.partial();
+
+export const updateBonusCalculationHistorySchema = insertBonusCalculationHistorySchema.partial();
+
+export const updateMonthlyReceiptSchema = insertMonthlyReceiptSchema.partial();
 
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
@@ -830,6 +1037,19 @@ export type SpecialManagementField = typeof specialManagementFields.$inferSelect
 export type UpdateSpecialManagementDefinition = z.infer<typeof updateSpecialManagementDefinitionSchema>;
 export type UpdateSpecialManagementField = z.infer<typeof updateSpecialManagementFieldSchema>;
 
+// Phase 4: Bonus Master Types
+export type InsertBonusMaster = z.infer<typeof insertBonusMasterSchema>;
+export type BonusMaster = typeof bonusMaster.$inferSelect;
+export type UpdateBonusMaster = z.infer<typeof updateBonusMasterSchema>;
+
+export type InsertBonusCalculationHistory = z.infer<typeof insertBonusCalculationHistorySchema>;
+export type BonusCalculationHistory = typeof bonusCalculationHistory.$inferSelect;
+export type UpdateBonusCalculationHistory = z.infer<typeof updateBonusCalculationHistorySchema>;
+
+export type InsertMonthlyReceipt = z.infer<typeof insertMonthlyReceiptSchema>;
+export type MonthlyReceipt = typeof monthlyReceipts.$inferSelect;
+export type UpdateMonthlyReceipt = z.infer<typeof updateMonthlyReceiptSchema>;
+
 // Pagination Types
 export interface PaginationOptions {
   page: number;
@@ -870,6 +1090,7 @@ export const patientsRelations = relations(patients, ({ one, many }) => ({
   doctorOrders: many(doctorOrders),
   insuranceCards: many(insuranceCards),
   nursingRecords: many(nursingRecords),
+  monthlyReceipts: many(monthlyReceipts),
 }));
 
 export const medicalInstitutionsRelations = relations(medicalInstitutions, ({ one, many }) => ({
@@ -987,7 +1208,7 @@ export const schedulesRelations = relations(schedules, ({ one }) => ({
   }),
 }));
 
-export const nursingRecordsRelations = relations(nursingRecords, ({ one }) => ({
+export const nursingRecordsRelations = relations(nursingRecords, ({ one, many }) => ({
   facility: one(facilities, {
     fields: [nursingRecords.facilityId],
     references: [facilities.id],
@@ -1004,6 +1225,7 @@ export const nursingRecordsRelations = relations(nursingRecords, ({ one }) => ({
     fields: [nursingRecords.scheduleId],
     references: [schedules.id],
   }),
+  bonusCalculationHistory: many(bonusCalculationHistory),
 }));
 
 export const contractsRelations = relations(contracts, ({ one }) => ({
@@ -1033,5 +1255,44 @@ export const specialManagementFieldsRelations = relations(specialManagementField
   definition: one(specialManagementDefinitions, {
     fields: [specialManagementFields.definitionId],
     references: [specialManagementDefinitions.id],
+  }),
+}));
+
+// Phase 4: Bonus Master Relations
+export const bonusMasterRelations = relations(bonusMaster, ({ one, many }) => ({
+  facility: one(facilities, {
+    fields: [bonusMaster.facilityId],
+    references: [facilities.id],
+  }),
+  calculationHistory: many(bonusCalculationHistory),
+}));
+
+export const bonusCalculationHistoryRelations = relations(bonusCalculationHistory, ({ one }) => ({
+  nursingRecord: one(nursingRecords, {
+    fields: [bonusCalculationHistory.nursingRecordId],
+    references: [nursingRecords.id],
+  }),
+  bonusMaster: one(bonusMaster, {
+    fields: [bonusCalculationHistory.bonusMasterId],
+    references: [bonusMaster.id],
+  }),
+  adjustedBy: one(users, {
+    fields: [bonusCalculationHistory.adjustedBy],
+    references: [users.id],
+  }),
+}));
+
+export const monthlyReceiptsRelations = relations(monthlyReceipts, ({ one }) => ({
+  facility: one(facilities, {
+    fields: [monthlyReceipts.facilityId],
+    references: [facilities.id],
+  }),
+  patient: one(patients, {
+    fields: [monthlyReceipts.patientId],
+    references: [patients.id],
+  }),
+  confirmedBy: one(users, {
+    fields: [monthlyReceipts.confirmedBy],
+    references: [users.id],
   }),
 }));

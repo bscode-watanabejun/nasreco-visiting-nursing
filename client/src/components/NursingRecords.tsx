@@ -1451,18 +1451,8 @@ export function NursingRecords() {
                                 return <li key={index} className="text-sm">{bonus}</li>
                               }
 
-                              // Format bonus information
-                              const getBonusName = (type: string): string => {
-                                const names: Record<string, string> = {
-                                  'multiple_visit': '複数回訪問加算',
-                                  'emergency_visit': '緊急訪問加算',
-                                  'long_visit': '長時間訪問加算',
-                                  'same_building_discount': '同一建物減算',
-                                };
-                                return names[type] || type;
-                              };
-
-                              const name = getBonusName(bonus.type);
+                              // Use bonusName from server (already in Japanese), fallback to bonusCode
+                              const name = bonus.bonusName || bonus.bonusCode || bonus.type || '不明な加算';
                               const points = bonus.points > 0 ? `+${bonus.points}点` : `${bonus.points}点`;
                               const details = [];
 
@@ -1871,6 +1861,23 @@ export function NursingRecords() {
               <div className="border-t pt-4 mt-4">
                 <h3 className="text-sm font-semibold mb-3">加算管理</h3>
                 <div className="space-y-4">
+                  {/* 緊急訪問理由 */}
+                  <div className="space-y-2">
+                    <Label htmlFor="emergency-visit-reason">
+                      緊急訪問看護加算の理由
+                    </Label>
+                    <Textarea
+                      id="emergency-visit-reason"
+                      placeholder="緊急訪問が必要な場合は理由を記載してください（例：呼吸困難のため緊急訪問）"
+                      value={formData.emergencyVisitReason}
+                      onChange={(e) => setFormData(prev => ({ ...prev, emergencyVisitReason: e.target.value }))}
+                      className="min-h-[80px] resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      ※ 緊急訪問看護加算を算定する場合は必ず記載してください
+                    </p>
+                  </div>
+
                   {formData.isSecondVisit && (
                     <div className="space-y-2">
                       <Label htmlFor="multiple-visit-reason">
