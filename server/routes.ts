@@ -59,6 +59,9 @@ import {
   careReports,
   contracts,
   bonusMaster,
+  bonusCalculationHistory,
+  monthlyReceipts,
+  facilities,
   patients,
   users,
   schedules,
@@ -76,6 +79,8 @@ import {
 import { z } from "zod";
 import { db } from "./db";
 import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc, ne } from "drizzle-orm";
+import { stringify } from "csv-stringify/sync";
+import { validateReceipt, detectMissingBonuses } from "./validators/receipt-validator";
 
 // Extend Express session data
 declare module "express-session" {
@@ -5626,6 +5631,1336 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Delete bonus master error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ==================== Monthly Receipts Management ====================
+
+  // Get all monthly receipts (with filters)
+  app.get("/api/monthly-receipts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { year, month, insuranceType, patientId, isConfirmed } = req.query;
+
+      const conditions = [eq(monthlyReceipts.facilityId, facilityId!)];
+
+      if (year && year !== 'all') {
+        conditions.push(eq(monthlyReceipts.targetYear, parseInt(year as string)));
+      }
+      if (month && month !== 'all') {
+        conditions.push(eq(monthlyReceipts.targetMonth, parseInt(month as string)));
+      }
+      if (insuranceType && insuranceType !== 'all') {
+        conditions.push(eq(monthlyReceipts.insuranceType, insuranceType as any));
+      }
+      if (patientId) {
+        conditions.push(eq(monthlyReceipts.patientId, patientId as string));
+      }
+      if (isConfirmed !== undefined && isConfirmed !== 'all') {
+        conditions.push(eq(monthlyReceipts.isConfirmed, isConfirmed === 'true'));
+      }
+
+      const receipts = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .where(and(...conditions))
+        .orderBy(
+          desc(monthlyReceipts.targetYear),
+          desc(monthlyReceipts.targetMonth),
+          patients.lastName
+        );
+
+      res.json(receipts.map(r => ({
+        ...r.receipt,
+        patient: r.patient,
+      })));
+    } catch (error) {
+      console.error("Get monthly receipts error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get single monthly receipt with details
+  app.get("/api/monthly-receipts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const receiptData = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+        confirmedBy: users,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .leftJoin(users, eq(monthlyReceipts.confirmedBy, users.id))
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (receiptData.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      // Get related nursing records for the period
+      const targetYear = receiptData[0].receipt.targetYear;
+      const targetMonth = receiptData[0].receipt.targetMonth;
+      const patientId = receiptData[0].receipt.patientId;
+      const insuranceType = receiptData[0].receipt.insuranceType;
+
+      const startDate = new Date(targetYear, targetMonth - 1, 1);
+      const endDate = new Date(targetYear, targetMonth, 0);
+
+      const relatedRecords = await db.select({
+        record: nursingRecords,
+        nurse: users,
+        schedule: schedules,
+      })
+        .from(nursingRecords)
+        .leftJoin(users, eq(nursingRecords.nurseId, users.id))
+        .leftJoin(schedules, eq(nursingRecords.scheduleId, schedules.id))
+        .where(and(
+          eq(nursingRecords.patientId, patientId),
+          eq(nursingRecords.facilityId, facilityId!),
+          gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+          lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0])
+        ))
+        .orderBy(nursingRecords.visitDate);
+
+      // Get bonus calculation history for these records
+      const recordIds = relatedRecords.map(r => r.record.id);
+      let bonusHistory: any[] = [];
+
+      if (recordIds.length > 0) {
+        bonusHistory = await db.select({
+          history: bonusCalculationHistory,
+          bonus: bonusMaster,
+        })
+          .from(bonusCalculationHistory)
+          .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+      }
+
+      // Get insurance card information
+      const insuranceCardData = await db.select()
+        .from(insuranceCards)
+        .where(and(
+          eq(insuranceCards.patientId, patientId),
+          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.cardType, insuranceType === 'medical' ? 'medical' : 'long_term_care')
+        ))
+        .orderBy(desc(insuranceCards.validFrom))
+        .limit(1);
+
+      // Get doctor order information
+      const doctorOrderData = await db.select({
+        order: doctorOrders,
+        medicalInstitution: medicalInstitutions,
+      })
+        .from(doctorOrders)
+        .leftJoin(medicalInstitutions, eq(doctorOrders.medicalInstitutionId, medicalInstitutions.id))
+        .where(and(
+          eq(doctorOrders.patientId, patientId),
+          eq(doctorOrders.facilityId, facilityId!)
+        ))
+        .orderBy(desc(doctorOrders.orderDate))
+        .limit(1);
+
+      res.json({
+        ...receiptData[0].receipt,
+        patient: receiptData[0].patient,
+        confirmedByUser: receiptData[0].confirmedBy,
+        insuranceCard: insuranceCardData[0] || null,
+        doctorOrder: doctorOrderData[0] || null,
+        relatedRecords: relatedRecords.map(r => ({
+          ...r.record,
+          nurse: r.nurse,
+          schedule: r.schedule,
+        })),
+        bonusHistory,
+      });
+    } catch (error) {
+      console.error("Get monthly receipt detail error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Generate monthly receipts for a specific month
+  app.post("/api/monthly-receipts/generate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { year, month, insuranceType } = req.body;
+
+      if (!year || !month || !insuranceType) {
+        return res.status(400).json({ error: "年月、保険種別は必須です" });
+      }
+
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+
+      // Get all nursing records for the target month
+      const nursingRecordsForMonth = await db.select({
+        record: nursingRecords,
+        patient: patients,
+      })
+        .from(nursingRecords)
+        .leftJoin(patients, eq(nursingRecords.patientId, patients.id))
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId!),
+          gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+          lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+          eq(nursingRecords.status, 'completed')
+        ));
+
+      // Get insurance cards to determine patient's insurance type
+      const patientIds = Array.from(new Set(nursingRecordsForMonth.map(r => r.record.patientId)));
+      const insuranceCardsForPatients = await db.select()
+        .from(insuranceCards)
+        .where(and(
+          eq(insuranceCards.facilityId, facilityId!),
+          inArray(insuranceCards.patientId, patientIds),
+          eq(insuranceCards.cardType, insuranceType === 'medical' ? 'medical' : 'long_term_care')
+        ));
+
+      // Create a set of patient IDs who have the specified insurance type
+      const patientsWithInsurance = new Set(insuranceCardsForPatients.map(ic => ic.patientId));
+
+      // Filter records by insurance type
+      const recordsByPatient = new Map<string, any[]>();
+
+      for (const item of nursingRecordsForMonth) {
+        if (!item.patient) continue;
+
+        const patientId = item.record.patientId;
+
+        // Only include patients who have the specified insurance type
+        if (!patientsWithInsurance.has(patientId)) {
+          continue;
+        }
+
+        if (!recordsByPatient.has(patientId)) {
+          recordsByPatient.set(patientId, []);
+        }
+        recordsByPatient.get(patientId)!.push(item);
+      }
+
+      const generatedReceipts = [];
+      let skippedCount = 0;
+
+      // Generate receipt for each patient
+      for (const [patientId, records] of Array.from(recordsByPatient.entries())) {
+        if (records.length === 0) continue;
+
+        const patient = records[0].patient;
+
+        // Calculate totals
+        let totalVisitPoints = 0;
+        let specialManagementPoints = 0;
+        const bonusMap = new Map<string, { bonusCode: string; bonusName: string; count: number; points: number }>();
+
+        // Get bonus calculation history for all records
+        const recordIds = records.map((r: any) => r.record.id);
+        const bonusHistoryForRecords = await db.select({
+          history: bonusCalculationHistory,
+          bonus: bonusMaster,
+        })
+          .from(bonusCalculationHistory)
+          .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+
+        // Aggregate bonus points
+        for (const item of bonusHistoryForRecords) {
+          if (!item.bonus) continue;
+
+          const bonusCode = item.bonus.bonusCode;
+          const bonusName = item.bonus.bonusName;
+          const points = item.history.calculatedPoints;
+
+          if (bonusMap.has(bonusCode)) {
+            const existing = bonusMap.get(bonusCode)!;
+            existing.count += 1;
+            existing.points += points;
+          } else {
+            bonusMap.set(bonusCode, {
+              bonusCode,
+              bonusName,
+              count: 1,
+              points,
+            });
+          }
+
+          // Check if this is special management bonus
+          if (bonusCode.includes('special_management')) {
+            specialManagementPoints += points;
+          }
+        }
+
+        // Calculate base visit points (simplified - should be based on actual visit types)
+        const basePointsPerVisit = insuranceType === 'medical' ? 555 : 467; // Medical: 5550円/10, Care: 467 units
+        totalVisitPoints = records.length * basePointsPerVisit;
+
+        const bonusBreakdown = Array.from(bonusMap.values());
+        const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
+        const totalPoints = totalVisitPoints + totalBonusPoints;
+        const totalAmount = insuranceType === 'medical' ? totalPoints * 10 : totalPoints * 10; // Convert to yen
+
+        // Run validation for this receipt
+        const doctorOrdersForPatient = await db.select()
+          .from(doctorOrders)
+          .where(and(
+            eq(doctorOrders.patientId, patientId),
+            eq(doctorOrders.facilityId, facilityId!)
+          ));
+
+        const insuranceCardsForPatient = await db.select()
+          .from(insuranceCards)
+          .where(and(
+            eq(insuranceCards.patientId, patientId),
+            eq(insuranceCards.facilityId, facilityId!)
+          ));
+
+        const bonusCalculations = bonusHistoryForRecords.map(bc => ({
+          bonusMasterId: bc.bonus?.id || '',
+          bonusCode: bc.bonus?.bonusCode || '',
+          bonusName: bc.bonus?.bonusName || '',
+          calculatedPoints: bc.history.calculatedPoints,
+        }));
+
+        const validationResult = validateReceipt({
+          patientId,
+          targetYear: year,
+          targetMonth: month,
+          insuranceType,
+          nursingRecords: records.map((r: any) => ({
+            id: r.record.id,
+            visitDate: r.record.visitDate,
+            actualStartTime: r.record.actualStartTime,
+            actualEndTime: r.record.actualEndTime,
+            emergencyVisitReason: r.record.emergencyVisitReason,
+            multipleVisitReason: r.record.multipleVisitReason,
+            isSecondVisit: r.record.isSecondVisit,
+          })),
+          patient: {
+            id: patient.id,
+            buildingId: patient.buildingId,
+            careLevel: patient.careLevel,
+          },
+          doctorOrders: doctorOrdersForPatient.map(o => ({
+            id: o.id,
+            patientId: o.patientId,
+            startDate: o.startDate,
+            endDate: o.endDate,
+          })),
+          insuranceCards: insuranceCardsForPatient.map(c => ({
+            id: c.id,
+            patientId: c.patientId,
+            cardType: c.cardType,
+            validFrom: c.validFrom,
+            validTo: c.validUntil,
+          })),
+          bonusCalculations,
+        });
+
+        const hasErrors = validationResult.errors.length > 0;
+        const hasWarnings = validationResult.warnings.length > 0;
+        const errorMessages = validationResult.errors.map(e => e.message);
+        const warningMessages = validationResult.warnings.map(w => w.message);
+
+        // Check if receipt already exists
+        const existingReceipt = await db.select()
+          .from(monthlyReceipts)
+          .where(and(
+            eq(monthlyReceipts.facilityId, facilityId!),
+            eq(monthlyReceipts.patientId, patientId),
+            eq(monthlyReceipts.targetYear, year),
+            eq(monthlyReceipts.targetMonth, month),
+            eq(monthlyReceipts.insuranceType, insuranceType)
+          ))
+          .limit(1);
+
+        if (existingReceipt.length > 0) {
+          // Skip if already confirmed
+          if (existingReceipt[0].isConfirmed) {
+            console.log(`Skipping confirmed receipt for patient ${patientId}, ${year}/${month}`);
+            skippedCount++;
+            continue;
+          }
+
+          // Update existing receipt (only if not confirmed)
+          const [updated] = await db.update(monthlyReceipts)
+            .set({
+              visitCount: records.length,
+              totalVisitPoints,
+              specialManagementPoints,
+              bonusBreakdown,
+              totalPoints,
+              totalAmount,
+              hasErrors,
+              hasWarnings,
+              errorMessages,
+              warningMessages,
+              updatedAt: new Date(),
+            })
+            .where(eq(monthlyReceipts.id, existingReceipt[0].id))
+            .returning();
+
+          generatedReceipts.push(updated);
+        } else {
+          // Create new receipt
+          const [newReceipt] = await db.insert(monthlyReceipts)
+            .values({
+              facilityId: facilityId!,
+              patientId,
+              targetYear: year,
+              targetMonth: month,
+              insuranceType,
+              visitCount: records.length,
+              totalVisitPoints,
+              specialManagementPoints,
+              bonusBreakdown,
+              totalPoints,
+              totalAmount,
+              hasErrors,
+              hasWarnings,
+              errorMessages,
+              warningMessages,
+            })
+            .returning();
+
+          generatedReceipts.push(newReceipt);
+        }
+      }
+
+      const message = skippedCount > 0
+        ? `${year}年${month}月分のレセプトを生成しました（確定済み${skippedCount}件はスキップ）`
+        : `${year}年${month}月分のレセプトを生成しました`;
+
+      res.json({
+        message,
+        count: generatedReceipts.length,
+        skippedCount,
+        receipts: generatedReceipts,
+      });
+    } catch (error) {
+      console.error("Generate monthly receipts error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Finalize a monthly receipt (lock it)
+  app.post("/api/monthly-receipts/:id/finalize", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+      const userId = req.session.userId;
+
+      const existing = await db.select()
+        .from(monthlyReceipts)
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      if (existing[0].isConfirmed) {
+        return res.status(400).json({ error: "既に確定済みです" });
+      }
+
+      // Run comprehensive validation before finalizing
+      const patientId = existing[0].patientId;
+      const targetYear = existing[0].targetYear;
+      const targetMonth = existing[0].targetMonth;
+      const insuranceType = existing[0].insuranceType;
+
+      // Fetch all required data for validation
+      const [patientData, records, orders, cards] = await Promise.all([
+        db.select()
+          .from(patients)
+          .where(eq(patients.id, patientId))
+          .limit(1),
+        db.select()
+          .from(nursingRecords)
+          .where(and(
+            eq(nursingRecords.patientId, patientId),
+            eq(nursingRecords.facilityId, facilityId!),
+            sql`EXTRACT(YEAR FROM ${nursingRecords.visitDate}) = ${targetYear}`,
+            sql`EXTRACT(MONTH FROM ${nursingRecords.visitDate}) = ${targetMonth}`
+          )),
+        db.select()
+          .from(doctorOrders)
+          .where(and(
+            eq(doctorOrders.patientId, patientId),
+            eq(doctorOrders.facilityId, facilityId!)
+          )),
+        db.select()
+          .from(insuranceCards)
+          .where(and(
+            eq(insuranceCards.patientId, patientId),
+            eq(insuranceCards.facilityId, facilityId!)
+          ))
+      ]);
+
+      if (patientData.length === 0) {
+        return res.status(404).json({ error: "患者情報が見つかりません" });
+      }
+      const patient = patientData[0];
+
+      // Get bonus calculations
+      const recordIds = records.map(r => r.id);
+      let bonusCalcs: any[] = [];
+
+      if (recordIds.length > 0) {
+        bonusCalcs = await db.select({
+          history: bonusCalculationHistory,
+          bonus: bonusMaster,
+        })
+          .from(bonusCalculationHistory)
+          .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+      }
+
+      const bonusCalculations = bonusCalcs.map(bc => ({
+        bonusMasterId: bc.bonus?.id || '',
+        bonusCode: bc.bonus?.bonusCode || '',
+        bonusName: bc.bonus?.bonusName || '',
+        calculatedPoints: bc.history.calculatedPoints,
+      }));
+
+      const validationResult = validateReceipt({
+        patientId,
+        targetYear,
+        targetMonth,
+        insuranceType,
+        nursingRecords: records.map(r => ({
+          id: r.id,
+          visitDate: r.visitDate,
+          actualStartTime: r.actualStartTime,
+          actualEndTime: r.actualEndTime,
+          emergencyVisitReason: r.emergencyVisitReason,
+          multipleVisitReason: r.multipleVisitReason,
+          isSecondVisit: r.isSecondVisit,
+        })),
+        patient: {
+          id: patient.id,
+          buildingId: patient.buildingId,
+          careLevel: patient.careLevel,
+        },
+        doctorOrders: orders.map(o => ({
+          id: o.id,
+          patientId: o.patientId,
+          startDate: o.startDate,
+          endDate: o.endDate,
+        })),
+        insuranceCards: cards.map(c => ({
+          id: c.id,
+          patientId: c.patientId,
+          cardType: c.cardType,
+          validFrom: c.validFrom,
+          validTo: c.validUntil,
+        })),
+        bonusCalculations,
+      });
+
+      // If validation finds errors, update the receipt and block finalization
+      if (validationResult.errors.length > 0) {
+        const errorMessages = validationResult.errors.map(e => e.message);
+        await db.update(monthlyReceipts)
+          .set({
+            hasErrors: true,
+            errorMessages,
+            updatedAt: new Date(),
+          })
+          .where(eq(monthlyReceipts.id, id));
+
+        return res.status(400).json({
+          error: "エラーがあるため確定できません。エラーを修正してください。",
+          errors: validationResult.errors,
+          warnings: validationResult.warnings
+        });
+      }
+
+      // Update validation status and finalize
+      const [updated] = await db.update(monthlyReceipts)
+        .set({
+          isConfirmed: true,
+          confirmedBy: userId!,
+          confirmedAt: new Date(),
+          hasErrors: false,
+          errorMessages: [],
+          updatedAt: new Date(),
+        })
+        .where(eq(monthlyReceipts.id, id))
+        .returning();
+
+      res.json({
+        message: "レセプトを確定しました",
+        receipt: updated,
+        warnings: validationResult.warnings.length > 0 ? validationResult.warnings : undefined
+      });
+    } catch (error) {
+      console.error("Finalize receipt error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Reopen a finalized receipt (for corrections)
+  app.post("/api/monthly-receipts/:id/reopen", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const existing = await db.select()
+        .from(monthlyReceipts)
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      if (!existing[0].isConfirmed) {
+        return res.status(400).json({ error: "未確定のレセプトです" });
+      }
+
+      if (existing[0].isSent) {
+        return res.status(400).json({ error: "送信済みのレセプトは再開できません" });
+      }
+
+      const [updated] = await db.update(monthlyReceipts)
+        .set({
+          isConfirmed: false,
+          confirmedBy: null,
+          confirmedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(monthlyReceipts.id, id))
+        .returning();
+
+      res.json({ message: "レセプトを再開しました", receipt: updated });
+    } catch (error) {
+      console.error("Reopen receipt error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Recalculate a monthly receipt
+  app.post("/api/monthly-receipts/:id/recalculate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const existing = await db.select()
+        .from(monthlyReceipts)
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      if (existing[0].isConfirmed) {
+        return res.status(400).json({ error: "確定済みのレセプトは再計算できません。先に再開してください。" });
+      }
+
+      const receipt = existing[0];
+      const { targetYear, targetMonth, patientId, insuranceType } = receipt;
+
+      // Re-fetch nursing records and recalculate
+      const startDate = new Date(targetYear, targetMonth - 1, 1);
+      const endDate = new Date(targetYear, targetMonth, 0);
+
+      const records = await db.select()
+        .from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.patientId, patientId),
+          gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+          lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+          eq(nursingRecords.status, 'completed')
+        ));
+
+      // Recalculate totals (same logic as generate)
+      let totalVisitPoints = 0;
+      let specialManagementPoints = 0;
+      const bonusMap = new Map<string, { bonusCode: string; bonusName: string; count: number; points: number }>();
+
+      const recordIds = records.map(r => r.id);
+      let bonusHistoryForRecords: any[] = [];
+
+      if (recordIds.length > 0) {
+        bonusHistoryForRecords = await db.select({
+          history: bonusCalculationHistory,
+          bonus: bonusMaster,
+        })
+          .from(bonusCalculationHistory)
+          .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+      }
+
+      for (const item of bonusHistoryForRecords) {
+        if (!item.bonus) continue;
+
+        const bonusCode = item.bonus.bonusCode;
+        const bonusName = item.bonus.bonusName;
+        const points = item.history.calculatedPoints;
+
+        if (bonusMap.has(bonusCode)) {
+          const existing = bonusMap.get(bonusCode)!;
+          existing.count += 1;
+          existing.points += points;
+        } else {
+          bonusMap.set(bonusCode, {
+            bonusCode,
+            bonusName,
+            count: 1,
+            points,
+          });
+        }
+
+        if (bonusCode.includes('special_management')) {
+          specialManagementPoints += points;
+        }
+      }
+
+      const basePointsPerVisit = insuranceType === 'medical' ? 555 : 467;
+      totalVisitPoints = records.length * basePointsPerVisit;
+
+      const bonusBreakdown = Array.from(bonusMap.values());
+      const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
+      const totalPoints = totalVisitPoints + totalBonusPoints;
+      const totalAmount = totalPoints * 10;
+
+      const [updated] = await db.update(monthlyReceipts)
+        .set({
+          visitCount: records.length,
+          totalVisitPoints,
+          specialManagementPoints,
+          bonusBreakdown,
+          totalPoints,
+          totalAmount,
+          updatedAt: new Date(),
+        })
+        .where(eq(monthlyReceipts.id, id))
+        .returning();
+
+      res.json({ message: "レセプトを再計算しました", receipt: updated });
+    } catch (error) {
+      console.error("Recalculate receipt error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update monthly receipt (manual adjustments)
+  app.put("/api/monthly-receipts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+      const updateData = req.body;
+
+      const existing = await db.select()
+        .from(monthlyReceipts)
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      if (existing[0].isConfirmed) {
+        return res.status(400).json({ error: "確定済みのレセプトは編集できません" });
+      }
+
+      const [updated] = await db.update(monthlyReceipts)
+        .set({
+          ...updateData,
+          updatedAt: new Date(),
+        })
+        .where(eq(monthlyReceipts.id, id))
+        .returning();
+
+      res.json({ message: "レセプトを更新しました", receipt: updated });
+    } catch (error) {
+      console.error("Update receipt error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete monthly receipt
+  app.delete("/api/monthly-receipts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      const existing = await db.select()
+        .from(monthlyReceipts)
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      if (existing[0].isConfirmed || existing[0].isSent) {
+        return res.status(400).json({ error: "確定済みまたは送信済みのレセプトは削除できません" });
+      }
+
+      await db.delete(monthlyReceipts)
+        .where(eq(monthlyReceipts.id, id));
+
+      res.json({ message: "レセプトを削除しました" });
+    } catch (error) {
+      console.error("Delete receipt error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Export monthly receipts to CSV (Care Insurance Format)
+  app.get("/api/monthly-receipts/export/care-insurance", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { year, month } = req.query;
+
+      if (!year || !month) {
+        return res.status(400).json({ error: "年月は必須です" });
+      }
+
+      // Get all care insurance receipts for the month
+      const receipts = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .where(and(
+          eq(monthlyReceipts.facilityId, facilityId!),
+          eq(monthlyReceipts.targetYear, parseInt(year as string)),
+          eq(monthlyReceipts.targetMonth, parseInt(month as string)),
+          eq(monthlyReceipts.insuranceType, 'care')
+        ))
+        .orderBy(patients.patientNumber);
+
+      if (receipts.length === 0) {
+        return res.status(404).json({ error: "該当するレセプトがありません" });
+      }
+
+      // Generate CSV data (simplified format - should match actual 国保連 format)
+      const csvData = receipts.map((item, index) => {
+        const receipt = item.receipt;
+        const patient = item.patient!;
+
+        return [
+          index + 1, // 連番
+          patient.patientNumber, // 被保険者番号
+          `${patient.lastName} ${patient.firstName}`, // 氏名
+          receipt.visitCount, // 訪問回数
+          receipt.totalVisitPoints, // 基本点数
+          receipt.specialManagementPoints || 0, // 特別管理加算
+          receipt.totalPoints, // 合計点数
+          receipt.totalAmount, // 合計金額
+          receipt.isConfirmed ? '確定済み' : '未確定', // ステータス
+        ];
+      });
+
+      // Add header row
+      const header = [
+        '連番',
+        '被保険者番号',
+        '氏名',
+        '訪問回数',
+        '基本点数',
+        '特別管理加算',
+        '合計点数',
+        '合計金額',
+        'ステータス'
+      ];
+
+      const csv = stringify([header, ...csvData], {
+        bom: true, // Add BOM for Excel compatibility
+      });
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="receipt_care_${year}_${month}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Export care insurance CSV error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Export monthly receipts to CSV (Medical Insurance Format)
+  app.get("/api/monthly-receipts/export/medical-insurance", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.session.facilityId;
+      const { year, month } = req.query;
+
+      if (!year || !month) {
+        return res.status(400).json({ error: "年月は必須です" });
+      }
+
+      // Get all medical insurance receipts for the month
+      const receipts = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .where(and(
+          eq(monthlyReceipts.facilityId, facilityId!),
+          eq(monthlyReceipts.targetYear, parseInt(year as string)),
+          eq(monthlyReceipts.targetMonth, parseInt(month as string)),
+          eq(monthlyReceipts.insuranceType, 'medical')
+        ))
+        .orderBy(patients.patientNumber);
+
+      if (receipts.length === 0) {
+        return res.status(404).json({ error: "該当するレセプトがありません" });
+      }
+
+      // Generate CSV data (simplified format - should match actual 支払基金 format)
+      const csvData = receipts.map((item, index) => {
+        const receipt = item.receipt;
+        const patient = item.patient!;
+
+        return [
+          index + 1, // 連番
+          patient.insuranceNumber || '', // 保険証番号
+          `${patient.lastName} ${patient.firstName}`, // 氏名
+          receipt.visitCount, // 訪問回数
+          receipt.totalVisitPoints, // 基本点数
+          receipt.specialManagementPoints || 0, // 特別管理加算
+          receipt.totalPoints, // 合計点数
+          receipt.totalAmount, // 合計金額
+          receipt.isConfirmed ? '確定済み' : '未確定', // ステータス
+        ];
+      });
+
+      // Add header row
+      const header = [
+        '連番',
+        '保険証番号',
+        '氏名',
+        '訪問回数',
+        '基本点数',
+        '特別管理加算',
+        '合計点数',
+        '合計金額',
+        'ステータス'
+      ];
+
+      const csv = stringify([header, ...csvData], {
+        bom: true, // Add BOM for Excel compatibility
+      });
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="receipt_medical_${year}_${month}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Export medical insurance CSV error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Validate a monthly receipt
+  app.post("/api/monthly-receipts/:id/validate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Get receipt with all related data
+      const receiptData = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (receiptData.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      const receipt = receiptData[0].receipt;
+      const patient = receiptData[0].patient!;
+      const { targetYear, targetMonth, patientId, insuranceType } = receipt;
+
+      // Get nursing records for the period
+      const startDate = new Date(targetYear, targetMonth - 1, 1);
+      const endDate = new Date(targetYear, targetMonth, 0);
+
+      const records = await db.select()
+        .from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.patientId, patientId),
+          gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+          lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+          eq(nursingRecords.status, 'completed')
+        ));
+
+      // Get doctor orders
+      const orders = await db.select()
+        .from(doctorOrders)
+        .where(and(
+          eq(doctorOrders.facilityId, facilityId!),
+          eq(doctorOrders.patientId, patientId)
+        ));
+
+      // Get insurance cards
+      const cards = await db.select()
+        .from(insuranceCards)
+        .where(and(
+          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.patientId, patientId)
+        ));
+
+      // Get bonus calculations
+      const recordIds = records.map(r => r.id);
+      let bonusCalcs: any[] = [];
+
+      if (recordIds.length > 0) {
+        bonusCalcs = await db.select({
+          history: bonusCalculationHistory,
+          bonus: bonusMaster,
+        })
+          .from(bonusCalculationHistory)
+          .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+      }
+
+      const bonusCalculations = bonusCalcs.map(bc => ({
+        bonusMasterId: bc.bonus?.id || '',
+        bonusCode: bc.bonus?.bonusCode || '',
+        bonusName: bc.bonus?.bonusName || '',
+        calculatedPoints: bc.history.calculatedPoints,
+      }));
+
+      // Run validation
+      const validationResult = validateReceipt({
+        patientId,
+        targetYear,
+        targetMonth,
+        insuranceType,
+        nursingRecords: records.map(r => ({
+          id: r.id,
+          visitDate: r.visitDate,
+          actualStartTime: r.actualStartTime,
+          actualEndTime: r.actualEndTime,
+          emergencyVisitReason: r.emergencyVisitReason,
+          multipleVisitReason: r.multipleVisitReason,
+          isSecondVisit: r.isSecondVisit,
+        })),
+        patient: {
+          id: patient.id,
+          buildingId: patient.buildingId,
+          careLevel: patient.careLevel,
+        },
+        doctorOrders: orders.map(o => ({
+          id: o.id,
+          patientId: o.patientId,
+          startDate: o.startDate,
+          endDate: o.endDate,
+        })),
+        insuranceCards: cards.map(c => ({
+          id: c.id,
+          patientId: c.patientId,
+          cardType: c.cardType,
+          validFrom: c.validFrom,
+          validTo: c.validUntil,
+        })),
+        bonusCalculations,
+      });
+
+      // Detect missing bonuses
+      const missingSuggestions = detectMissingBonuses(
+        records.map(r => ({
+          id: r.id,
+          visitDate: r.visitDate,
+          actualStartTime: r.actualStartTime,
+          actualEndTime: r.actualEndTime,
+          emergencyVisitReason: r.emergencyVisitReason,
+          multipleVisitReason: r.multipleVisitReason,
+          isSecondVisit: r.isSecondVisit,
+        })),
+        {
+          id: patient.id,
+          buildingId: patient.buildingId,
+          careLevel: patient.careLevel,
+        },
+        bonusCalculations
+      );
+
+      // Update receipt with validation results
+      const hasErrors = validationResult.errors.length > 0;
+      const hasWarnings = validationResult.warnings.length > 0 || missingSuggestions.length > 0;
+
+      await db.update(monthlyReceipts)
+        .set({
+          hasErrors,
+          hasWarnings,
+          errorMessages: validationResult.errors.map(e => e.message),
+          warningMessages: [
+            ...validationResult.warnings.map(w => w.message),
+            ...missingSuggestions.map(s => s.message),
+          ],
+          updatedAt: new Date(),
+        })
+        .where(eq(monthlyReceipts.id, id));
+
+      res.json({
+        isValid: validationResult.isValid,
+        hasErrors,
+        hasWarnings,
+        errors: validationResult.errors,
+        warnings: validationResult.warnings,
+        missingSuggestions,
+      });
+    } catch (error) {
+      console.error("Validate receipt error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get bonus suggestions for a nursing record
+  app.get("/api/nursing-records/:id/bonus-suggestions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const facilityId = req.session.facilityId;
+
+      // Get nursing record
+      const recordData = await db.select({
+        record: nursingRecords,
+        patient: patients,
+      })
+        .from(nursingRecords)
+        .leftJoin(patients, eq(nursingRecords.patientId, patients.id))
+        .where(and(
+          eq(nursingRecords.id, id),
+          eq(nursingRecords.facilityId, facilityId!)
+        ))
+        .limit(1);
+
+      if (recordData.length === 0) {
+        return res.status(404).json({ error: "訪問記録が見つかりません" });
+      }
+
+      const record = recordData[0].record;
+      const patient = recordData[0].patient!;
+
+      // Get already applied bonuses
+      const appliedBonuses = await db.select({
+        history: bonusCalculationHistory,
+        bonus: bonusMaster,
+      })
+        .from(bonusCalculationHistory)
+        .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+        .where(eq(bonusCalculationHistory.nursingRecordId, id));
+
+      const bonusCalculations = appliedBonuses.map(ab => ({
+        bonusMasterId: ab.bonus?.id || '',
+        bonusCode: ab.bonus?.bonusCode || '',
+        bonusName: ab.bonus?.bonusName || '',
+        calculatedPoints: ab.history.calculatedPoints,
+      }));
+
+      // Detect missing bonuses
+      const suggestions = detectMissingBonuses(
+        [{
+          id: record.id,
+          visitDate: record.visitDate,
+          actualStartTime: record.actualStartTime,
+          actualEndTime: record.actualEndTime,
+          emergencyVisitReason: record.emergencyVisitReason,
+          multipleVisitReason: record.multipleVisitReason,
+          isSecondVisit: record.isSecondVisit,
+        }],
+        {
+          id: patient.id,
+          buildingId: patient.buildingId,
+          careLevel: patient.careLevel,
+        },
+        bonusCalculations
+      );
+
+      res.json({
+        suggestions,
+        appliedBonuses: bonusCalculations,
+      });
+    } catch (error) {
+      console.error("Get bonus suggestions error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // PDF生成エンドポイント
+  app.get("/api/monthly-receipts/:id/pdf", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // レセプト詳細データを取得
+      const [receipt] = await db.select()
+        .from(monthlyReceipts)
+        .where(eq(monthlyReceipts.id, id))
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id));
+
+      if (!receipt || !receipt.monthly_receipts) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      const receiptData = receipt.monthly_receipts;
+      const patientData = receipt.patients;
+
+      // 保険証情報を取得
+      const cardType = receiptData.insuranceType === 'care' ? 'long_term_care' : 'medical';
+      const insuranceCardsData = await db.select()
+        .from(insuranceCards)
+        .where(and(
+          eq(insuranceCards.patientId, receiptData.patientId),
+          eq(insuranceCards.cardType, cardType),
+          eq(insuranceCards.isActive, true)
+        ));
+
+      // 訪問看護指示書情報を取得
+      const doctorOrdersData = await db.select()
+        .from(doctorOrders)
+        .leftJoin(medicalInstitutions, eq(doctorOrders.medicalInstitutionId, medicalInstitutions.id))
+        .where(eq(doctorOrders.patientId, receiptData.patientId));
+
+      // 看護記録を取得（日付範囲を文字列で指定）
+      const startDate = `${receiptData.targetYear}-${String(receiptData.targetMonth).padStart(2, '0')}-01`;
+      const endYear = receiptData.targetMonth === 12 ? receiptData.targetYear + 1 : receiptData.targetYear;
+      const endMonth = receiptData.targetMonth === 12 ? 1 : receiptData.targetMonth + 1;
+      const endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
+
+      const records = await db.select()
+        .from(nursingRecords)
+        .leftJoin(users, eq(nursingRecords.nurseId, users.id))
+        .where(and(
+          eq(nursingRecords.patientId, receiptData.patientId),
+          gte(nursingRecords.visitDate, startDate),
+          lt(nursingRecords.visitDate, endDate)
+        ))
+        .orderBy(asc(nursingRecords.visitDate));
+
+      // 施設情報を取得（facilityIdはユーザーセッションから取得）
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "認証が必要です" });
+      }
+
+      const [userResult] = await db.select()
+        .from(users)
+        .leftJoin(facilities, eq(users.facilityId, facilities.id))
+        .where(eq(users.id, userId));
+
+      const facility = userResult?.facilities;
+      const facilityInfo = facility ? {
+        name: facility.name,
+        address: facility.address || '',
+        phone: facility.phone || '',
+        fax: '',
+      } : undefined;
+
+      // PDFデータ構造を構築
+      const bonusBreakdown = (receiptData.bonusBreakdown as any[]) || [];
+      const pdfData = {
+        id: receiptData.id.toString(),
+        targetYear: receiptData.targetYear,
+        targetMonth: receiptData.targetMonth,
+        insuranceType: receiptData.insuranceType,
+        visitCount: receiptData.visitCount,
+        totalVisitPoints: receiptData.totalVisitPoints,
+        specialManagementPoints: receiptData.specialManagementPoints || 0,
+        emergencyPoints: bonusBreakdown.find((b: any) => b.bonusCode?.includes('emergency'))?.points || 0,
+        longDurationPoints: bonusBreakdown.find((b: any) => b.bonusCode?.includes('long'))?.points || 0,
+        multipleVisitPoints: bonusBreakdown.find((b: any) => b.bonusCode?.includes('multiple'))?.points || 0,
+        sameBuildingReduction: bonusBreakdown.find((b: any) => b.bonusCode?.includes('same_building'))?.points || 0,
+        totalPoints: receiptData.totalPoints,
+        totalAmount: receiptData.totalAmount,
+        patient: {
+          patientNumber: patientData?.patientNumber || '',
+          lastName: patientData?.lastName || '',
+          firstName: patientData?.firstName || '',
+          dateOfBirth: patientData?.dateOfBirth || '',
+          gender: patientData?.gender || 'male',
+          address: patientData?.address || null,
+        },
+        insuranceCard: insuranceCardsData[0] ? {
+          cardType: insuranceCardsData[0].cardType,
+          insurerNumber: insuranceCardsData[0].insurerNumber || '',
+          insuredNumber: insuranceCardsData[0].insuredNumber || '',
+          validFrom: insuranceCardsData[0].validFrom,
+          validUntil: insuranceCardsData[0].validUntil || null,
+          copaymentRate: insuranceCardsData[0].copaymentRate,
+        } : null,
+        doctorOrder: doctorOrdersData[0]?.doctor_orders ? {
+          order: {
+            orderDate: doctorOrdersData[0].doctor_orders.orderDate,
+            diagnosis: doctorOrdersData[0].doctor_orders.diagnosis,
+            orderContent: doctorOrdersData[0].doctor_orders.orderContent,
+          },
+          medicalInstitution: doctorOrdersData[0].medical_institutions ? {
+            name: doctorOrdersData[0].medical_institutions.name,
+            doctorName: doctorOrdersData[0].medical_institutions.doctorName,
+          } : { name: '', doctorName: '' },
+        } : null,
+        relatedRecords: records.map(r => ({
+          visitDate: r.nursing_records.visitDate,
+          actualStartTime: r.nursing_records.actualStartTime || null,
+          actualEndTime: r.nursing_records.actualEndTime || null,
+          status: r.nursing_records.status,
+          observations: r.nursing_records.observations || '',
+          implementedCare: r.nursing_records.content || '',
+          nurse: r.users ? {
+            fullName: r.users.fullName,
+          } : null,
+        })),
+        bonusHistory: bonusBreakdown.map((item: any) => ({
+          bonus: {
+            bonusCode: item.bonusCode || '',
+            bonusName: item.bonusName || '',
+            bonusCategory: item.bonusCategory || '',
+          },
+          history: {
+            calculatedPoints: item.points || 0,
+            appliedAt: new Date().toISOString(),
+          },
+        })),
+      };
+
+      // PDFデータをJSONで返す（フロントエンドでPDF生成）
+      res.json({
+        pdfData,
+        facilityInfo,
+      });
+
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      res.status(500).json({ error: "PDF生成中にエラーが発生しました" });
     }
   });
 

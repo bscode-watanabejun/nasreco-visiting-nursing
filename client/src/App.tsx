@@ -32,6 +32,8 @@ import CareReportManagement from "@/components/CareReportManagement";
 import ContractManagement from "@/components/ContractManagement";
 import SpecialManagementSettings from "@/components/SpecialManagementSettings";
 import BonusMasterManagement from "@/components/BonusMasterManagement";
+import MonthlyReceiptsManagement from "@/components/MonthlyReceiptsManagement";
+import MonthlyReceiptDetail from "@/components/MonthlyReceiptDetail";
 import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
 import ComingSoon from "@/components/ComingSoon";
@@ -280,6 +282,8 @@ function MainLayout() {
                   <Route path="/contracts" component={ContractManagement} />
                   <Route path="/special-management-settings" component={SpecialManagementSettings} />
                   <Route path="/bonus-masters" component={BonusMasterManagement} />
+                  <Route path="/monthly-receipts" component={MonthlyReceiptsManagement} />
+                  <Route path="/monthly-receipts/:id" component={MonthlyReceiptDetail} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                   <Route path="/reports">
                     {() => <ComingSoon featureName="統合レポート機能" />}
@@ -308,6 +312,8 @@ function MainLayout() {
                   <Route path="/contracts" component={ContractManagement} />
                   <Route path="/special-management-settings" component={SpecialManagementSettings} />
                   <Route path="/bonus-masters" component={BonusMasterManagement} />
+                  <Route path="/monthly-receipts" component={MonthlyReceiptsManagement} />
+                  <Route path="/monthly-receipts/:id" component={MonthlyReceiptDetail} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                   <Route path="/reports">
                     {() => <ComingSoon featureName="レポート機能" />}

@@ -131,6 +131,56 @@ npm run db:push     # Drizzleでデータベーススキーマ変更をPostgreSQ
 - drizzle-zodでDrizzleテーブルからZodスキーマ生成
 - API入力の実行時バリデーション
 
+## ⚠️ よくあるエラーと対処法
+
+### shadcn/ui Selectコンポーネントの空文字列エラー
+
+**エラーメッセージ:**
+```
+A <Select.Item /> must have a value prop that is not an empty string.
+This is because the Select value can be set to an empty string to clear the selection and show the placeholder.
+```
+
+**原因:**
+Radix UIのSelectコンポーネントは、空文字列 `""` を値として使用できません。プレースホルダーとクリア機能のために空文字列が予約されているためです。
+
+**❌ 間違った実装:**
+```tsx
+<Select value={filter || ''} onValueChange={(v) => setFilter(v || null)}>
+  <SelectContent>
+    <SelectItem value="">すべて</SelectItem>  {/* ❌ エラー */}
+    <SelectItem value="option1">オプション1</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+**✅ 正しい実装:**
+```tsx
+// 状態を string 型で管理
+const [filter, setFilter] = useState<string>('all')
+
+<Select value={filter} onValueChange={setFilter}>
+  <SelectContent>
+    <SelectItem value="all">すべて</SelectItem>  {/* ✅ 正しい */}
+    <SelectItem value="option1">オプション1</SelectItem>
+  </SelectContent>
+</Select>
+
+// APIリクエスト時に 'all' を除外
+const params = new URLSearchParams()
+if (filter !== 'all') params.append("filter", filter)
+```
+
+**修正ポイント:**
+1. **状態管理**: `null` や空文字列ではなく、`"all"` などの有効な文字列を使用
+2. **SelectItem**: すべての選択肢に空でない値を設定
+3. **APIロジック**: `filter !== 'all'` で条件分岐してパラメータに含めるか判定
+
+**適用例:**
+- フィルター選択（年月、保険種別、ステータス等）
+- ドロップダウン選択（すべて/特定の値）
+- 任意選択項目（未選択状態を表現する場合）
+
 ## Git運用ルール
 
 **⚠️ 重要**: Gitコミットは**ユーザーの明示的な指示があるまで実行しない**

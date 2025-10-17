@@ -534,7 +534,7 @@ export default function BonusMasterManagement() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={bonus.insuranceType === "medical" ? "default" : "secondary"}>
+                        <Badge variant={bonus.insuranceType === "medical" ? "medical" : "care"}>
                           {getInsuranceTypeLabel(bonus.insuranceType)}
                         </Badge>
                       </TableCell>
@@ -550,7 +550,7 @@ export default function BonusMasterManagement() {
                       </TableCell>
                       <TableCell>
                         {bonus.isActive ? (
-                          <Badge variant="default">有効</Badge>
+                          <Badge variant="success">有効</Badge>
                         ) : (
                           <Badge variant="secondary">無効</Badge>
                         )}

@@ -212,13 +212,13 @@ export default function InsuranceCardManagement() {
                     >
                       <TableCell className="font-medium">{getPatientName(card)}</TableCell>
                       <TableCell>
-                        <Badge variant={card.cardType === "medical" ? "default" : "secondary"}>
+                        <Badge variant={card.cardType === "medical" ? "medical" : "care"}>
                           {card.cardType === "medical" ? "医療保険" : "介護保険"}
                         </Badge>
                       </TableCell>
                       <TableCell>{card.insurerNumber}</TableCell>
                       <TableCell>{card.insuredNumber}</TableCell>
-                      <TableCell>{card.copaymentRate ? `${card.copaymentRate}割` : "-"}</TableCell>
+                      <TableCell>{card.copaymentRate ? `${parseInt(card.copaymentRate) / 10}割` : "-"}</TableCell>
                       <TableCell>
                         {card.validUntil ? (
                           <div className="flex items-center gap-2">

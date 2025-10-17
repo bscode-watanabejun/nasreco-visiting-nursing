@@ -829,7 +829,7 @@ export function PatientDetail() {
                                 {card.copaymentRate && (
                                   <div>
                                     <p className="text-sm text-muted-foreground">負担割合</p>
-                                    <p className="font-medium">{card.copaymentRate}割</p>
+                                    <p className="font-medium">{parseInt(card.copaymentRate) / 10}割</p>
                                   </div>
                                 )}
                                 <div>

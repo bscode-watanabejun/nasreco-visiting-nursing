@@ -154,6 +154,12 @@ const facilityNavigationGroups: NavigationGroup[] = [
         icon: Calculator,
         badge: null,
       },
+      {
+        title: "月次レセプト管理",
+        href: "/monthly-receipts",
+        icon: FileText,
+        badge: null,
+      },
     ],
   },
   {
