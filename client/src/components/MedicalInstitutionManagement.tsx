@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Building2 } from "lucide-react";
 import type { MedicalInstitution } from "@shared/schema";
 
 export default function MedicalInstitutionManagement() {
@@ -44,8 +44,15 @@ export default function MedicalInstitutionManagement() {
   });
 
   // Fetch medical institutions
-  const { data: institutions = [], isLoading } = useQuery<MedicalInstitution[]>({
+  const { data: institutions = [], isLoading, error } = useQuery<MedicalInstitution[]>({
     queryKey: ["/api/medical-institutions"],
+    queryFn: async () => {
+      const response = await fetch("/api/medical-institutions")
+      if (!response.ok) {
+        throw new Error("医療機関データの取得に失敗しました")
+      }
+      return response.json()
+    },
   });
 
   // Create mutation
@@ -161,6 +168,17 @@ export default function MedicalInstitutionManagement() {
       deleteMutation.mutate(id);
     }
   };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Building2 className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">医療機関データの取得に失敗しました</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">

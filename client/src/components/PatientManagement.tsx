@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useLocation } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -69,6 +70,7 @@ const getStatusText = (status: string) => {
 
 export function PatientManagement() {
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'critical' | 'inactive'>('all')
   const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
@@ -81,7 +83,9 @@ export function PatientManagement() {
     queryFn: async () => {
       const response = await fetch("/api/patients")
       if (!response.ok) {
-        throw new Error("患者データの取得に失敗しました")
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || "患者データの取得に失敗しました"
+        throw new Error(errorMessage)
       }
       return response.json()
     },
@@ -121,7 +125,7 @@ export function PatientManagement() {
   }
 
   const handleViewDetail = (patient: Patient) => {
-    setLocation(`/patients/${patient.id}`)
+    setLocation(`${basePath}/patients/${patient.id}`)
   }
 
   const handleViewRecords = (patient: Patient) => {
@@ -153,7 +157,7 @@ export function PatientManagement() {
     return (
       <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
         <div className="flex items-center justify-center h-64">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             <User className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
             <p className="text-muted-foreground mb-2">患者データの取得に失敗しました</p>
             <p className="text-sm text-red-500">{error.message}</p>

@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Construction, ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
+import { useBasePath } from "@/hooks/useBasePath";
 
 interface ComingSoonProps {
   featureName: string;
@@ -10,6 +11,7 @@ interface ComingSoonProps {
 
 export default function ComingSoon({ featureName, description }: ComingSoonProps) {
   const [, setLocation] = useLocation();
+  const basePath = useBasePath();
 
   return (
     <div className="min-h-[calc(100vh-4rem)] w-full flex items-center justify-center bg-background p-4">
@@ -29,7 +31,7 @@ export default function ComingSoon({ featureName, description }: ComingSoonProps
         </CardHeader>
         <CardContent className="flex justify-center pb-6">
           <Button
-            onClick={() => setLocation("/")}
+            onClick={() => setLocation(basePath || "/")}
             className="w-full sm:w-auto"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />

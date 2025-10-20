@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useBasePath } from "@/hooks/useBasePath";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ interface NotificationPanelProps {
 
 export function NotificationPanel({ onClose }: NotificationPanelProps) {
   const [, setLocation] = useLocation();
+  const basePath = useBasePath();
 
   const { data, isLoading } = useQuery<NotificationData>({
     queryKey: ["/api/notifications/list"],
@@ -69,27 +71,27 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
   });
 
   const handleScheduleClick = (schedule: NotificationSchedule) => {
-    setLocation(`/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patient.id}`);
+    setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patient.id}`);
     onClose?.();
   };
 
   const handleDoctorOrderClick = (order: NotificationDoctorOrder) => {
-    setLocation(`/patients/${order.patient.id}`);
+    setLocation(`${basePath}/patients/${order.patient.id}`);
     onClose?.();
   };
 
   const handleInsuranceCardClick = (card: NotificationInsuranceCard) => {
-    setLocation(`/patients/${card.patient.id}`);
+    setLocation(`${basePath}/patients/${card.patient.id}`);
     onClose?.();
   };
 
   const handleViewAll = (section: 'schedules' | 'doctorOrders' | 'insuranceCards') => {
     if (section === 'schedules') {
-      setLocation('/schedules-without-records');
+      setLocation(`${basePath}/schedules-without-records`);
     } else if (section === 'doctorOrders') {
-      setLocation('/patients'); // TODO: 専用ページがあれば変更
+      setLocation(`${basePath}/patients`); // TODO: 専用ページがあれば変更
     } else {
-      setLocation('/insurance-cards');
+      setLocation(`${basePath}/insurance-cards`);
     }
     onClose?.();
   };

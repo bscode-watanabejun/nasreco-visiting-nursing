@@ -52,12 +52,14 @@ export default function MonthlyStatistics() {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
 
   // Fetch monthly statistics
-  const { data: stats, isLoading } = useQuery<MonthlyStatisticsResponse>({
+  const { data: stats, isLoading, error } = useQuery<MonthlyStatisticsResponse>({
     queryKey: ["/api/statistics/monthly", selectedYear, selectedMonth],
     queryFn: async () => {
-      const response = await fetch(`/api/statistics/monthly/${selectedYear}/${selectedMonth}`);
-      if (!response.ok) throw new Error("月次実績の取得に失敗しました");
-      return response.json();
+      const response = await fetch(`/api/statistics/monthly/${selectedYear}/${selectedMonth}`)
+      if (!response.ok) {
+        throw new Error("月次実績の取得に失敗しました")
+      }
+      return response.json()
     },
   });
 
@@ -107,6 +109,17 @@ export default function MonthlyStatistics() {
       totalPoints: data.totalPoints
     }));
   };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <TrendingUp className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">月次実績データの取得に失敗しました</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">

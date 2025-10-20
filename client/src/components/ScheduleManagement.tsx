@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -103,6 +104,7 @@ interface RecordActionButtonProps {
 
 function RecordActionButton({ schedule, variant = "default", size = "sm", showLabel = false, className = "" }: RecordActionButtonProps) {
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
 
   // Fetch nursing record for this schedule
   const { data: recordData, isLoading } = useQuery<{ hasRecord: boolean; record?: NursingRecord }>({
@@ -123,10 +125,10 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
   const handleClick = () => {
     if (hasRecord && recordId) {
       // Navigate to view/edit existing record
-      setLocation(`/records?recordId=${recordId}`)
+      setLocation(`${basePath}/records?recordId=${recordId}`)
     } else {
       // Navigate to create new record
-      setLocation(`/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}`)
+      setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}`)
     }
   }
 
@@ -165,6 +167,7 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
 export function ScheduleManagement() {
   const queryClient = useQueryClient()
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<'week' | 'day' | 'month'>('week')
   const [searchTerm, setSearchTerm] = useState('')
@@ -196,7 +199,7 @@ export function ScheduleManagement() {
   })
 
   // Fetch schedules
-  const { data: schedulesData, isLoading } = useQuery<PaginatedResult<Schedule>>({
+  const { data: schedulesData, isLoading, error: schedulesError } = useQuery<PaginatedResult<Schedule>>({
     queryKey: ["schedules", currentDate, viewMode],
     queryFn: async () => {
       let startDate: Date
@@ -222,7 +225,11 @@ export function ScheduleManagement() {
       const response = await fetch(
         `/api/schedules?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&limit=200`
       )
-      if (!response.ok) throw new Error("スケジュールデータの取得に失敗しました")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || "スケジュールデータの取得に失敗しました"
+        throw new Error(errorMessage)
+      }
       return response.json()
     },
   })
@@ -384,6 +391,21 @@ export function ScheduleManagement() {
   }
 
   const weekDates = viewMode === 'week' ? getWeekDates(currentDate) : [currentDate]
+
+  // Show error if schedules fetch failed
+  if (schedulesError) {
+    return (
+      <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center max-w-md">
+            <CalendarIcon className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+            <p className="text-muted-foreground mb-2">スケジュールデータの取得に失敗しました</p>
+            <p className="text-sm text-red-500">{schedulesError.message}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">

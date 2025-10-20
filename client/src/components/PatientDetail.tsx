@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams, useLocation } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -57,6 +58,7 @@ type PeriodFilter = '1week' | '1month' | '3months' | '6months' | 'all'
 export function PatientDetail() {
   const { id } = useParams()
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<string>("basic")
@@ -244,7 +246,7 @@ export function PatientDetail() {
           <Button
             variant="outline"
             className="mt-4"
-            onClick={() => setLocation("/patients")}
+            onClick={() => setLocation(`${basePath}/patients`)}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             一覧に戻る
@@ -265,7 +267,7 @@ export function PatientDetail() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLocation("/patients")}
+            onClick={() => setLocation(`${basePath}/patients`)}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             一覧に戻る

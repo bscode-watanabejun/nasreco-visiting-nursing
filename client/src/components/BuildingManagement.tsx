@@ -37,11 +37,13 @@ export default function BuildingManagement() {
   })
 
   // Fetch buildings
-  const { data: buildingsData = [], isLoading } = useQuery<BuildingType[]>({
+  const { data: buildingsData = [], isLoading, error } = useQuery<BuildingType[]>({
     queryKey: ["/api/buildings"],
     queryFn: async () => {
       const response = await fetch("/api/buildings")
-      if (!response.ok) throw new Error("建物データの取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("建物データの取得に失敗しました")
+      }
       return response.json()
     },
   })
@@ -185,6 +187,17 @@ export default function BuildingManagement() {
       return
     }
     deleteMutation.mutate(building.id)
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Building className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">建物データの取得に失敗しました</p>
+        </div>
+      </div>
+    )
   }
 
   return (

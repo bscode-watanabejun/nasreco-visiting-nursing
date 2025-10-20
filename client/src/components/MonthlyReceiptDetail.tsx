@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useRoute, useLocation } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -144,6 +145,7 @@ interface MonthlyReceiptDetail {
 export default function MonthlyReceiptDetail() {
   const [, params] = useRoute("/monthly-receipts/:id")
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
   const receiptId = params?.id
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -434,7 +436,7 @@ export default function MonthlyReceiptDetail() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setLocation("/monthly-receipts")}
+              onClick={() => setLocation(`${basePath}/monthly-receipts`)}
               className="gap-2"
             >
               <ArrowLeft className="w-4 h-4" />

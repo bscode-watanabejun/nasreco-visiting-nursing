@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +15,8 @@ import {
   Clock,
   CheckCircle,
   User,
-  Bell
+  Bell,
+  Home
 } from "lucide-react"
 import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
 
@@ -71,6 +73,7 @@ const getStatusText = (status: string) => {
 export function Dashboard() {
   const queryClient = useQueryClient()
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: 'long',
@@ -79,17 +82,17 @@ export function Dashboard() {
   })
 
   // Fetch today's schedules
-  const { data: schedulesData, isLoading: schedulesLoading } = useQuery<PaginatedResult<Schedule>>({
+  const { data: schedulesData, isLoading: schedulesLoading, error: schedulesError } = useQuery<PaginatedResult<Schedule>>({
     queryKey: ["todaySchedules"],
     queryFn: async () => {
       const today = new Date()
       const startOfDay = new Date(today.setHours(0, 0, 0, 0))
       const endOfDay = new Date(today.setHours(23, 59, 59, 999))
 
-      const response = await fetch(
-        `/api/schedules?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}&limit=100`
-      )
-      if (!response.ok) throw new Error("スケジュールデータの取得に失敗しました")
+      const response = await fetch(`/api/schedules?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}&limit=100`)
+      if (!response.ok) {
+        throw new Error("スケジュールデータの取得に失敗しました")
+      }
       return response.json()
     },
     staleTime: 0, // Always fetch fresh data on mount
@@ -97,27 +100,31 @@ export function Dashboard() {
   })
 
   // Fetch patients
-  const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
+  const { data: patientsData, error: patientsError } = useQuery<PaginatedResult<Patient>>({
     queryKey: ["patients"],
     queryFn: async () => {
       const response = await fetch("/api/patients")
-      if (!response.ok) throw new Error("患者データの取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("患者データの取得に失敗しました")
+      }
       return response.json()
     },
   })
 
   // Fetch users (nurses)
-  const { data: usersData } = useQuery<PaginatedResult<UserType>>({
+  const { data: usersData, error: usersError } = useQuery<PaginatedResult<UserType>>({
     queryKey: ["users"],
     queryFn: async () => {
       const response = await fetch("/api/users")
-      if (!response.ok) throw new Error("ユーザーデータの取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("ユーザーデータの取得に失敗しました")
+      }
       return response.json()
     },
   })
 
   // Fetch schedules without records (last 7 days)
-  const { data: schedulesWithoutRecords } = useQuery<any[]>({
+  const { data: schedulesWithoutRecords, error: schedulesWithoutRecordsError } = useQuery<any[]>({
     queryKey: ["/api/schedules/without-records"],
     queryFn: async () => {
       const today = new Date();
@@ -130,62 +137,90 @@ export function Dashboard() {
       });
 
       const response = await fetch(`/api/schedules/without-records?${params}`)
-      if (!response.ok) throw new Error("記録未作成スケジュールの取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("記録未作成スケジュールの取得に失敗しました")
+      }
       return response.json()
     },
   })
 
   // Fetch contracts expiring soon
-  const { data: contractsData } = useQuery<any[]>({
+  const { data: contractsData, error: contractsError } = useQuery<any[]>({
     queryKey: ["/api/contracts"],
     queryFn: async () => {
       const response = await fetch("/api/contracts")
-      if (!response.ok) throw new Error("契約書データの取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("契約書データの取得に失敗しました")
+      }
       return response.json()
     },
   })
 
   // Fetch expiring doctor orders (within 30 days)
-  const { data: expiringDoctorOrders } = useQuery<any[]>({
+  const { data: expiringDoctorOrders, error: expiringDoctorOrdersError } = useQuery<any[]>({
     queryKey: ["/api/doctor-orders/expiring"],
     queryFn: async () => {
       const response = await fetch("/api/doctor-orders/expiring")
-      if (!response.ok) throw new Error("期限切れ間近の訪問看護指示書の取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("期限切れ間近の訪問看護指示書の取得に失敗しました")
+      }
       return response.json()
     },
   })
 
   // Fetch expiring insurance cards (within 30 days)
-  const { data: expiringInsuranceCards } = useQuery<any[]>({
+  const { data: expiringInsuranceCards, error: expiringInsuranceCardsError } = useQuery<any[]>({
     queryKey: ["/api/insurance-cards/expiring"],
     queryFn: async () => {
       const response = await fetch("/api/insurance-cards/expiring")
-      if (!response.ok) throw new Error("期限切れ間近の保険証の取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("期限切れ間近の保険証の取得に失敗しました")
+      }
       return response.json()
     },
   })
 
   // Fetch recent nursing records
-  const { data: recentRecordsData } = useQuery<any[]>({
+  const { data: recentRecordsData, error: recentRecordsError } = useQuery<any[]>({
     queryKey: ["/api/nursing-records/recent"],
     queryFn: async () => {
       const response = await fetch("/api/nursing-records?limit=5&sortBy=recordDate&sortOrder=desc")
-      if (!response.ok) throw new Error("最近の記録の取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("最近の記録の取得に失敗しました")
+      }
       const result = await response.json()
       return result.data || []
     },
   })
 
   // Fetch critical patients
-  const { data: criticalPatientsData } = useQuery<Patient[]>({
+  const { data: criticalPatientsData, error: criticalPatientsError } = useQuery<Patient[]>({
     queryKey: ["/api/patients/critical"],
     queryFn: async () => {
       const response = await fetch("/api/patients?isCritical=true")
-      if (!response.ok) throw new Error("重要患者の取得に失敗しました")
+      if (!response.ok) {
+        throw new Error("重要患者の取得に失敗しました")
+      }
       const result = await response.json()
       return result.data || []
     },
   })
+
+  // Check for errors
+  const firstError = schedulesError || patientsError || usersError || schedulesWithoutRecordsError ||
+                     contractsError || expiringDoctorOrdersError || expiringInsuranceCardsError ||
+                     recentRecordsError || criticalPatientsError
+
+  if (firstError) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Home className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">ダッシュボードデータの取得に失敗しました</p>
+        </div>
+      </div>
+    )
+  }
 
   const schedules = schedulesData?.data || []
   const patients = patientsData?.data || []
@@ -254,12 +289,12 @@ export function Dashboard() {
 
   const handleCompleteVisit = (scheduleId: string) => {
     // Navigate to nursing records page with schedule ID
-    setLocation(`/records?mode=create&scheduleId=${scheduleId}`)
+    setLocation(`${basePath}/records?mode=create&scheduleId=${scheduleId}`)
   }
 
   const handleCreateNewRecord = () => {
     // Navigate to nursing records page for new record
-    setLocation('/records?mode=create')
+    setLocation(`${basePath}/records?mode=create`)
   }
 
   const completedVisits = visits.filter(v => v.status === 'completed').length
@@ -428,7 +463,7 @@ export function Dashboard() {
                   <div
                     key={order.id}
                     className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 sm:p-3 bg-white rounded border border-red-200 hover:bg-red-50 cursor-pointer transition-colors"
-                    onClick={() => setLocation(`/patients/${order.patientId}`)}
+                    onClick={() => setLocation(`${basePath}/patients/${order.patientId}`)}
                   >
                     <div className="min-w-0">
                       <p className="font-medium text-xs sm:text-sm truncate">利用者: {patientName}</p>
@@ -483,7 +518,7 @@ export function Dashboard() {
                   <div
                     key={card.id}
                     className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 sm:p-3 bg-white rounded border border-orange-200 hover:bg-orange-50 cursor-pointer transition-colors"
-                    onClick={() => setLocation(`/patients/${card.patientId}`)}
+                    onClick={() => setLocation(`${basePath}/patients/${card.patientId}`)}
                   >
                     <div className="min-w-0">
                       <p className="font-medium text-xs sm:text-sm truncate">利用者: {patientName}</p>
@@ -537,7 +572,7 @@ export function Dashboard() {
                   <div
                     key={contract.id}
                     className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 sm:p-3 bg-white rounded border border-yellow-200 hover:bg-yellow-50 cursor-pointer transition-colors"
-                    onClick={() => setLocation(`/contracts?patientId=${contract.patientId}`)}
+                    onClick={() => setLocation(`${basePath}/contracts?patientId=${contract.patientId}`)}
                   >
                     <div className="min-w-0">
                       <p className="font-medium text-xs sm:text-sm truncate">{contract.title}</p>
@@ -739,7 +774,7 @@ export function Dashboard() {
                     <div
                       key={patient.id}
                       className="flex items-start gap-3 p-3 border rounded-lg border-destructive/20 bg-destructive/5 hover:bg-destructive/10 cursor-pointer transition-colors"
-                      onClick={() => setLocation(`/patients/${patient.id}`)}
+                      onClick={() => setLocation(`${basePath}/patients/${patient.id}`)}
                     >
                       <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
                       <div className="min-w-0 flex-1">
@@ -789,7 +824,7 @@ export function Dashboard() {
                       <div
                         key={record.id}
                         className="flex items-center justify-between gap-3 p-3 border rounded-lg hover:bg-accent cursor-pointer transition-colors"
-                        onClick={() => setLocation(`/records?id=${record.id}`)}
+                        onClick={() => setLocation(`${basePath}/records?id=${record.id}`)}
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-sm sm:text-base truncate">{patientName}</p>

@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, ExternalLink, Download } from "lucide-react";
+import { Plus, Edit, Trash2, ExternalLink, Download, FileText } from "lucide-react";
 import type { Contract, Patient } from "@shared/schema";
 
 type ContractWithRelations = Contract & {
@@ -60,14 +60,18 @@ export default function ContractManagement() {
   });
 
   // Fetch contracts
-  const { data: contractsList, isLoading: loadingContracts } = useQuery<ContractWithRelations[]>({
+  const { data: contractsList, isLoading: loadingContracts, error: contractsError } = useQuery<ContractWithRelations[]>({
     queryKey: ["/api/contracts", selectedPatientId],
     queryFn: async () => {
       const url = selectedPatientId !== "all"
         ? `/api/contracts?patientId=${selectedPatientId}`
         : "/api/contracts";
       const response = await fetch(url);
-      if (!response.ok) throw new Error("契約書の取得に失敗しました");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || "契約書の取得に失敗しました";
+        throw new Error(errorMessage);
+      }
       return response.json();
     },
   });
@@ -278,6 +282,21 @@ export default function ContractManagement() {
     medical_consent: "医療行為同意書",
     other: "その他"
   };
+
+  // Show error if contracts fetch failed
+  if (contractsError) {
+    return (
+      <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center max-w-md">
+            <FileText className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+            <p className="text-muted-foreground mb-2">契約書データの取得に失敗しました</p>
+            <p className="text-sm text-red-500">{contractsError.message}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">

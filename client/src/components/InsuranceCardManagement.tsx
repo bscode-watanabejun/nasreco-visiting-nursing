@@ -37,8 +37,15 @@ export default function InsuranceCardManagement() {
   const queryClient = useQueryClient();
 
   // Fetch patients for dropdown
-  const { data: patientsData } = useQuery<{ data: Patient[] } | Patient[]>({
+  const { data: patientsData, error: patientsError } = useQuery<{ data: Patient[] } | Patient[]>({
     queryKey: ["/api/patients"],
+    queryFn: async () => {
+      const response = await fetch("/api/patients")
+      if (!response.ok) {
+        throw new Error("患者データの取得に失敗しました")
+      }
+      return response.json()
+    },
   });
 
   // Handle both array and paginated response formats
@@ -47,15 +54,17 @@ export default function InsuranceCardManagement() {
     : ((patientsData as { data: Patient[] })?.data || []);
 
   // Fetch insurance cards
-  const { data: cards = [], isLoading } = useQuery<InsuranceCardWithPatient[]>({
+  const { data: cards = [], isLoading, error: cardsError } = useQuery<InsuranceCardWithPatient[]>({
     queryKey: ["/api/insurance-cards", selectedPatientId],
     queryFn: async () => {
       const url = selectedPatientId && selectedPatientId !== "all"
         ? `/api/insurance-cards?patientId=${selectedPatientId}`
         : "/api/insurance-cards";
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("保険証の取得に失敗しました");
-      return response.json();
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error("保険証の取得に失敗しました")
+      }
+      return response.json()
     },
   });
 
@@ -132,6 +141,18 @@ export default function InsuranceCardManagement() {
     if (!card.validUntil) return true; // 無期限
     return new Date(card.validUntil) >= new Date();
   };
+
+  const firstError = patientsError || cardsError;
+  if (firstError) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <CreditCard className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">保険証データの取得に失敗しました</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">

@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, UserCog } from "lucide-react";
 import type { CareManager } from "@shared/schema";
 
 export default function CareManagerManagement() {
@@ -43,8 +43,15 @@ export default function CareManagerManagement() {
   });
 
   // Fetch care managers
-  const { data: managers = [], isLoading } = useQuery<CareManager[]>({
+  const { data: managers = [], isLoading, error } = useQuery<CareManager[]>({
     queryKey: ["/api/care-managers"],
+    queryFn: async () => {
+      const response = await fetch("/api/care-managers")
+      if (!response.ok) {
+        throw new Error("ケアマネージャーデータの取得に失敗しました")
+      }
+      return response.json()
+    },
   });
 
   // Create mutation
@@ -158,6 +165,17 @@ export default function CareManagerManagement() {
       deleteMutation.mutate(id);
     }
   };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <UserCog className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">ケアマネージャーデータの取得に失敗しました</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">

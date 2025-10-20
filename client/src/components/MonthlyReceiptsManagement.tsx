@@ -43,6 +43,7 @@ import {
   Printer
 } from "lucide-react"
 import { useLocation } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { pdf } from "@react-pdf/renderer"
 import { ReceiptPDF } from "@/components/ReceiptPDF"
 
@@ -72,6 +73,7 @@ export default function MonthlyReceiptsManagement() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [, setLocation] = useLocation()
+  const basePath = useBasePath()
 
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
@@ -550,7 +552,7 @@ export default function MonthlyReceiptsManagement() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setLocation(`/monthly-receipts/${receipt.id}`)}
+                                onClick={() => setLocation(`${basePath}/monthly-receipts/${receipt.id}`)}
                                 className="gap-1"
                               >
                                 <Eye className="w-3 h-3" />
@@ -582,7 +584,7 @@ export default function MonthlyReceiptsManagement() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setLocation(`/monthly-receipts/${receipt.id}`)}
+                                onClick={() => setLocation(`${basePath}/monthly-receipts/${receipt.id}`)}
                                 className="gap-1"
                               >
                                 <Eye className="w-3 h-3" />
