@@ -32,6 +32,7 @@ export const session = pgTable("session", {
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  slug: text("slug").notNull().unique(), // e.g., "tokai", "shakenfuku" - URL path segment
   domain: text("domain").notNull().unique(), // e.g., "nasreco.com"
   address: text("address"),
   phone: text("phone"),

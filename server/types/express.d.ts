@@ -1,9 +1,22 @@
-// Extend Express Request interface to include custom properties
-declare namespace Express {
-  interface Request {
-    subdomain?: string;
-    company?: any;
-    facility?: any;
-    isHeadquarters?: boolean;
+import "express";
+
+declare global {
+  namespace Express {
+    interface Request {
+      // Tenant context (from path-tenant middleware)
+      company?: any;
+      facility?: any;
+      isHeadquarters?: boolean;
+      companySlug?: string;
+      facilitySlug?: string;
+
+      // User context (from auth middleware)
+      user?: any;
+      accessibleFacilities?: string[];
+      isCorporateAdmin?: boolean;
+
+      // Legacy subdomain support
+      subdomain?: string;
+    }
   }
 }

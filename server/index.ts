@@ -4,7 +4,9 @@ import ConnectPgSimple from "connect-pg-simple";
 import { Client } from "pg";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { subdomainMiddleware } from "./middleware/subdomain";
+import { pathTenantMiddleware } from "./middleware/path-tenant";
+import { checkPathFacilityAccess, checkPathCompanyAccess } from "./middleware/path-security";
+import { requireAuth } from "./middleware/access-control";
 
 // Server initialization
 const app = express();
@@ -48,8 +50,43 @@ app.use(session({
   }
 }));
 
-// Subdomain resolution middleware (before CSRF and other middlewares)
-app.use(subdomainMiddleware);
+// Path-based tenant resolution middleware (before CSRF and other middlewares)
+app.use(pathTenantMiddleware);
+
+// Authentication middleware - populates req.user from session
+// Apply to all API routes EXCEPT authentication endpoints
+app.use('/api', async (req, res, next) => {
+  // Skip auth middleware for authentication endpoints
+  if (req.path === '/auth/login' ||
+      req.path === '/auth/logout' ||
+      req.path === '/auth/register' ||
+      req.path.startsWith('/auth/')) {
+    return next();
+  }
+
+  // Apply authentication middleware to populate req.user
+  await requireAuth(req, res, next);
+});
+
+// Path-based security checks (must come after authentication)
+// Apply to all API routes EXCEPT authentication endpoints
+app.use('/api', (req, res, next) => {
+  // Skip security checks for authentication endpoints
+  if (req.path === '/auth/login' ||
+      req.path === '/auth/logout' ||
+      req.path === '/auth/register' ||
+      req.path.startsWith('/auth/')) {
+    return next();
+  }
+
+  // Apply company access check first
+  checkPathCompanyAccess(req, res, (err) => {
+    if (err) return next(err);
+
+    // Then apply facility access check
+    checkPathFacilityAccess(req, res, next);
+  });
+});
 
 // Modern CSRF protection middleware
 app.use((req: Request, res: Response, next: NextFunction) => {

@@ -36,6 +36,7 @@ import {
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
 import { useQuery } from "@tanstack/react-query"
+import { useBasePath } from "@/hooks/useBasePath"
 
 type NavigationItem = {
   title: string;
@@ -116,6 +117,17 @@ const facilityNavigationGroups: NavigationGroup[] = [
     ],
   },
   {
+    label: "請求管理",
+    items: [
+      {
+        title: "月次レセプト管理",
+        href: "/monthly-receipts",
+        icon: FileText,
+        badge: null,
+      },
+    ],
+  },
+  {
     label: "マスタ管理",
     items: [
       {
@@ -152,12 +164,6 @@ const facilityNavigationGroups: NavigationGroup[] = [
         title: "加算マスタ管理",
         href: "/bonus-masters",
         icon: Calculator,
-        badge: null,
-      },
-      {
-        title: "月次レセプト管理",
-        href: "/monthly-receipts",
-        icon: FileText,
         badge: null,
       },
     ],
@@ -249,6 +255,7 @@ export function AppSidebar() {
   const isHeadquarters = useIsHeadquarters()
   const isUserBasedHeadquarters = useUserBasedHeadquarters()
   const { isMobile, setOpenMobile } = useSidebar()
+  const basePath = useBasePath()
 
   // Use user-based headquarters detection as the primary indicator
   const shouldShowHeadquartersMenu = isUserBasedHeadquarters || isHeadquarters
@@ -266,7 +273,8 @@ export function AppSidebar() {
   })
 
   const isActive = (href: string) => {
-    return location === href
+    const fullPath = basePath ? `${basePath}${href}` : href
+    return location === fullPath
   }
 
   // Close sidebar on mobile when a menu item is clicked
@@ -321,7 +329,7 @@ export function AppSidebar() {
                         isActive={active}
                         className="h-10"
                       >
-                        <Link href={item.href} onClick={handleLinkClick}>
+                        <Link href={basePath ? `${basePath}${item.href}` : item.href} onClick={handleLinkClick}>
                           <Icon className="h-4 w-4" />
                           <span>{item.title}</span>
                           {item.badge && (
@@ -360,7 +368,7 @@ export function AppSidebar() {
                             isActive={active}
                             className="h-10"
                           >
-                            <Link href={item.href} onClick={handleLinkClick}>
+                            <Link href={basePath ? `${basePath}${item.href}` : item.href} onClick={handleLinkClick}>
                               <Icon className="h-4 w-4" />
                               <span>{item.title}</span>
                               {badge && (
