@@ -20,17 +20,16 @@ import {
   Building2,
   Plus,
   Edit,
-  Trash2,
   ExternalLink,
   MapPin,
   Phone,
   Mail,
   Globe,
-  Users,
   Settings
 } from "lucide-react";
 import { facilityApi, type CreateFacilityRequest } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useToast } from "@/hooks/use-toast";
 import type { Facility } from "@shared/schema";
 
@@ -60,10 +59,13 @@ export function FacilityManagement() {
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { generateFacilityUrl } = useTenant();
+  const { data: currentUser } = useCurrentUser();
+
+  // Get company slug for URL preview
+  const companySlug = currentUser?.facility?.company?.slug;
 
   // Fetch facilities
-  const { data: facilities, isLoading, refetch } = useQuery({
+  const { data: facilities, isLoading, refetch, error } = useQuery({
     queryKey: ["facilities"],
     queryFn: facilityApi.getFacilities,
   });
@@ -166,8 +168,20 @@ export function FacilityManagement() {
   };
 
   const handleViewFacility = (slug: string) => {
-    const facilityUrl = generateFacilityUrl(slug);
-    window.open(facilityUrl, '_blank');
+    // Generate path-based URL: /companySlug/facilitySlug
+    const companySlug = currentUser?.facility?.company?.slug;
+
+    if (companySlug) {
+      const facilityUrl = `/${companySlug}/${slug}`;
+      console.log('[FacilityManagement] Opening facility URL:', facilityUrl);
+      window.open(facilityUrl, '_blank');
+    } else {
+      toast({
+        title: "エラー",
+        description: "企業情報が見つかりません",
+        variant: "destructive",
+      });
+    }
   };
 
   const resetForm = () => {
@@ -183,6 +197,17 @@ export function FacilityManagement() {
         </div>
       </div>
     );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Building2 className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">施設データの取得に失敗しました</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -209,6 +234,7 @@ export function FacilityManagement() {
             onInputChange={handleInputChange}
             onSubmit={handleCreateFacility}
             isSubmitting={isSubmitting}
+            companySlug={companySlug}
           />
         </Dialog>
       </div>
@@ -266,35 +292,25 @@ export function FacilityManagement() {
                   <div className="flex items-center gap-2 text-sm">
                     <Globe className="h-4 w-4 text-muted-foreground" />
                     <code className="text-xs bg-muted px-2 py-1 rounded">
-                      {facility.slug}.nasreco.com
+                      {companySlug && `/${companySlug}/${facility.slug}`}
                     </code>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex justify-between pt-4 border-t">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditFacility(facility)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewFacility(facility.slug)}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <div className="flex gap-2 pt-4 border-t">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      className="text-muted-foreground"
+                      onClick={() => handleEditFacility(facility)}
                     >
-                      <Users className="h-4 w-4 mr-1" />
-                      管理
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewFacility(facility.slug)}
+                    >
+                      <ExternalLink className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
@@ -328,6 +344,7 @@ export function FacilityManagement() {
           onSubmit={handleUpdateFacility}
           isSubmitting={isSubmitting}
           isEdit
+          companySlug={companySlug}
         />
       </Dialog>
     </div>
@@ -343,6 +360,7 @@ interface FacilityFormDialogProps {
   onSubmit: () => void;
   isSubmitting: boolean;
   isEdit?: boolean;
+  companySlug?: string;
 }
 
 function FacilityFormDialog({
@@ -353,6 +371,7 @@ function FacilityFormDialog({
   onSubmit,
   isSubmitting,
   isEdit = false,
+  companySlug,
 }: FacilityFormDialogProps) {
   return (
     <DialogContent className="sm:max-w-[500px]">
@@ -382,8 +401,12 @@ function FacilityFormDialog({
               placeholder="例: tokyo-honin"
               className="flex-1"
             />
-            <span className="text-sm text-muted-foreground">.nasreco.com</span>
           </div>
+          {companySlug && formData.slug && (
+            <p className="text-xs text-muted-foreground">
+              URL例: /{companySlug}/{formData.slug}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             英数字とハイフンのみ使用可能
           </p>

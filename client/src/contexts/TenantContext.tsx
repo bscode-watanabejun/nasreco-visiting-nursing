@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
 
 // Types for tenant information
 export interface Company {
   id: string;
   name: string;
+  slug: string;
   domain: string;
 }
 
@@ -86,6 +88,7 @@ const generateUrl = (subdomain: string): string => {
 };
 
 export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [location] = useLocation(); // Track current location
   const [tenantInfo, setTenantInfo] = useState<TenantInfo>({
     company: null,
     facility: null,
@@ -98,11 +101,37 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setTenantInfo(prev => ({ ...prev, isLoading: true }));
 
-      const subdomain = extractSubdomain();
+      // Path-based multi-tenancy: Extract company and facility from URL path
+      // URL format: /companySlug/facilitySlug/...
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
 
-      if (!subdomain) {
-        // No subdomain - let user role-based detection handle the facility assignment
-        // Don't default to headquarters automatically
+      const knownPages = [
+        'dashboard', 'patients', 'records', 'schedule', 'users', 'facilities',
+        'medical-institutions', 'care-managers', 'buildings', 'insurance-cards',
+        'statistics', 'care-plans', 'care-reports', 'contracts', 'special-management-settings',
+        'bonus-masters', 'monthly-receipts', 'schedules-without-records', 'reports', 'attendance', 'settings'
+      ];
+
+      let companySlug: string | null = null;
+      let facilitySlug: string | null = null;
+
+      if (pathParts.length > 0 && !knownPages.includes(pathParts[0])) {
+        companySlug = pathParts[0]; // e.g., "kansai"
+        if (pathParts.length > 1 && !knownPages.includes(pathParts[1])) {
+          facilitySlug = pathParts[1]; // e.g., "kobe-care"
+        }
+      }
+
+      // If no path-based tenant info, use subdomain fallback (for backward compatibility)
+      if (!companySlug && !facilitySlug) {
+        const subdomain = extractSubdomain();
+        if (subdomain) {
+          facilitySlug = subdomain;
+        }
+      }
+
+      if (!companySlug && !facilitySlug) {
+        // No tenant context - let user role-based detection handle the facility assignment
         setTenantInfo({
           company: null,
           facility: null,
@@ -113,34 +142,44 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
-      // Fetch tenant information from server
-      // In a real implementation, this would be an API call
-      // For now, we'll simulate the data structure
+      // Fetch tenant information from server API
+      // This should match the actual facility from the database
+      try {
+        console.log('[TenantContext] Fetching tenant info:', { companySlug, facilitySlug });
+        const response = await fetch(`/api/tenant-info?companySlug=${companySlug || ''}&facilitySlug=${facilitySlug || ''}`);
 
-      const isHeadquarters = subdomain === 'headquarters';
-
-      // Mock data - replace with actual API call
-      const mockCompany: Company = {
-        id: '1',
-        name: 'NASRECO株式会社',
-        domain: window.location.hostname.split('.').slice(1).join('.'),
-      };
-
-      const mockFacility: Facility = {
-        id: isHeadquarters ? 'hq-1' : `facility-${subdomain}`,
-        companyId: '1',
-        name: isHeadquarters ? '本社' : subdomain === 'tokyo-honin' ? '東京本院' : 'さくら訪問看護ステーション',
-        slug: subdomain,
-        isHeadquarters,
-      };
-
-      setTenantInfo({
-        company: mockCompany,
-        facility: mockFacility,
-        subdomain,
-        isHeadquarters,
-        isLoading: false,
-      });
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[TenantContext] Tenant info loaded:', data);
+          setTenantInfo({
+            company: data.company || null,
+            facility: data.facility || null,
+            subdomain: facilitySlug,
+            isHeadquarters: data.facility?.isHeadquarters || false,
+            isLoading: false,
+          });
+        } else {
+          console.warn('[TenantContext] Failed to fetch tenant info, status:', response.status);
+          // Fallback: No tenant info available
+          setTenantInfo({
+            company: null,
+            facility: null,
+            subdomain: facilitySlug,
+            isHeadquarters: false,
+            isLoading: false,
+          });
+        }
+      } catch (apiError) {
+        console.warn('[TenantContext] Failed to fetch tenant info from API, using fallback:', apiError);
+        // Fallback: No tenant info available
+        setTenantInfo({
+          company: null,
+          facility: null,
+          subdomain: facilitySlug,
+          isHeadquarters: false,
+          isLoading: false,
+        });
+      }
 
     } catch (error) {
       console.error('Failed to load tenant information:', error);
@@ -156,9 +195,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return generateUrl('headquarters');
   };
 
+  // Refresh tenant info whenever the location (URL path) changes
   useEffect(() => {
+    console.log('[TenantContext] Location changed to:', location);
     refreshTenantInfo();
-  }, []);
+  }, [location]); // Re-run when location changes
 
   // Listen for subdomain changes (e.g., during development)
   useEffect(() => {

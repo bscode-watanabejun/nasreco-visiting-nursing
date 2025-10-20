@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,13 +16,14 @@ import {
   Phone,
   Mail,
   ChevronRight,
-  Plus,
   Settings,
   BarChart3,
   Clock
 } from "lucide-react";
 import { facilityApi } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useBasePath } from "@/hooks/useBasePath";
 
 interface Facility {
   id: string;
@@ -50,10 +52,12 @@ interface FacilityStats {
 export function HeadquartersDashboard() {
   const [selectedTimeRange, setSelectedTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [selectedFacility, setSelectedFacility] = useState<string>('all');
-  const { company, generateFacilityUrl } = useTenant();
+  const { company } = useTenant();
+  const { data: currentUser } = useCurrentUser();
+  const basePath = useBasePath();
 
   // Fetch facilities data
-  const { data: facilities, isLoading: facilitiesLoading } = useQuery<Facility[]>({
+  const { data: facilities, isLoading: facilitiesLoading, error } = useQuery<Facility[]>({
     queryKey: ["facilities"],
     queryFn: facilityApi.getFacilities,
   });
@@ -83,9 +87,26 @@ export function HeadquartersDashboard() {
   );
 
   const handleFacilityClick = (slug: string) => {
-    const facilityUrl = generateFacilityUrl(slug);
-    window.open(facilityUrl, '_blank');
+    const companySlug = currentUser?.facility?.company?.slug;
+
+    if (companySlug) {
+      const facilityUrl = `/${companySlug}/${slug}`;
+      window.open(facilityUrl, '_blank');
+    } else {
+      console.error('Company slug not found');
+    }
   };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Building2 className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+          <p className="text-muted-foreground">施設データの取得に失敗しました</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 p-4 lg:p-6">
@@ -99,22 +120,16 @@ export function HeadquartersDashboard() {
             全施設の統合管理・監視システム
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Select value={selectedTimeRange} onValueChange={(value: '7d' | '30d' | '90d') => setSelectedTimeRange(value)}>
-            <SelectTrigger className="w-full sm:w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">過去7日間</SelectItem>
-              <SelectItem value="30d">過去30日間</SelectItem>
-              <SelectItem value="90d">過去90日間</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            新規施設
-          </Button>
-        </div>
+        <Select value={selectedTimeRange} onValueChange={(value: '7d' | '30d' | '90d') => setSelectedTimeRange(value)}>
+          <SelectTrigger className="w-full sm:w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7d">過去7日間</SelectItem>
+            <SelectItem value="30d">過去30日間</SelectItem>
+            <SelectItem value="90d">過去90日間</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Overall Statistics Cards */}
@@ -191,10 +206,12 @@ export function HeadquartersDashboard() {
                     各施設の運営状況とパフォーマンス
                   </CardDescription>
                 </div>
-                <Button variant="outline">
-                  <Settings className="h-4 w-4 mr-2" />
-                  施設設定
-                </Button>
+                <Link href={`${basePath}/facilities`}>
+                  <Button variant="outline">
+                    <Settings className="h-4 w-4 mr-2" />
+                    施設管理
+                  </Button>
+                </Link>
               </div>
             </CardHeader>
             <CardContent>

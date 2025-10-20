@@ -233,6 +233,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Get tenant information from URL path (for TenantContext)
+  // No authentication required - this is public tenant info based on URL
+  app.get("/api/tenant-info", async (req: Request, res: Response) => {
+    try {
+      const { companySlug, facilitySlug } = req.query;
+
+      if (!companySlug || !facilitySlug) {
+        return res.status(400).json({ error: "companySlug and facilitySlug are required" });
+      }
+
+      // Get company by slug
+      const company = await storage.getCompanyBySlug(companySlug as string);
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      // Get facility by slug
+      const facility = await storage.getFacilityBySlug(company.id, facilitySlug as string);
+      if (!facility) {
+        return res.status(404).json({ error: "Facility not found" });
+      }
+
+      // Return tenant information
+      res.json({
+        company: {
+          id: company.id,
+          name: company.name,
+          slug: company.slug,
+          domain: company.domain
+        },
+        facility: {
+          id: facility.id,
+          companyId: facility.companyId,
+          name: facility.name,
+          slug: facility.slug,
+          isHeadquarters: facility.isHeadquarters
+        }
+      });
+
+    } catch (error) {
+      console.error("Get tenant info error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Get current user
   app.get("/api/auth/me", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -248,11 +293,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get facility information
       const facility = await storage.getFacility(user.facilityId);
 
+      // Get company information if facility exists and construct response
+      let facilityData: any = null;
+      if (facility) {
+        const company = await storage.getCompany(facility.companyId);
+        facilityData = {
+          id: facility.id,
+          name: facility.name,
+          slug: facility.slug,
+          isHeadquarters: facility.isHeadquarters,
+          companyId: facility.companyId,
+          company: company ? {
+            id: company.id,
+            name: company.name,
+            slug: company.slug
+          } : null
+        };
+      }
+
       const { password: _, ...userWithoutPassword } = user;
       res.json({
         user: {
           ...userWithoutPassword,
-          facility: facility || null
+          facility: facilityData
         }
       });
 
@@ -634,44 +697,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
-      
+
       if (page < 1 || limit < 1) {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
-      const result = await storage.getUsersByFacilityPaginated(req.user.facilityId, { page, limit });
-      
+      // Determine which users to show based on URL context and user role
+      // - If accessing HQ URL: corporate_admin sees all company users, others see HQ facility users
+      // - If accessing facility URL: everyone sees only that facility's users
+      let result;
+
+      // Check if current URL context is a headquarters facility
+      const currentFacility = req.facility ? await storage.getFacility(req.facility.id) : null;
+      const isHeadquartersUrl = currentFacility?.isHeadquarters === true;
+
+      if (isHeadquartersUrl && req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate') {
+        // Corporate admin accessing HQ URL: show all company users
+        const userFacility = await storage.getFacility(req.user.facilityId);
+        if (!userFacility) {
+          return res.status(404).json({ error: "施設が見つかりません" });
+        }
+        result = await storage.getUsersByCompanyPaginated(userFacility.companyId, { page, limit });
+      } else if (req.facility) {
+        // Accessing specific facility URL: show only that facility's users
+        result = await storage.getUsersByFacilityPaginated(req.facility.id, { page, limit });
+      } else {
+        // Fallback to user's own facility
+        result = await storage.getUsersByFacilityPaginated(req.user.facilityId, { page, limit });
+      }
+
       // Remove passwords from response
       const usersWithoutPasswords = result.data.map(({ password, ...user }) => user);
-      
+
       res.json({
         data: usersWithoutPasswords,
         pagination: result.pagination
       });
-      
+
     } catch (error) {
       console.error("Get users error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
 
-  // Create user (admin or manager only)
+  // Create user (admin, manager, or corporate_admin)
   app.post("/api/users", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!['admin', 'manager'].includes(req.user.role)) {
+      if (!['admin', 'manager', 'corporate_admin'].includes(req.user.role)) {
         return res.status(403).json({ error: "権限がありません" });
       }
-      
+
       const userData = insertUserSchema.omit({ facilityId: true }).parse(req.body);
-      
+
       // Hash password
       const hashedPassword = await bcrypt.hash(userData.password, 10);
-      
-      // Set facility ID from current user
+
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
+      // Set facility ID for the new user
       const userToCreate = {
         ...userData,
         password: hashedPassword,
-        facilityId: req.user.facilityId
+        facilityId: targetFacilityId
       };
       
       const user = await storage.createUser(userToCreate);
@@ -694,24 +782,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!targetUser) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
-      
-      // Check multi-tenant access: target user must be in same facility
-      if (targetUser.facilityId !== req.user.facilityId) {
+
+      // Check multi-tenant access
+      // Corporate admins can update users in any facility within their company
+      // Others can only update users in their own facility or URL context facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      const isCorporateAdmin = req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate';
+
+      if (!isCorporateAdmin && targetUser.facilityId !== targetFacilityId) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
-      
+
       // Determine update permissions and validate data
       let validatedData;
-      
+
       if (req.user.id === id) {
         // Self-update: limited fields only
         validatedData = updateUserSelfSchema.parse(req.body);
-      } else if (['admin', 'manager'].includes(req.user.role)) {
-        // Admin/Manager updating other users in same facility
+      } else if (['admin', 'manager', 'corporate_admin'].includes(req.user.role)) {
+        // Admin/Manager/Corporate Admin updating other users
         validatedData = updateUserAdminSchema.parse(req.body);
-        
-        // Additional restriction: only admins can change roles
-        if (validatedData.role && req.user.role !== 'admin') {
+
+        // Additional restriction: only admins and corporate_admins can change roles
+        if (validatedData.role && !['admin', 'corporate_admin'].includes(req.user.role)) {
           return res.status(403).json({ error: "役職の変更は管理者のみ可能です" });
         }
       } else {
@@ -761,7 +854,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check facility access
-      if (targetUser.facilityId !== req.user.facilityId) {
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      const isCorporateAdmin = req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate';
+
+      if (!isCorporateAdmin && targetUser.facilityId !== targetFacilityId) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
 
@@ -811,7 +907,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check facility access
-      if (targetUser.facilityId !== req.user.facilityId) {
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      const isCorporateAdmin = req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate';
+
+      if (!isCorporateAdmin && targetUser.facilityId !== targetFacilityId) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
 
@@ -852,7 +951,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check facility access
-      if (targetUser.facilityId !== req.user.facilityId) {
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      const isCorporateAdmin = req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate';
+
+      if (!isCorporateAdmin && targetUser.facilityId !== targetFacilityId) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
 

@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { TenantProvider, useTenant, useIsHeadquarters } from "@/contexts/TenantContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters";
+import { usePathContext } from "@/hooks/useBasePath";
 
 // Import all main components
 import { Dashboard } from "@/components/Dashboard";
@@ -37,6 +38,7 @@ import MonthlyReceiptDetail from "@/components/MonthlyReceiptDetail";
 import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
 import ComingSoon from "@/components/ComingSoon";
+import { AccessDeniedPage } from "@/components/AccessDeniedPage";
 
 // Theme provider for dark/light mode
 function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -75,6 +77,7 @@ function MainLayout() {
   const isUserBasedHeadquarters = useUserBasedHeadquarters();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { basePath, companySlug, facilitySlug } = usePathContext();
 
   // Get current user information
   const { data: currentUser, isLoading: userLoading, error: userError } = useCurrentUser();
@@ -83,23 +86,102 @@ function MainLayout() {
   // Only evaluate after user data is loaded
   const shouldShowHeadquartersFeatures = currentUser ? (isUserBasedHeadquarters || isHeadquarters) : false;
 
-  // Get current facility name from user's facility information
-  const currentFacility = currentUser?.facility?.name || facility?.name || 'ステーション';
+  // Get current facility name - prioritize URL context (tenant) over user's assigned facility
+  const currentFacility = facility?.name || currentUser?.facility?.name || 'ステーション';
+
+  // Tenant access validation: Check if user has access to the current URL's facility
+  const hasTenantAccess = () => {
+    if (!currentUser || !currentUser.facility) return true; // Let authentication handle this
+
+    // Check if user is a corporate admin (based on actual user role, not UI context)
+    const isUserCorporateAdmin = currentUser.role === 'corporate_admin' &&
+                                  currentUser.accessLevel === 'corporate';
+
+    // Corporate admins can access all facilities in their company
+    if (isUserCorporateAdmin) {
+      // If URL has company slug, check if it matches user's company
+      if (companySlug && currentUser.facility.company) {
+        return companySlug === currentUser.facility.company.slug;
+      }
+      return true; // Allow access to routes without specific company slug
+    }
+
+    // Regular users can only access their own facility
+    if (facilitySlug && companySlug) {
+      const userFacilitySlug = currentUser.facility.slug;
+      const userCompanySlug = currentUser.facility.company?.slug;
+
+      // Check if URL facility matches user's facility
+      return facilitySlug === userFacilitySlug && companySlug === userCompanySlug;
+    }
+
+    // If no facility in URL, allow (will be redirected by useEffect below)
+    return true;
+  };
+
+  const handleReturnToMyFacility = () => {
+    if (currentUser?.facility?.company) {
+      const userCompanySlug = currentUser.facility.company.slug;
+      const userFacilitySlug = currentUser.facility.slug;
+      const redirectPath = `/${userCompanySlug}/${userFacilitySlug}`;
+      console.log('[App] Returning to user facility:', redirectPath);
+      window.location.pathname = redirectPath;
+    } else {
+      window.location.pathname = '/';
+    }
+  };
 
   // Set authentication state based on user data
   useEffect(() => {
     if (currentUser) {
       setIsAuthenticated(true);
-      // After login, ensure user is on the correct dashboard
+
+      // Redirect regular users from legacy routes to path-based routes
       const currentPath = window.location.pathname;
-      if (currentPath === '/' || currentPath === '/dashboard') {
-        // User is already on dashboard, no redirect needed
-        return;
+      const pathParts = currentPath.split('/').filter(Boolean);
+
+      // Extract slugs from current path
+      const knownPages = [
+        'dashboard', 'patients', 'records', 'schedule', 'users', 'facilities',
+        'medical-institutions', 'care-managers', 'buildings', 'insurance-cards',
+        'statistics', 'care-plans', 'care-reports', 'contracts', 'special-management-settings',
+        'bonus-masters', 'monthly-receipts', 'schedules-without-records', 'reports', 'attendance', 'settings'
+      ];
+
+      let currentCompanySlug = null;
+      let currentFacilitySlug = null;
+
+      if (pathParts.length > 0 && !knownPages.includes(pathParts[0])) {
+        currentCompanySlug = pathParts[0];
+        if (pathParts.length > 1 && !knownPages.includes(pathParts[1])) {
+          currentFacilitySlug = pathParts[1];
+        }
+      }
+
+      // If user is on legacy route (no tenant context in URL) and is NOT corporate admin at HQ
+      if (!currentCompanySlug && !currentFacilitySlug && currentUser.facility) {
+        const userFacility = currentUser.facility;
+
+        // Regular users MUST use path-based URLs
+        if (!isUserBasedHeadquarters) {
+          // Construct proper path-based URL from user's facility
+          const facilitySlug = userFacility.slug;
+          const companySlug = userFacility.company?.slug;
+
+          if (companySlug && facilitySlug) {
+            const targetPath = `/${companySlug}/${facilitySlug}${currentPath === '/' ? '' : currentPath}`;
+            console.log(`[App] Redirecting regular user from legacy route ${currentPath} to ${targetPath}`);
+
+            // Use replace instead of assign to avoid adding to browser history
+            window.location.replace(targetPath);
+            return;
+          }
+        }
       }
     } else if (userError && !userLoading) {
       setIsAuthenticated(false);
     }
-  }, [currentUser, userError, userLoading]);
+  }, [currentUser, userError, userLoading, isUserBasedHeadquarters]);
 
   // Get user role display string
   const getUserRoleDisplay = (user: any) => {
@@ -140,13 +222,8 @@ function MainLayout() {
         }
 
         // Invalidate user query to refetch user data after login
+        // The useEffect hook will handle the redirect based on currentUser update
         await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-
-        // Wait a bit for the query to refetch
-        setTimeout(() => {
-          // Redirect to dashboard
-          setLocation('/');
-        }, 100);
 
         setLoginError(undefined); // Clear error on success
         console.log('ログイン成功:', data);
@@ -237,6 +314,21 @@ function MainLayout() {
     );
   }
 
+  // Tenant access validation: Show dedicated 403 page if user doesn't have access
+  if (isAuthenticated && currentUser && !hasTenantAccess()) {
+    const requestedFacilityName = facility?.name;
+    const userFacilityName = currentUser.facility?.name;
+
+    return (
+      <AccessDeniedPage
+        message="この施設へのアクセス権限がありません"
+        userFacility={userFacilityName}
+        requestedFacility={requestedFacilityName}
+        onReturnToMyFacility={handleReturnToMyFacility}
+      />
+    );
+  }
+
   const style = {
     "--sidebar-width": "20rem",
     "--sidebar-width-icon": "4rem",
@@ -261,7 +353,44 @@ function MainLayout() {
           </header>
           <main className="flex-1 overflow-y-auto overflow-x-hidden">
             <Switch>
-              {/* Headquarters-specific routes */}
+              {/* Path-based multi-tenant routes: /:companySlug/:facilitySlug/* */}
+              <Route path="/:companySlug/:facilitySlug/dashboard" component={shouldShowHeadquartersFeatures ? HeadquartersDashboard : Dashboard} />
+              <Route path="/:companySlug/:facilitySlug/facilities" component={FacilityManagement} />
+              <Route path="/:companySlug/:facilitySlug/patients/:id" component={PatientDetail} />
+              <Route path="/:companySlug/:facilitySlug/patients" component={PatientManagement} />
+              <Route path="/:companySlug/:facilitySlug/records" component={NursingRecords} />
+              <Route path="/:companySlug/:facilitySlug/schedule" component={ScheduleManagement} />
+              <Route path="/:companySlug/:facilitySlug/users" component={UserManagement} />
+              <Route path="/:companySlug/:facilitySlug/medical-institutions" component={MedicalInstitutionManagement} />
+              <Route path="/:companySlug/:facilitySlug/care-managers" component={CareManagerManagement} />
+              <Route path="/:companySlug/:facilitySlug/buildings" component={BuildingManagement} />
+              <Route path="/:companySlug/:facilitySlug/insurance-cards" component={InsuranceCardManagement} />
+              <Route path="/:companySlug/:facilitySlug/statistics/monthly" component={MonthlyStatistics} />
+              <Route path="/:companySlug/:facilitySlug/care-plans" component={CarePlanManagement} />
+              <Route path="/:companySlug/:facilitySlug/care-reports" component={CareReportManagement} />
+              <Route path="/:companySlug/:facilitySlug/contracts" component={ContractManagement} />
+              <Route path="/:companySlug/:facilitySlug/special-management-settings" component={SpecialManagementSettings} />
+              <Route path="/:companySlug/:facilitySlug/bonus-masters" component={BonusMasterManagement} />
+              <Route path="/:companySlug/:facilitySlug/monthly-receipts/:id" component={MonthlyReceiptDetail} />
+              <Route path="/:companySlug/:facilitySlug/monthly-receipts" component={MonthlyReceiptsManagement} />
+              <Route path="/:companySlug/:facilitySlug/schedules-without-records" component={SchedulesWithoutRecords} />
+              <Route path="/:companySlug/:facilitySlug/reports">
+                {() => <ComingSoon featureName={shouldShowHeadquartersFeatures ? "統合レポート機能" : "レポート機能"} />}
+              </Route>
+              <Route path="/:companySlug/:facilitySlug/attendance">
+                {() => <ComingSoon featureName="出勤管理機能" />}
+              </Route>
+              <Route path="/:companySlug/:facilitySlug/settings">
+                {() => <ComingSoon featureName={shouldShowHeadquartersFeatures ? "システム設定機能" : "設定機能"} />}
+              </Route>
+              <Route path="/:companySlug/:facilitySlug" component={shouldShowHeadquartersFeatures ? HeadquartersDashboard : Dashboard} />
+
+              {/* Company-level routes (headquarters only): /:companySlug/* */}
+              <Route path="/:companySlug/dashboard" component={HeadquartersDashboard} />
+              <Route path="/:companySlug/facilities" component={FacilityManagement} />
+              <Route path="/:companySlug" component={HeadquartersDashboard} />
+
+              {/* Legacy routes (for backward compatibility) */}
               {shouldShowHeadquartersFeatures ? (
                 <>
                   <Route path="/" component={HeadquartersDashboard} />

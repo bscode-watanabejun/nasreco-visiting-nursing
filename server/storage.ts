@@ -20,6 +20,7 @@ export interface IStorage {
   // ========== Companies ==========
   getCompany(id: string): Promise<Company | undefined>;
   getCompanyByDomain(domain: string): Promise<Company | undefined>;
+  getCompanyBySlug(slug: string): Promise<Company | undefined>;
   getCompanies(): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
@@ -28,6 +29,7 @@ export interface IStorage {
   // ========== Facilities ==========
   getFacility(id: string): Promise<Facility | undefined>;
   getFacilityBySlug(companyId: string, slug: string): Promise<Facility | undefined>;
+  getHeadquartersFacility(companyId: string): Promise<Facility | undefined>;
   getFacilities(): Promise<Facility[]>;
   getFacilitiesByCompany(companyId: string): Promise<Facility[]>;
   createFacility(facility: InsertFacility & { companyId: string }): Promise<Facility>;
@@ -94,6 +96,7 @@ export interface IStorage {
 
   // ========== Paginated List Methods ==========
   getUsersByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<User>>;
+  getUsersByCompanyPaginated(companyId: string, options: PaginationOptions): Promise<PaginatedResult<User>>;
   getPatientsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Patient>>;
   getVisitsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
   getVisitsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
@@ -115,6 +118,11 @@ export class PostgreSQLStorage implements IStorage {
 
   async getCompanyByDomain(domain: string): Promise<Company | undefined> {
     const result = await db.select().from(companies).where(eq(companies.domain, domain)).limit(1);
+    return result[0];
+  }
+
+  async getCompanyBySlug(slug: string): Promise<Company | undefined> {
+    const result = await db.select().from(companies).where(eq(companies.slug, slug)).limit(1);
     return result[0];
   }
 
@@ -152,6 +160,15 @@ export class PostgreSQLStorage implements IStorage {
       .select()
       .from(facilities)
       .where(and(eq(facilities.companyId, companyId), eq(facilities.slug, slug)))
+      .limit(1);
+    return result[0];
+  }
+
+  async getHeadquartersFacility(companyId: string): Promise<Facility | undefined> {
+    const result = await db
+      .select()
+      .from(facilities)
+      .where(and(eq(facilities.companyId, companyId), eq(facilities.isHeadquarters, true)))
       .limit(1);
     return result[0];
   }
@@ -568,6 +585,47 @@ export class PostgreSQLStorage implements IStorage {
         .offset(offset),
       db.select({ count: count() }).from(users)
         .where(eq(users.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getUsersByCompanyPaginated(companyId: string, options: PaginationOptions): Promise<PaginatedResult<any>> {
+    const offset = (options.page - 1) * options.limit;
+
+    const [data, totalResult] = await Promise.all([
+      db.select({
+        id: users.id,
+        facilityId: users.facilityId,
+        username: users.username,
+        password: users.password,
+        email: users.email,
+        fullName: users.fullName,
+        role: users.role,
+        accessLevel: users.accessLevel,
+        licenseNumber: users.licenseNumber,
+        phone: users.phone,
+        isActive: users.isActive,
+        mustChangePassword: users.mustChangePassword,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        facility: {
+          id: facilities.id,
+          name: facilities.name,
+          slug: facilities.slug,
+          isHeadquarters: facilities.isHeadquarters,
+          companyId: facilities.companyId,
+        }
+      }).from(users)
+        .leftJoin(facilities, eq(users.facilityId, facilities.id))
+        .where(eq(facilities.companyId, companyId))
+        .orderBy(desc(users.createdAt))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(users)
+        .leftJoin(facilities, eq(users.facilityId, facilities.id))
+        .where(eq(facilities.companyId, companyId))
     ]);
 
     const total = Number(totalResult[0].count);

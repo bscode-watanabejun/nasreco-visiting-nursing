@@ -17,6 +17,11 @@ interface CurrentUser {
     slug: string;
     isHeadquarters: boolean;
     companyId: string;
+    company?: {
+      id: string;
+      name: string;
+      slug: string;
+    } | null;
   } | null;
   createdAt: string;
   updatedAt: string;

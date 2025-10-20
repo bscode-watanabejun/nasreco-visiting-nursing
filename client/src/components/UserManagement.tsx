@@ -42,6 +42,9 @@ import {
 } from "lucide-react"
 import { useUsersQuery, useCreateUserMutation, useUpdateUserMutation, useDeactivateUserMutation, useActivateUserMutation, useResetPasswordMutation } from '@/hooks/useUsers'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useQuery } from '@tanstack/react-query'
+import { facilityApi } from '@/lib/api'
+import { useUserBasedHeadquarters } from '@/hooks/useUserBasedHeadquarters'
 import type { User as ApiUser } from '@shared/schema'
 import type { CreateUserRequest, UpdateUserRequest } from '@/lib/api'
 
@@ -119,6 +122,7 @@ export function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'manager' | 'nurse' | 'corporate_admin'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [facilityFilter, setFacilityFilter] = useState<string>('all')
   const [selectedUser, setSelectedUser] = useState<DisplayUser | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [formData, setFormData] = useState<CreateUserRequest | UpdateUserRequest>({})
@@ -133,6 +137,15 @@ export function UserManagement() {
   // Fetch users data
   const { data: usersResponse, isLoading, error } = useUsersQuery(currentPage, 20)
   const { data: currentUser } = useCurrentUser()
+  const isUserBasedHeadquarters = useUserBasedHeadquarters()
+
+  // Fetch facilities list for headquarters users
+  const { data: facilities } = useQuery({
+    queryKey: ["facilities"],
+    queryFn: facilityApi.getFacilities,
+    enabled: isUserBasedHeadquarters, // Only fetch for headquarters users
+  })
+
   const createUserMutation = useCreateUserMutation()
   const updateUserMutation = useUpdateUserMutation()
   const deactivateUserMutation = useDeactivateUserMutation()
@@ -146,7 +159,8 @@ export function UserManagement() {
                          user.email.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesRole = roleFilter === 'all' || user.role === roleFilter
     const matchesStatus = statusFilter === 'all' || user.status === statusFilter
-    return matchesSearch && matchesRole && matchesStatus
+    const matchesFacility = facilityFilter === 'all' || user.facility === facilityFilter
+    return matchesSearch && matchesRole && matchesStatus && matchesFacility
   })
 
   const adminUsers = users.filter(u => u.role === 'admin').length
@@ -440,6 +454,22 @@ export function UserManagement() {
     )
   }
 
+  // Show error if users fetch failed
+  if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'ユーザーデータの取得に失敗しました';
+    return (
+      <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center max-w-md">
+            <User className="mx-auto h-12 w-12 mb-4 opacity-50 text-red-500" />
+            <p className="text-muted-foreground mb-2">ユーザーデータの取得に失敗しました</p>
+            <p className="text-sm text-red-500">{errorMessage}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 md:space-y-6 p-3 sm:p-4 md:p-6">
       {/* Header */}
@@ -515,6 +545,22 @@ export function UserManagement() {
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full">
+              {/* Facility Filter - Only show for headquarters */}
+              {isUserBasedHeadquarters && facilities && (
+                <Select value={facilityFilter} onValueChange={setFacilityFilter}>
+                  <SelectTrigger className="w-full sm:w-48">
+                    <SelectValue placeholder="施設" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全施設</SelectItem>
+                    {facilities.map((facility) => (
+                      <SelectItem key={facility.id} value={facility.name}>
+                        {facility.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={roleFilter} onValueChange={(value: any) => setRoleFilter(value)}>
                 <SelectTrigger className="w-full sm:w-40">
                   <SelectValue placeholder="役職" />
