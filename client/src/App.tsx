@@ -72,6 +72,7 @@ function MainLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState<string | undefined>(undefined);
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const { facility, company, isLoading: tenantLoading } = useTenant();
   const isHeadquarters = useIsHeadquarters();
   const isUserBasedHeadquarters = useUserBasedHeadquarters();
@@ -158,30 +159,30 @@ function MainLayout() {
         }
       }
 
-      // If user is on legacy route (no tenant context in URL) and is NOT corporate admin at HQ
+      // If user is on legacy route (no tenant context in URL), redirect to path-based URL
       if (!currentCompanySlug && !currentFacilitySlug && currentUser.facility) {
         const userFacility = currentUser.facility;
 
-        // Regular users MUST use path-based URLs
-        if (!isUserBasedHeadquarters) {
-          // Construct proper path-based URL from user's facility
-          const facilitySlug = userFacility.slug;
-          const companySlug = userFacility.company?.slug;
+        // All users (including corporate admins) MUST use path-based URLs
+        const facilitySlug = userFacility.slug;
+        const companySlug = userFacility.company?.slug;
 
-          if (companySlug && facilitySlug) {
-            const targetPath = `/${companySlug}/${facilitySlug}${currentPath === '/' ? '' : currentPath}`;
-            console.log(`[App] Redirecting regular user from legacy route ${currentPath} to ${targetPath}`);
+        if (companySlug && facilitySlug) {
+          const targetPath = `/${companySlug}/${facilitySlug}${currentPath === '/' ? '' : currentPath}`;
+          console.log(`[App] Redirecting user from legacy route ${currentPath} to ${targetPath}`);
 
-            // Use replace instead of assign to avoid adding to browser history
-            window.location.replace(targetPath);
-            return;
-          }
+          // Set redirecting state to show loading screen
+          setIsRedirecting(true);
+
+          // Use replace instead of assign to avoid adding to browser history
+          window.location.replace(targetPath);
+          return;
         }
       }
     } else if (userError && !userLoading) {
       setIsAuthenticated(false);
     }
-  }, [currentUser, userError, userLoading, isUserBasedHeadquarters]);
+  }, [currentUser, userError, userLoading]);
 
   // Get user role display string
   const getUserRoleDisplay = (user: any) => {
@@ -277,13 +278,15 @@ function MainLayout() {
     }
   };
 
-  // Show loading while tenant info or user info is being loaded
-  if (tenantLoading || (userLoading && !userError)) {
+  // Show loading while tenant info or user info is being loaded, or while redirecting
+  if (tenantLoading || (userLoading && !userError) || isRedirecting) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">システムを読み込んでいます...</p>
+          <p className="text-muted-foreground">
+            {isRedirecting ? '施設に移動しています...' : 'システムを読み込んでいます...'}
+          </p>
         </div>
       </div>
     );
