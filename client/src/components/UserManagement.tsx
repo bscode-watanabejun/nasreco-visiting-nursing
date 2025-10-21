@@ -45,6 +45,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useQuery } from '@tanstack/react-query'
 import { facilityApi } from '@/lib/api'
 import { useUserBasedHeadquarters } from '@/hooks/useUserBasedHeadquarters'
+import { useTenant } from '@/contexts/TenantContext'
 import type { User as ApiUser } from '@shared/schema'
 import type { CreateUserRequest, UpdateUserRequest } from '@/lib/api'
 
@@ -94,6 +95,7 @@ const getRoleColor = (role: string) => {
 
 const getRoleText = (role: string) => {
   switch (role) {
+    case 'corporate_admin': return 'Corporate Admin'
     case 'admin': return '管理者'
     case 'manager': return '主任'
     case 'nurse': return '看護師'
@@ -137,6 +139,7 @@ export function UserManagement() {
   // Fetch users data
   const { data: usersResponse, isLoading, error } = useUsersQuery(currentPage, 20)
   const { data: currentUser } = useCurrentUser()
+  const { facility: currentFacility, isHeadquarters } = useTenant()
   const isUserBasedHeadquarters = useUserBasedHeadquarters()
 
   // Fetch facilities list for headquarters users
@@ -175,7 +178,7 @@ export function UserManagement() {
       password: '',
       email: '',
       fullName: '',
-      role: 'nurse',
+      role: isHeadquarters ? 'corporate_admin' : 'nurse',
       phone: '',
       isActive: true
     })
@@ -385,34 +388,55 @@ export function UserManagement() {
                   <div>
                     <Label>役職 *</Label>
                     <Select
-                      value={formData.role || 'nurse'}
+                      value={formData.role || (isHeadquarters ? 'corporate_admin' : 'nurse')}
                       onValueChange={(value) => updateFormData('role', value)}
-                      disabled={!isCreating && selectedUser?.id === currentUser?.id}
+                      disabled={
+                        (!isCreating && selectedUser?.id === currentUser?.id) ||
+                        (isCreating && isHeadquarters) ||
+                        (!isCreating && selectedUser?.role === 'corporate_admin')
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="役職を選択" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="admin">管理者</SelectItem>
-                        <SelectItem value="manager">主任</SelectItem>
-                        <SelectItem value="nurse">看護師</SelectItem>
+                        {/* 新規登録時は現在のURLコンテキストで判定、編集時は編集対象ユーザーの役職で判定 */}
+                        {(isCreating ? isHeadquarters : selectedUser?.role === 'corporate_admin') ? (
+                          <SelectItem value="corporate_admin">Corporate Admin（本社管理者）</SelectItem>
+                        ) : (
+                          <>
+                            <SelectItem value="admin">管理者</SelectItem>
+                            <SelectItem value="manager">主任</SelectItem>
+                            <SelectItem value="nurse">看護師</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
+                    {isHeadquarters && isCreating && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ※ 本社システムでは、全社の統合管理・分析を行うCorporate Adminのみ登録できます
+                      </p>
+                    )}
+                    {!isCreating && selectedUser?.role === 'corporate_admin' && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ※ 本社ユーザーの役職は変更できません
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label>所属施設 *</Label>
-                    <Select value={selectedUser?.facility || currentUser?.facility?.name || 'ステーション'} disabled>
+                    <Select value={selectedUser?.facility || currentFacility?.name || currentUser?.facility?.name || 'ステーション'} disabled>
                       <SelectTrigger>
                         <SelectValue placeholder="施設を選択" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={selectedUser?.facility || currentUser?.facility?.name || 'ステーション'}>
-                          {selectedUser?.facility || currentUser?.facility?.name || 'ステーション'}
+                        <SelectItem value={selectedUser?.facility || currentFacility?.name || currentUser?.facility?.name || 'ステーション'}>
+                          {selectedUser?.facility || currentFacility?.name || currentUser?.facility?.name || 'ステーション'}
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground mt-1">
-                      現在の施設に自動設定されます
+                      アクセス中の施設に自動設定されます
                     </p>
                   </div>
                   <div>
@@ -567,6 +591,9 @@ export function UserManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全役職</SelectItem>
+                  {isHeadquarters && (
+                    <SelectItem value="corporate_admin">Corporate Admin</SelectItem>
+                  )}
                   <SelectItem value="admin">管理者</SelectItem>
                   <SelectItem value="manager">主任</SelectItem>
                   <SelectItem value="nurse">看護師</SelectItem>

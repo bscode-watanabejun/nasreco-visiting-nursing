@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams, useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
+import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -59,6 +60,7 @@ export function PatientDetail() {
   const { id } = useParams()
   const [, setLocation] = useLocation()
   const basePath = useBasePath()
+  const isHeadquarters = useIsHeadquarters()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<string>("basic")
@@ -320,14 +322,16 @@ export function PatientDetail() {
                   <CardTitle>基本情報</CardTitle>
                   <CardDescription>患者の基本的な情報</CardDescription>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsPatientFormOpen(true)}
-                >
-                  <Edit className="mr-2 h-4 w-4" />
-                  編集
-                </Button>
+                {!isHeadquarters && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsPatientFormOpen(true)}
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    編集
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -529,17 +533,19 @@ export function PatientDetail() {
                   </CardTitle>
                   <CardDescription>主治医からの訪問看護指示書</CardDescription>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditingOrder(null)
-                    setOrderDialogOpen(true)
-                  }}
-                >
-                  <FilePlus className="mr-2 h-4 w-4" />
-                  新規登録
-                </Button>
+                {!isHeadquarters && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingOrder(null)
+                      setOrderDialogOpen(true)
+                    }}
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    新規登録
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -687,48 +693,50 @@ export function PatientDetail() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingOrder(order)
-                                  setOrderDialogOpen(true)
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  if (!confirm('この訪問看護指示書を削除してもよろしいですか？')) return
+                            {!isHeadquarters && (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingOrder(order)
+                                    setOrderDialogOpen(true)
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    if (!confirm('この訪問看護指示書を削除してもよろしいですか？')) return
 
-                                  try {
-                                    const response = await fetch(`/api/doctor-orders/${order.id}`, {
-                                      method: 'DELETE'
-                                    })
-                                    if (!response.ok) throw new Error('削除に失敗しました')
+                                    try {
+                                      const response = await fetch(`/api/doctor-orders/${order.id}`, {
+                                        method: 'DELETE'
+                                      })
+                                      if (!response.ok) throw new Error('削除に失敗しました')
 
-                                    toast({
-                                      title: "削除完了",
-                                      description: "訪問看護指示書を削除しました"
-                                    })
+                                      toast({
+                                        title: "削除完了",
+                                        description: "訪問看護指示書を削除しました"
+                                      })
 
-                                    // Refresh data
-                                    window.location.reload()
-                                  } catch (error) {
-                                    toast({
-                                      title: "エラー",
-                                      description: "削除中にエラーが発生しました",
-                                      variant: "destructive"
-                                    })
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                                      // Refresh data
+                                      window.location.reload()
+                                    } catch (error) {
+                                      toast({
+                                        title: "エラー",
+                                        description: "削除中にエラーが発生しました",
+                                        variant: "destructive"
+                                      })
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -749,17 +757,19 @@ export function PatientDetail() {
                   </CardTitle>
                   <CardDescription>医療保険・介護保険証の情報</CardDescription>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditingCard(null)
-                    setCardDialogOpen(true)
-                  }}
-                >
-                  <FilePlus className="mr-2 h-4 w-4" />
-                  新規登録
-                </Button>
+                {!isHeadquarters && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingCard(null)
+                      setCardDialogOpen(true)
+                    }}
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    新規登録
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -900,44 +910,46 @@ export function PatientDetail() {
                                 )}
                               </div>
                             </div>
-                            <div className="flex flex-col gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingCard(card)
-                                  setCardDialogOpen(true)
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={async () => {
-                                  if (!confirm('この保険証情報を削除してもよろしいですか？')) return
-                                  try {
-                                    const response = await fetch(`/api/insurance-cards/${card.id}`, {
-                                      method: 'DELETE',
-                                    })
-                                    if (!response.ok) throw new Error('削除に失敗しました')
-                                    toast({
-                                      title: "削除完了",
-                                      description: "保険証情報を削除しました",
-                                    })
-                                    window.location.reload()
-                                  } catch (error) {
-                                    toast({
-                                      title: "エラー",
-                                      description: "削除中にエラーが発生しました",
-                                      variant: "destructive",
-                                    })
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            {!isHeadquarters && (
+                              <div className="flex flex-col gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingCard(card)
+                                    setCardDialogOpen(true)
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={async () => {
+                                    if (!confirm('この保険証情報を削除してもよろしいですか？')) return
+                                    try {
+                                      const response = await fetch(`/api/insurance-cards/${card.id}`, {
+                                        method: 'DELETE',
+                                      })
+                                      if (!response.ok) throw new Error('削除に失敗しました')
+                                      toast({
+                                        title: "削除完了",
+                                        description: "保険証情報を削除しました",
+                                      })
+                                      window.location.reload()
+                                    } catch (error) {
+                                      toast({
+                                        title: "エラー",
+                                        description: "削除中にエラーが発生しました",
+                                        variant: "destructive",
+                                      })
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -1295,16 +1307,18 @@ export function PatientDetail() {
                   <CardTitle>居宅サービス計画書（ケアプラン）</CardTitle>
                   <CardDescription>ケアマネージャーが作成する総合的な介護計画</CardDescription>
                 </div>
-                <Button
-                  onClick={() => {
-                    setEditingServiceCarePlan(null)
-                    setServiceCarePlanDialogOpen(true)
-                  }}
-                  size="sm"
-                >
-                  <FilePlus className="mr-2 h-4 w-4" />
-                  新規作成
-                </Button>
+                {!isHeadquarters && (
+                  <Button
+                    onClick={() => {
+                      setEditingServiceCarePlan(null)
+                      setServiceCarePlanDialogOpen(true)
+                    }}
+                    size="sm"
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    新規作成
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -1366,37 +1380,39 @@ export function PatientDetail() {
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setEditingServiceCarePlan(plan)
-                              setServiceCarePlanDialogOpen(true)
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={async () => {
-                              if (!confirm('この居宅サービス計画書を削除してもよろしいですか？')) return
-                              try {
-                                const response = await fetch(`/api/service-care-plans/${plan.id}`, {
-                                  method: 'DELETE',
-                                })
-                                if (!response.ok) throw new Error('削除に失敗しました')
-                                toast({ description: "居宅サービス計画書を削除しました" })
-                                queryClient.invalidateQueries({ queryKey: ["/api/service-care-plans", id] })
-                              } catch (error) {
-                                toast({ variant: "destructive", description: "削除に失敗しました" })
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        {!isHeadquarters && (
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setEditingServiceCarePlan(plan)
+                                setServiceCarePlanDialogOpen(true)
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={async () => {
+                                if (!confirm('この居宅サービス計画書を削除してもよろしいですか？')) return
+                                try {
+                                  const response = await fetch(`/api/service-care-plans/${plan.id}`, {
+                                    method: 'DELETE',
+                                  })
+                                  if (!response.ok) throw new Error('削除に失敗しました')
+                                  toast({ description: "居宅サービス計画書を削除しました" })
+                                  queryClient.invalidateQueries({ queryKey: ["/api/service-care-plans", id] })
+                                } catch (error) {
+                                  toast({ variant: "destructive", description: "削除に失敗しました" })
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1413,16 +1429,18 @@ export function PatientDetail() {
                   <CardTitle>訪問看護計画書</CardTitle>
                   <CardDescription>訪問看護ステーションが作成する看護計画</CardDescription>
                 </div>
-                <Button
-                  onClick={() => {
-                    setEditingCarePlan(null)
-                    setCarePlanDialogOpen(true)
-                  }}
-                  size="sm"
-                >
-                  <FilePlus className="mr-2 h-4 w-4" />
-                  新規作成
-                </Button>
+                {!isHeadquarters && (
+                  <Button
+                    onClick={() => {
+                      setEditingCarePlan(null)
+                      setCarePlanDialogOpen(true)
+                    }}
+                    size="sm"
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    新規作成
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -1479,37 +1497,39 @@ export function PatientDetail() {
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setEditingCarePlan(plan)
-                              setCarePlanDialogOpen(true)
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={async () => {
-                              if (!confirm('この訪問看護計画書を削除してもよろしいですか？')) return
-                              try {
-                                const response = await fetch(`/api/care-plans/${plan.id}`, {
-                                  method: 'DELETE',
-                                })
-                                if (!response.ok) throw new Error('削除に失敗しました')
-                                toast({ description: "訪問看護計画書を削除しました" })
-                                queryClient.invalidateQueries({ queryKey: ["/api/care-plans", id] })
-                              } catch (error) {
-                                toast({ variant: "destructive", description: "削除に失敗しました" })
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        {!isHeadquarters && (
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setEditingCarePlan(plan)
+                                setCarePlanDialogOpen(true)
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={async () => {
+                                if (!confirm('この訪問看護計画書を削除してもよろしいですか？')) return
+                                try {
+                                  const response = await fetch(`/api/care-plans/${plan.id}`, {
+                                    method: 'DELETE',
+                                  })
+                                  if (!response.ok) throw new Error('削除に失敗しました')
+                                  toast({ description: "訪問看護計画書を削除しました" })
+                                  queryClient.invalidateQueries({ queryKey: ["/api/care-plans", id] })
+                                } catch (error) {
+                                  toast({ variant: "destructive", description: "削除に失敗しました" })
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

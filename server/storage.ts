@@ -97,6 +97,7 @@ export interface IStorage {
   getUsersByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<User>>;
   getUsersByCompanyPaginated(companyId: string, options: PaginationOptions): Promise<PaginatedResult<User>>;
   getPatientsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Patient>>;
+  getPatientsByCompanyPaginated(companyId: string, options: PaginationOptions): Promise<PaginatedResult<Patient>>;
   getVisitsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
   getVisitsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
   getVisitsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Visit>>;
@@ -628,7 +629,7 @@ export class PostgreSQLStorage implements IStorage {
 
   async getPatientsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Patient>> {
     const offset = (options.page - 1) * options.limit;
-    
+
     const [data, totalResult] = await Promise.all([
       db.select().from(patients)
         .where(eq(patients.facilityId, facilityId))
@@ -637,6 +638,51 @@ export class PostgreSQLStorage implements IStorage {
         .offset(offset),
       db.select({ count: count() }).from(patients)
         .where(eq(patients.facilityId, facilityId))
+    ]);
+
+    const total = Number(totalResult[0].count);
+    return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async getPatientsByCompanyPaginated(companyId: string, options: PaginationOptions): Promise<PaginatedResult<any>> {
+    const offset = (options.page - 1) * options.limit;
+
+    const [data, totalResult] = await Promise.all([
+      db.select({
+        id: patients.id,
+        facilityId: patients.facilityId,
+        patientNumber: patients.patientNumber,
+        lastName: patients.lastName,
+        firstName: patients.firstName,
+        dateOfBirth: patients.dateOfBirth,
+        gender: patients.gender,
+        address: patients.address,
+        phone: patients.phone,
+        emergencyContact: patients.emergencyContact,
+        emergencyPhone: patients.emergencyPhone,
+        medicalHistory: patients.medicalHistory,
+        allergies: patients.allergies,
+        currentMedications: patients.currentMedications,
+        insuranceNumber: patients.insuranceNumber,
+        careNotes: patients.careNotes,
+        isActive: patients.isActive,
+        isCritical: patients.isCritical,
+        createdAt: patients.createdAt,
+        updatedAt: patients.updatedAt,
+        facility: {
+          id: facilities.id,
+          name: facilities.name,
+          slug: facilities.slug,
+        }
+      }).from(patients)
+        .leftJoin(facilities, eq(patients.facilityId, facilities.id))
+        .where(eq(facilities.companyId, companyId))
+        .orderBy(desc(patients.createdAt))
+        .limit(options.limit)
+        .offset(offset),
+      db.select({ count: count() }).from(patients)
+        .leftJoin(facilities, eq(patients.facilityId, facilities.id))
+        .where(eq(facilities.companyId, companyId))
     ]);
 
     const total = Number(totalResult[0].count);

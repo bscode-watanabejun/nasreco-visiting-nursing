@@ -41,7 +41,8 @@
       "Bash(git push -u origin feature/path-based-multitenancy)",
       "Bash(git fetch origin)",
       "Bash(then npx drizzle-kit push)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(node -e:*)"
     ],
     "deny": [],
     "ask": []

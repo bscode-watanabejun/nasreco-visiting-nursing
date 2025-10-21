@@ -1097,11 +1097,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Determine facility ID: use URL context facility if available, otherwise user's facility
       const targetFacilityId = req.facility?.id || req.user.facilityId;
 
-      // Set facility ID for the new user
+      // Automatically set accessLevel to 'corporate' for corporate_admin role
+      const accessLevel: 'facility' | 'corporate' = userData.role === 'corporate_admin' ? 'corporate' : 'facility';
+
+      // Set facility ID and access level for the new user
       const userToCreate = {
         ...userData,
         password: hashedPassword,
-        facilityId: targetFacilityId
+        facilityId: targetFacilityId,
+        accessLevel: accessLevel
       };
       
       const user = await storage.createUser(userToCreate);
@@ -1158,8 +1162,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (validatedData.password) {
         validatedData.password = await bcrypt.hash(validatedData.password, 10);
       }
-      
-      const user = await storage.updateUser(id, validatedData);
+
+      // Automatically set accessLevel to 'corporate' if role is changed to corporate_admin
+      const dataToUpdate: any = { ...validatedData };
+      if ('role' in dataToUpdate) {
+        if (dataToUpdate.role === 'corporate_admin') {
+          dataToUpdate.accessLevel = 'corporate';
+        } else if (dataToUpdate.role && dataToUpdate.role !== 'corporate_admin') {
+          // If role is changed from corporate_admin to something else, set accessLevel to 'facility'
+          dataToUpdate.accessLevel = 'facility';
+        }
+      }
+
+      const user = await storage.updateUser(id, dataToUpdate);
       if (!user) {
         return res.status(404).json({ error: "ユーザーが見つかりません" });
       }
@@ -1389,37 +1404,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
-      // Determine facility ID: use URL context facility if available, otherwise user's facility
-      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      // Determine which patients to show based on URL context and user role
+      // - If accessing HQ URL: corporate_admin sees all company patients, others see HQ facility patients
+      // - If accessing facility URL: everyone sees only that facility's patients
+      let result;
+
+      // Check if current URL context is a headquarters facility
+      const currentFacility = req.facility ? await storage.getFacility(req.facility.id) : null;
+      const isHeadquartersUrl = currentFacility?.isHeadquarters === true;
 
       // Check for isCritical filter
       const isCritical = req.query.isCritical === 'true';
 
-      if (isCritical) {
-        // Get only critical patients without pagination
-        const criticalPatients = await db.query.patients.findMany({
-          where: and(
-            eq(patients.facilityId, targetFacilityId),
-            eq(patients.isCritical, true),
-            eq(patients.isActive, true)
-          ),
-          orderBy: [desc(patients.updatedAt)],
-        });
+      if (isHeadquartersUrl && req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate') {
+        // Corporate admin accessing HQ URL: show all company patients
+        const userFacility = await storage.getFacility(req.user.facilityId);
+        if (!userFacility) {
+          return res.status(404).json({ error: "施設が見つかりません" });
+        }
 
-        res.json({
-          data: criticalPatients,
-          pagination: {
-            page: 1,
-            limit: criticalPatients.length,
-            total: criticalPatients.length,
-            totalPages: 1,
-            hasNext: false,
-            hasPrev: false,
-          }
-        });
+        if (isCritical) {
+          // Get all company critical patients
+          const criticalPatients = await db.query.patients.findMany({
+            where: and(
+              eq(patients.isCritical, true),
+              eq(patients.isActive, true)
+            ),
+            orderBy: [desc(patients.updatedAt)],
+          });
+
+          // Filter by company
+          const facilitiesInCompany = await db.query.facilities.findMany({
+            where: eq(facilities.companyId, userFacility.companyId)
+          });
+          const facilityIds = facilitiesInCompany.map(f => f.id);
+          const companyCriticalPatients = criticalPatients.filter(p => facilityIds.includes(p.facilityId));
+
+          res.json({
+            data: companyCriticalPatients,
+            pagination: {
+              page: 1,
+              limit: companyCriticalPatients.length,
+              total: companyCriticalPatients.length,
+              totalPages: 1,
+              hasNext: false,
+              hasPrev: false,
+            }
+          });
+        } else {
+          result = await storage.getPatientsByCompanyPaginated(userFacility.companyId, { page, limit });
+          res.json(result);
+        }
+      } else if (req.facility) {
+        // Accessing specific facility URL: show only that facility's patients
+        if (isCritical) {
+          const criticalPatients = await db.query.patients.findMany({
+            where: and(
+              eq(patients.facilityId, req.facility.id),
+              eq(patients.isCritical, true),
+              eq(patients.isActive, true)
+            ),
+            orderBy: [desc(patients.updatedAt)],
+          });
+
+          res.json({
+            data: criticalPatients,
+            pagination: {
+              page: 1,
+              limit: criticalPatients.length,
+              total: criticalPatients.length,
+              totalPages: 1,
+              hasNext: false,
+              hasPrev: false,
+            }
+          });
+        } else {
+          result = await storage.getPatientsByFacilityPaginated(req.facility.id, { page, limit });
+          res.json(result);
+        }
       } else {
-        const result = await storage.getPatientsByFacilityPaginated(targetFacilityId, { page, limit });
-        res.json(result);
+        // Fallback to user's own facility
+        const targetFacilityId = req.user.facilityId;
+
+        if (isCritical) {
+          const criticalPatients = await db.query.patients.findMany({
+            where: and(
+              eq(patients.facilityId, targetFacilityId),
+              eq(patients.isCritical, true),
+              eq(patients.isActive, true)
+            ),
+            orderBy: [desc(patients.updatedAt)],
+          });
+
+          res.json({
+            data: criticalPatients,
+            pagination: {
+              page: 1,
+              limit: criticalPatients.length,
+              total: criticalPatients.length,
+              totalPages: 1,
+              hasNext: false,
+              hasPrev: false,
+            }
+          });
+        } else {
+          result = await storage.getPatientsByFacilityPaginated(targetFacilityId, { page, limit });
+          res.json(result);
+        }
       }
 
     } catch (error) {
@@ -1433,13 +1524,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const patient = await storage.getPatient(id);
-      
-      if (!patient || patient.facilityId !== req.user.facilityId) {
+
+      if (!patient) {
         return res.status(404).json({ error: "患者が見つかりません" });
       }
-      
+
+      // Check access permission based on URL context and user role
+      const currentFacility = req.facility ? await storage.getFacility(req.facility.id) : null;
+      const isHeadquartersUrl = currentFacility?.isHeadquarters === true;
+
+      if (isHeadquartersUrl && req.user.role === 'corporate_admin' && req.user.accessLevel === 'corporate') {
+        // Corporate admin at HQ URL: can access all company patients
+        const userFacility = await storage.getFacility(req.user.facilityId);
+        if (!userFacility) {
+          return res.status(404).json({ error: "施設が見つかりません" });
+        }
+
+        // Get patient's facility to check company
+        const patientFacility = await storage.getFacility(patient.facilityId);
+        if (!patientFacility || patientFacility.companyId !== userFacility.companyId) {
+          return res.status(404).json({ error: "患者が見つかりません" });
+        }
+      } else if (req.facility) {
+        // Accessing specific facility URL: can only access that facility's patients
+        if (patient.facilityId !== req.facility.id) {
+          return res.status(404).json({ error: "患者が見つかりません" });
+        }
+      } else {
+        // Fallback: can only access own facility's patients
+        if (patient.facilityId !== req.user.facilityId) {
+          return res.status(404).json({ error: "患者が見つかりません" });
+        }
+      }
+
       res.json(patient);
-      
+
     } catch (error) {
       console.error("Get patient error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -1449,6 +1568,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create patient
   app.post("/api/patients", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Check if accessing from headquarters URL - headquarters should not create patients
+      const currentFacility = req.facility ? await storage.getFacility(req.facility.id) : null;
+      const isHeadquartersUrl = currentFacility?.isHeadquarters === true;
+
+      if (isHeadquartersUrl) {
+        return res.status(403).json({ error: "本社システムでは患者の登録はできません。各施設で登録してください。" });
+      }
+
       const patientData = insertPatientSchema.parse(req.body);
 
       // Convert empty strings to null for foreign key fields
@@ -1459,10 +1586,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         buildingId: patientData.buildingId === "" ? null : patientData.buildingId,
       };
 
-      // Set facility ID from current user
+      // Set facility ID from URL context if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
       const patientToCreate = {
         ...cleanedData,
-        facilityId: req.user.facilityId
+        facilityId: targetFacilityId
       };
 
       const patient = await storage.createPatient(patientToCreate);
@@ -1479,9 +1607,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
 
-      // Check if patient belongs to user's facility
+      // Check if accessing from headquarters URL - headquarters should not edit patients
+      const currentFacility = req.facility ? await storage.getFacility(req.facility.id) : null;
+      const isHeadquartersUrl = currentFacility?.isHeadquarters === true;
+
+      if (isHeadquartersUrl) {
+        return res.status(403).json({ error: "本社システムでは患者の編集はできません。各施設で編集してください。" });
+      }
+
+      // Check if patient belongs to the facility (use URL context if available)
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
       const existingPatient = await storage.getPatient(id);
-      if (!existingPatient || existingPatient.facilityId !== req.user.facilityId) {
+      if (!existingPatient || existingPatient.facilityId !== targetFacilityId) {
         return res.status(404).json({ error: "患者が見つかりません" });
       }
 

@@ -2,12 +2,14 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
+import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PatientForm } from "@/components/PatientForm"
 import {
   Plus,
@@ -19,7 +21,8 @@ import {
   MapPin,
   User,
   Filter,
-  Eye
+  Eye,
+  Building2
 } from "lucide-react"
 
 import type { Patient, PaginatedResult } from "@shared/schema"
@@ -71,8 +74,10 @@ const getStatusText = (status: string) => {
 export function PatientManagement() {
   const [, setLocation] = useLocation()
   const basePath = useBasePath()
+  const isHeadquarters = useIsHeadquarters()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'critical' | 'inactive'>('all')
+  const [facilityFilter, setFacilityFilter] = useState<string>('all')
   const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
@@ -93,6 +98,16 @@ export function PatientManagement() {
 
   const patients = patientsData?.data || []
 
+  // Get unique facilities from patients data
+  const facilities = Array.from(
+    new Set(
+      patients
+        .map((p: any) => p.facility)
+        .filter((f: any) => f != null)
+        .map((f: any) => JSON.stringify(f))
+    )
+  ).map((f: string) => JSON.parse(f))
+
   const filteredPatients = patients.filter(patient => {
     const fullName = getFullName(patient)
     const medicalHistory = patient.medicalHistory || ''
@@ -100,7 +115,8 @@ export function PatientManagement() {
                          medicalHistory.toLowerCase().includes(searchTerm.toLowerCase())
     const patientStatus = getPatientStatus(patient)
     const matchesStatus = statusFilter === 'all' || patientStatus === statusFilter
-    return matchesSearch && matchesStatus
+    const matchesFacility = facilityFilter === 'all' || (patient as any).facility?.id === facilityFilter
+    return matchesSearch && matchesStatus && matchesFacility
   })
 
   const activePatients = patients.filter(p => getPatientStatus(p) === 'active').length
@@ -175,16 +191,20 @@ export function PatientManagement() {
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">
             利用者管理
           </h1>
-          <p className="text-sm sm:text-base text-muted-foreground">患者情報の管理と編集</p>
+          <p className="text-sm sm:text-base text-muted-foreground">
+            {isHeadquarters ? '全施設の患者情報の閲覧' : '患者情報の管理と編集'}
+          </p>
         </div>
-        <Button 
-          onClick={handleAddPatient} 
-          className="w-full sm:w-auto flex-shrink-0"
-          data-testid="button-add-patient"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          新規患者登録
-        </Button>
+        {!isHeadquarters && (
+          <Button
+            onClick={handleAddPatient}
+            className="w-full sm:w-auto flex-shrink-0"
+            data-testid="button-add-patient"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            新規患者登録
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -237,15 +257,32 @@ export function PatientManagement() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 sm:gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="患者名または病名で検索..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-                data-testid="input-patient-search"
-              />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="患者名または病名で検索..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                  data-testid="input-patient-search"
+                />
+              </div>
+              {facilities.length > 0 && (
+                <Select value={facilityFilter} onValueChange={setFacilityFilter}>
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder="所属施設" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全施設</SelectItem>
+                    {facilities.map((facility: any) => (
+                      <SelectItem key={facility.id} value={facility.id}>
+                        {facility.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="grid grid-cols-2 sm:flex gap-2">
               <Button
@@ -309,6 +346,12 @@ export function PatientManagement() {
                           <User className="h-3 w-3 flex-shrink-0" />
                           <span>{calculateAge(patient.dateOfBirth)}歳・{patient.gender === 'male' ? '男性' : patient.gender === 'female' ? '女性' : 'その他'}</span>
                         </div>
+                        {(patient as any).facility && (
+                          <div className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3 flex-shrink-0" />
+                            <span>所属: {(patient as any).facility.name}</span>
+                          </div>
+                        )}
                         <div className="flex items-start gap-1">
                           <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
                           <span className="line-clamp-1">{patient.address || '住所未登録'}</span>
@@ -326,27 +369,29 @@ export function PatientManagement() {
                     <p>登録日: {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                     <p>更新日: {patient.updatedAt ? new Date(patient.updatedAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className={isHeadquarters ? "" : "grid grid-cols-2 gap-2"}>
                     <Button
                       size="sm"
                       variant="default"
                       onClick={() => handleViewDetail(patient)}
-                      className="text-xs h-8"
+                      className={`text-xs h-8 ${isHeadquarters ? 'w-full' : ''}`}
                       data-testid={`button-detail-${patient.id}`}
                     >
                       <Eye className="mr-1 h-3 w-3" />
                       詳細
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEditPatient(patient)}
-                      className="text-xs h-8"
-                      data-testid={`button-edit-${patient.id}`}
-                    >
-                      <Edit className="mr-1 h-3 w-3" />
-                      編集
-                    </Button>
+                    {!isHeadquarters && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditPatient(patient)}
+                        className="text-xs h-8"
+                        data-testid={`button-edit-${patient.id}`}
+                      >
+                        <Edit className="mr-1 h-3 w-3" />
+                        編集
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -368,6 +413,12 @@ export function PatientManagement() {
                           <User className="h-3 w-3" />
                           {calculateAge(patient.dateOfBirth)}歳 ・ {patient.gender === 'male' ? '男性' : patient.gender === 'female' ? '女性' : 'その他'}
                         </div>
+                        {(patient as any).facility && (
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-3 w-3" />
+                            所属施設: {(patient as any).facility.name}
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <MapPin className="h-3 w-3" />
                           {patient.address || '住所未登録'}
@@ -397,15 +448,17 @@ export function PatientManagement() {
                         <Eye className="mr-1 h-3 w-3" />
                         詳細
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditPatient(patient)}
-                        data-testid={`button-edit-${patient.id}`}
-                      >
-                        <Edit className="mr-1 h-3 w-3" />
-                        編集
-                      </Button>
+                      {!isHeadquarters && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditPatient(patient)}
+                          data-testid={`button-edit-${patient.id}`}
+                        >
+                          <Edit className="mr-1 h-3 w-3" />
+                          編集
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
