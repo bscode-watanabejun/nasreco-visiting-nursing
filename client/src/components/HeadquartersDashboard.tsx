@@ -51,7 +51,6 @@ interface FacilityStats {
 
 export function HeadquartersDashboard() {
   const [selectedTimeRange, setSelectedTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
-  const [selectedFacility, setSelectedFacility] = useState<string>('all');
   const { company } = useTenant();
   const { data: currentUser } = useCurrentUser();
   const basePath = useBasePath();
@@ -62,29 +61,54 @@ export function HeadquartersDashboard() {
     queryFn: facilityApi.getFacilities,
   });
 
-  // Convert facilities to stats format with placeholder data
-  // TODO: Implement real-time statistics from backend
-  const facilityStats: FacilityStats[] = (facilities || []).map(facility => ({
-    id: facility.id,
-    name: facility.name,
-    slug: facility.slug,
-    totalPatients: 0, // TODO: Fetch from backend
-    activeUsers: 0, // TODO: Fetch from backend
-    upcomingVisits: 0, // TODO: Fetch from backend
-    completedVisits: 0, // TODO: Fetch from backend
-    isOnline: true, // TODO: Implement online status check
-  }));
+  // Fetch headquarters summary statistics
+  const { data: summaryStats } = useQuery({
+    queryKey: ["headquarters-summary", selectedTimeRange],
+    queryFn: async () => {
+      const response = await fetch(`/api/statistics/headquarters/summary?period=${selectedTimeRange}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch summary statistics');
+      return response.json();
+    },
+  });
 
-  // Calculate aggregated statistics
-  const totalStats = facilityStats.reduce(
-    (acc, facility) => ({
-      totalPatients: acc.totalPatients + facility.totalPatients,
-      totalUsers: acc.totalUsers + facility.activeUsers,
-      totalUpcomingVisits: acc.totalUpcomingVisits + facility.upcomingVisits,
-      totalCompletedVisits: acc.totalCompletedVisits + facility.completedVisits,
-    }),
-    { totalPatients: 0, totalUsers: 0, totalUpcomingVisits: 0, totalCompletedVisits: 0 }
-  );
+  // Fetch facilities details statistics
+  const { data: facilitiesDetailsData } = useQuery({
+    queryKey: ["facilities-details", selectedTimeRange],
+    queryFn: async () => {
+      const response = await fetch(`/api/statistics/facilities/details?period=${selectedTimeRange}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch facilities details');
+      return response.json();
+    },
+  });
+
+  // Map facilities with real statistics data
+  const facilityStats: FacilityStats[] = (facilities || []).map(facility => {
+    const stats = facilitiesDetailsData?.facilities?.find(
+      (f: any) => f.facilityId === facility.id
+    );
+    return {
+      id: facility.id,
+      name: facility.name,
+      slug: facility.slug,
+      totalPatients: stats?.totalPatients || 0,
+      activeUsers: stats?.activeUsers || 0,
+      upcomingVisits: stats?.upcomingVisits || 0,
+      completedVisits: stats?.completedVisits || 0,
+      isOnline: true, // TODO: Implement online status check
+    };
+  });
+
+  // Use summary statistics from API
+  const totalStats = {
+    totalPatients: summaryStats?.totalPatients || 0,
+    totalUsers: summaryStats?.activeUsers || 0,
+    totalUpcomingVisits: summaryStats?.upcomingVisits || 0,
+    totalCompletedVisits: summaryStats?.completedVisits || 0,
+  };
 
   const handleFacilityClick = (slug: string) => {
     const companySlug = currentUser?.facility?.company?.slug;

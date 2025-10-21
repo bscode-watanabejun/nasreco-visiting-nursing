@@ -327,7 +327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get notification count
   app.get("/api/notifications/count", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
       }
@@ -414,7 +414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get notification details list (top 5 per category)
   app.get("/api/notifications/list", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
       }
@@ -793,6 +793,244 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Statistics Routes ==========
+
+  // Get headquarters summary statistics
+  app.get("/api/statistics/headquarters/summary", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userFacility = await storage.getFacility(req.user.facilityId);
+      if (!userFacility) {
+        return res.status(400).json({ error: "ユーザーの施設情報が見つかりません" });
+      }
+
+      // Only allow headquarters or corporate admin to access
+      if (!userFacility.isHeadquarters && req.user.role !== 'corporate_admin') {
+        return res.status(403).json({ error: "本社ユーザーまたはコーポレート管理者のみアクセス可能です" });
+      }
+
+      // Parse period parameter (default: 7d)
+      const period = (req.query.period as string) || '7d';
+      let daysBack = 7;
+
+      switch (period) {
+        case '30d':
+          daysBack = 30;
+          break;
+        case '90d':
+          daysBack = 90;
+          break;
+        case '7d':
+        default:
+          daysBack = 7;
+          break;
+      }
+
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysBack);
+
+      // Get all facilities in the company
+      const allFacilities = await db.query.facilities.findMany({
+        where: and(
+          eq(facilities.companyId, userFacility.companyId),
+          eq(facilities.isActive, true)
+        )
+      });
+
+      const facilityIds = allFacilities.map(f => f.id);
+
+      // Count total patients across all facilities
+      const totalPatientsResult = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(patients)
+        .where(
+          and(
+            inArray(patients.facilityId, facilityIds),
+            eq(patients.isActive, true)
+          )
+        );
+      const totalPatients = totalPatientsResult[0]?.count || 0;
+
+      // Count active users (staff) across all facilities
+      const activeUsersResult = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users)
+        .where(
+          and(
+            inArray(users.facilityId, facilityIds),
+            eq(users.isActive, true)
+          )
+        );
+      const activeUsers = activeUsersResult[0]?.count || 0;
+
+      // Count upcoming visits (scheduled status within period)
+      const upcomingVisitsResult = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schedules)
+        .where(
+          and(
+            inArray(schedules.facilityId, facilityIds),
+            eq(schedules.status, 'scheduled'),
+            gte(schedules.scheduledDate, startDate),
+            lte(schedules.scheduledDate, endDate)
+          )
+        );
+      const upcomingVisits = upcomingVisitsResult[0]?.count || 0;
+
+      // Count completed visits within period
+      const completedVisitsResult = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schedules)
+        .where(
+          and(
+            inArray(schedules.facilityId, facilityIds),
+            eq(schedules.status, 'completed'),
+            gte(schedules.scheduledDate, startDate),
+            lte(schedules.scheduledDate, endDate)
+          )
+        );
+      const completedVisits = completedVisitsResult[0]?.count || 0;
+
+      res.json({
+        totalPatients,
+        activeUsers,
+        upcomingVisits,
+        completedVisits,
+        period,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      });
+
+    } catch (error) {
+      console.error("Get headquarters summary statistics error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get facilities details statistics
+  app.get("/api/statistics/facilities/details", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userFacility = await storage.getFacility(req.user.facilityId);
+      if (!userFacility) {
+        return res.status(400).json({ error: "ユーザーの施設情報が見つかりません" });
+      }
+
+      // Only allow headquarters or corporate admin to access
+      if (!userFacility.isHeadquarters && req.user.role !== 'corporate_admin') {
+        return res.status(403).json({ error: "本社ユーザーまたはコーポレート管理者のみアクセス可能です" });
+      }
+
+      // Parse period parameter (default: 7d)
+      const period = (req.query.period as string) || '7d';
+      let daysBack = 7;
+
+      switch (period) {
+        case '30d':
+          daysBack = 30;
+          break;
+        case '90d':
+          daysBack = 90;
+          break;
+        case '7d':
+        default:
+          daysBack = 7;
+          break;
+      }
+
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysBack);
+
+      // Get all facilities in the company
+      const allFacilities = await db.query.facilities.findMany({
+        where: and(
+          eq(facilities.companyId, userFacility.companyId),
+          eq(facilities.isActive, true)
+        )
+      });
+
+      // Build statistics for each facility
+      const facilitiesStats = await Promise.all(
+        allFacilities.map(async (facility) => {
+          // Count patients for this facility
+          const patientsResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(patients)
+            .where(
+              and(
+                eq(patients.facilityId, facility.id),
+                eq(patients.isActive, true)
+              )
+            );
+          const totalPatients = patientsResult[0]?.count || 0;
+
+          // Count active users for this facility
+          const usersResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(users)
+            .where(
+              and(
+                eq(users.facilityId, facility.id),
+                eq(users.isActive, true)
+              )
+            );
+          const activeUsers = usersResult[0]?.count || 0;
+
+          // Count upcoming visits for this facility
+          const upcomingResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(schedules)
+            .where(
+              and(
+                eq(schedules.facilityId, facility.id),
+                eq(schedules.status, 'scheduled'),
+                gte(schedules.scheduledDate, startDate),
+                lte(schedules.scheduledDate, endDate)
+              )
+            );
+          const upcomingVisits = upcomingResult[0]?.count || 0;
+
+          // Count completed visits for this facility
+          const completedResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(schedules)
+            .where(
+              and(
+                eq(schedules.facilityId, facility.id),
+                eq(schedules.status, 'completed'),
+                gte(schedules.scheduledDate, startDate),
+                lte(schedules.scheduledDate, endDate)
+              )
+            );
+          const completedVisits = completedResult[0]?.count || 0;
+
+          return {
+            facilityId: facility.id,
+            facilityName: facility.name,
+            facilitySlug: facility.slug,
+            totalPatients,
+            activeUsers,
+            upcomingVisits,
+            completedVisits
+          };
+        })
+      );
+
+      res.json({
+        facilities: facilitiesStats,
+        period,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      });
+
+    } catch (error) {
+      console.error("Get facilities details statistics error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Users Routes ==========
   
   // Get users in facility
@@ -1151,6 +1389,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
       // Check for isCritical filter
       const isCritical = req.query.isCritical === 'true';
 
@@ -1158,7 +1399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Get only critical patients without pagination
         const criticalPatients = await db.query.patients.findMany({
           where: and(
-            eq(patients.facilityId, req.user.facilityId),
+            eq(patients.facilityId, targetFacilityId),
             eq(patients.isCritical, true),
             eq(patients.isActive, true)
           ),
@@ -1177,7 +1418,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         });
       } else {
-        const result = await storage.getPatientsByFacilityPaginated(req.user.facilityId, { page, limit });
+        const result = await storage.getPatientsByFacilityPaginated(targetFacilityId, { page, limit });
         res.json(result);
       }
 
@@ -1280,26 +1521,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/visits", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId, nurseId } = req.query;
-      
+
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
-      
+
       if (page < 1 || limit < 1) {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
       let result;
       if (patientId) {
-        result = await storage.getVisitsByPatientPaginated(patientId as string, req.user.facilityId, { page, limit });
+        result = await storage.getVisitsByPatientPaginated(patientId as string, targetFacilityId, { page, limit });
       } else if (nurseId) {
-        result = await storage.getVisitsByNursePaginated(nurseId as string, req.user.facilityId, { page, limit });
+        result = await storage.getVisitsByNursePaginated(nurseId as string, targetFacilityId, { page, limit });
       } else {
-        result = await storage.getVisitsByFacilityPaginated(req.user.facilityId, { page, limit });
+        result = await storage.getVisitsByFacilityPaginated(targetFacilityId, { page, limit });
       }
-      
+
       res.json(result);
-      
+
     } catch (error) {
       console.error("Get visits error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -1309,7 +1553,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get upcoming visits
   app.get("/api/visits/upcoming", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const visits = await storage.getUpcomingVisits(req.user.facilityId);
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      const visits = await storage.getUpcomingVisits(targetFacilityId);
       res.json(visits);
       
     } catch (error) {
@@ -1391,7 +1637,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get schedules
   app.get("/api/schedules", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.user.facilityId;
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const facilityId = req.facility?.id || req.user.facilityId;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
 
@@ -1420,7 +1667,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get schedules without records - MUST be before /:id route
   app.get("/api/schedules/without-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { startDate, endDate, nurseId } = req.query;
 
       console.log("=== 記録未作成スケジュール検索 ===");
@@ -1429,7 +1677,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Build query conditions
       const whereConditions = [
-        eq(schedules.facilityId, facilityId!),
+        eq(schedules.facilityId, facilityId),
         // Search for past schedules (not just "completed" status)
         // Exclude cancelled schedules
         not(inArray(schedules.status, ["cancelled"] as const)),
@@ -1488,7 +1736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all nursing records with scheduleId
       const schedulesWithRecords = await db.query.nursingRecords.findMany({
         where: and(
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           isNotNull(nursingRecords.scheduleId)
         ),
         columns: {
@@ -1547,13 +1795,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/schedules/:id/nursing-record", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.user.facilityId;
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Find nursing record associated with this schedule
       const record = await db.query.nursingRecords.findFirst({
         where: and(
           eq(nursingRecords.scheduleId, id),
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           isNull(nursingRecords.deletedAt)
         ),
       });
@@ -1575,7 +1824,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log("受信データ:", req.body); // デバッグ用
       const validatedData = insertScheduleSchema.parse(req.body);
-      const facilityId = req.user.facilityId;
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const facilityId = req.facility?.id || req.user.facilityId;
       console.log("バリデーション成功、facilityId:", facilityId); // デバッグ用
 
       const newSchedule = await storage.createSchedule({
@@ -2001,26 +2251,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/nursing-records", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId, nurseId } = req.query;
-      
+
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
-      
+
       if (page < 1 || limit < 1) {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
       let result;
       if (patientId) {
-        result = await storage.getNursingRecordsByPatientPaginated(patientId as string, req.user.facilityId, { page, limit });
+        result = await storage.getNursingRecordsByPatientPaginated(patientId as string, targetFacilityId, { page, limit });
       } else if (nurseId) {
-        result = await storage.getNursingRecordsByNursePaginated(nurseId as string, req.user.facilityId, { page, limit });
+        result = await storage.getNursingRecordsByNursePaginated(nurseId as string, targetFacilityId, { page, limit });
       } else {
-        result = await storage.getNursingRecordsByFacilityPaginated(req.user.facilityId, { page, limit });
+        result = await storage.getNursingRecordsByFacilityPaginated(targetFacilityId, { page, limit });
       }
-      
+
       res.json(result);
-      
+
     } catch (error) {
       console.error("Get nursing records error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -2483,20 +2736,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/medications", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId } = req.query;
-      
+
       // Parse pagination parameters
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
-      
+
       if (page < 1 || limit < 1) {
         return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
       }
 
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
       let result;
       if (patientId) {
-        result = await storage.getMedicationsByPatientPaginated(patientId as string, req.user.facilityId, { page, limit });
+        result = await storage.getMedicationsByPatientPaginated(patientId as string, targetFacilityId, { page, limit });
       } else {
-        result = await storage.getMedicationsByFacilityPaginated(req.user.facilityId, { page, limit });
+        result = await storage.getMedicationsByFacilityPaginated(targetFacilityId, { page, limit });
       }
       
       res.json(result);
@@ -2581,7 +2837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all medical institutions for the facility
   app.get("/api/medical-institutions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -2606,12 +2862,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/medical-institutions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const institution = await db.query.medicalInstitutions.findFirst({
         where: and(
           eq(medicalInstitutions.id, id),
-          eq(medicalInstitutions.facilityId, facilityId!)
+          eq(medicalInstitutions.facilityId, facilityId)
         )
       });
 
@@ -2629,7 +2885,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create medical institution
   app.post("/api/medical-institutions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -2659,7 +2915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/medical-institutions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const validatedData = updateMedicalInstitutionSchema.parse(req.body);
 
@@ -2670,7 +2926,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(and(
           eq(medicalInstitutions.id, id),
-          eq(medicalInstitutions.facilityId, facilityId!)
+          eq(medicalInstitutions.facilityId, facilityId)
         ))
         .returning();
 
@@ -2695,13 +2951,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/medical-institutions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [institution] = await db.update(medicalInstitutions)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(medicalInstitutions.id, id),
-          eq(medicalInstitutions.facilityId, facilityId!)
+          eq(medicalInstitutions.facilityId, facilityId)
         ))
         .returning();
 
@@ -2721,7 +2977,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all buildings for the facility
   app.get("/api/buildings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -2742,7 +2998,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create building
   app.post("/api/buildings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -2772,7 +3028,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/buildings/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const validatedData = updateBuildingSchema.parse(req.body);
 
@@ -2783,7 +3039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(and(
           eq(buildings.id, id),
-          eq(buildings.facilityId, facilityId!)
+          eq(buildings.facilityId, facilityId)
         ))
         .returning();
 
@@ -2808,13 +3064,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/buildings/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Check if building has patients
       const patientsInBuilding = await db.query.patients.findMany({
         where: and(
           eq(patients.buildingId, id),
-          eq(patients.facilityId, facilityId!)
+          eq(patients.facilityId, facilityId)
         )
       });
 
@@ -2827,7 +3083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await db.delete(buildings)
         .where(and(
           eq(buildings.id, id),
-          eq(buildings.facilityId, facilityId!)
+          eq(buildings.facilityId, facilityId)
         ));
 
       res.json({ message: "建物を削除しました" });
@@ -2842,7 +3098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all care managers for the facility
   app.get("/api/care-managers", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -2867,12 +3123,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-managers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const manager = await db.query.careManagers.findFirst({
         where: and(
           eq(careManagers.id, id),
-          eq(careManagers.facilityId, facilityId!)
+          eq(careManagers.facilityId, facilityId)
         )
       });
 
@@ -2890,7 +3146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create care manager
   app.post("/api/care-managers", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -2920,7 +3176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/care-managers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const validatedData = updateCareManagerSchema.parse(req.body);
 
@@ -2931,7 +3187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(and(
           eq(careManagers.id, id),
-          eq(careManagers.facilityId, facilityId!)
+          eq(careManagers.facilityId, facilityId)
         ))
         .returning();
 
@@ -2956,13 +3212,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/care-managers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [manager] = await db.update(careManagers)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(careManagers.id, id),
-          eq(careManagers.facilityId, facilityId!)
+          eq(careManagers.facilityId, facilityId)
         ))
         .returning();
 
@@ -2982,12 +3238,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all special management definitions
   app.get("/api/special-management-definitions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // 自施設のマスタのみ取得
       const definitions = await db.query.specialManagementDefinitions.findMany({
         where: and(
-          eq(specialManagementDefinitions.facilityId, facilityId!),
+          eq(specialManagementDefinitions.facilityId, facilityId),
           eq(specialManagementDefinitions.isActive, true)
         ),
         with: {
@@ -3036,7 +3292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a new special management definition
   app.post("/api/special-management-definitions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const data = insertSpecialManagementDefinitionSchema.parse(req.body);
 
       // カテゴリの自動生成（special_001, special_002, ...）
@@ -3046,7 +3302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const existingDefinitions = await db
           .select({ category: specialManagementDefinitions.category })
           .from(specialManagementDefinitions)
-          .where(eq(specialManagementDefinitions.facilityId, facilityId!));
+          .where(eq(specialManagementDefinitions.facilityId, facilityId));
 
         const maxNumber = existingDefinitions
           .map(d => d.category)
@@ -3110,7 +3366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/special-management-definitions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const data = updateSpecialManagementDefinitionSchema.parse(req.body);
 
       // 自施設のマスタのみ更新可能
@@ -3122,7 +3378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(and(
           eq(specialManagementDefinitions.id, id),
-          eq(specialManagementDefinitions.facilityId, facilityId!)
+          eq(specialManagementDefinitions.facilityId, facilityId)
         ))
         .returning();
 
@@ -3179,7 +3435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/special-management-definitions/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // 自施設のマスタのみ削除可能
       const [deleted] = await db
@@ -3190,7 +3446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(and(
           eq(specialManagementDefinitions.id, id),
-          eq(specialManagementDefinitions.facilityId, facilityId!)
+          eq(specialManagementDefinitions.facilityId, facilityId)
         ))
         .returning();
 
@@ -3227,11 +3483,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all doctor orders (with optional patient filter)
   app.get("/api/doctor-orders", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { patientId } = req.query;
 
       const whereConditions = [
-        eq(doctorOrders.facilityId, facilityId!),
+        eq(doctorOrders.facilityId, facilityId),
         eq(doctorOrders.isActive, true)
       ];
 
@@ -3258,12 +3514,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/doctor-orders/patient/:patientId", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const orders = await db.query.doctorOrders.findMany({
         where: and(
           eq(doctorOrders.patientId, patientId),
-          eq(doctorOrders.facilityId, facilityId!),
+          eq(doctorOrders.facilityId, facilityId),
           eq(doctorOrders.isActive, true)
         ),
         with: {
@@ -3282,14 +3538,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get expiring doctor orders (within 30 days)
   app.get("/api/doctor-orders/expiring", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const today = new Date();
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(today.getDate() + 30);
 
       const orders = await db.query.doctorOrders.findMany({
         where: and(
-          eq(doctorOrders.facilityId, facilityId!),
+          eq(doctorOrders.facilityId, facilityId),
           eq(doctorOrders.isActive, true),
           lte(doctorOrders.endDate, thirtyDaysFromNow.toISOString().split('T')[0]),
           gte(doctorOrders.endDate, today.toISOString().split('T')[0])
@@ -3312,12 +3568,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/doctor-orders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const order = await db.query.doctorOrders.findFirst({
         where: and(
           eq(doctorOrders.id, id),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ),
         with: {
           patient: true,
@@ -3339,7 +3595,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create doctor order
   app.post("/api/doctor-orders", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -3387,7 +3643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/doctor-orders/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // When using multipart/form-data, convert numeric fields from strings
       const bodyData = { ...req.body };
@@ -3412,7 +3668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(doctorOrders)
           .where(and(
             eq(doctorOrders.id, id),
-            eq(doctorOrders.facilityId, facilityId!)
+            eq(doctorOrders.facilityId, facilityId)
           ))
           .limit(1);
 
@@ -3434,7 +3690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updateData)
         .where(and(
           eq(doctorOrders.id, id),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ))
         .returning();
 
@@ -3459,13 +3715,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/doctor-orders/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [order] = await db.update(doctorOrders)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(doctorOrders.id, id),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ))
         .returning();
 
@@ -3484,13 +3740,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/doctor-orders/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [order] = await db.select()
         .from(doctorOrders)
         .where(and(
           eq(doctorOrders.id, id),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -3534,14 +3790,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/doctor-orders/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Get current order to find file path
       const [currentOrder] = await db.select()
         .from(doctorOrders)
         .where(and(
           eq(doctorOrders.id, id),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -3563,7 +3819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ filePath: null, updatedAt: new Date() })
         .where(and(
           eq(doctorOrders.id, id),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ))
         .returning();
 
@@ -3579,11 +3835,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all insurance cards (with optional patient filter)
   app.get("/api/insurance-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { patientId } = req.query;
 
       const whereConditions = [
-        eq(insuranceCards.facilityId, facilityId!),
+        eq(insuranceCards.facilityId, facilityId),
         eq(insuranceCards.isActive, true)
       ];
 
@@ -3609,14 +3865,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get expiring insurance cards (within 30 days) - MUST be before /:id route
   app.get("/api/insurance-cards/expiring", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const today = new Date();
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(today.getDate() + 30);
 
       const cards = await db.query.insuranceCards.findMany({
         where: and(
-          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.facilityId, facilityId),
           eq(insuranceCards.isActive, true),
           isNotNull(insuranceCards.validUntil), // Only check cards with expiry date
           lte(insuranceCards.validUntil, thirtyDaysFromNow.toISOString().split('T')[0]),
@@ -3639,12 +3895,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/insurance-cards/patient/:patientId", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const cards = await db.query.insuranceCards.findMany({
         where: and(
           eq(insuranceCards.patientId, patientId),
-          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.facilityId, facilityId),
           eq(insuranceCards.isActive, true)
         ),
         orderBy: (insuranceCards, { desc }) => [desc(insuranceCards.validFrom)]
@@ -3661,12 +3917,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/insurance-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const card = await db.query.insuranceCards.findFirst({
         where: and(
           eq(insuranceCards.id, id),
-          eq(insuranceCards.facilityId, facilityId!)
+          eq(insuranceCards.facilityId, facilityId)
         )
       });
 
@@ -3684,7 +3940,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create insurance card
   app.post("/api/insurance-cards", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "施設IDが見つかりません" });
@@ -3724,7 +3980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/insurance-cards/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const validatedData = updateInsuranceCardSchema.parse(req.body);
 
@@ -3740,7 +3996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(insuranceCards)
           .where(and(
             eq(insuranceCards.id, id),
-            eq(insuranceCards.facilityId, facilityId!)
+            eq(insuranceCards.facilityId, facilityId)
           ))
           .limit(1);
 
@@ -3762,7 +4018,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updateData)
         .where(and(
           eq(insuranceCards.id, id),
-          eq(insuranceCards.facilityId, facilityId!)
+          eq(insuranceCards.facilityId, facilityId)
         ))
         .returning();
 
@@ -3787,13 +4043,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/insurance-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [card] = await db.update(insuranceCards)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(insuranceCards.id, id),
-          eq(insuranceCards.facilityId, facilityId!)
+          eq(insuranceCards.facilityId, facilityId)
         ))
         .returning();
 
@@ -3812,14 +4068,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/insurance-cards/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Get insurance card with file
       const [card] = await db.select()
         .from(insuranceCards)
         .where(and(
           eq(insuranceCards.id, id),
-          eq(insuranceCards.facilityId, facilityId!)
+          eq(insuranceCards.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -3863,14 +4119,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/insurance-cards/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Get current card to find file path
       const [currentCard] = await db.select()
         .from(insuranceCards)
         .where(and(
           eq(insuranceCards.id, id),
-          eq(insuranceCards.facilityId, facilityId!)
+          eq(insuranceCards.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -3892,7 +4148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ filePath: null, updatedAt: new Date() })
         .where(and(
           eq(insuranceCards.id, id),
-          eq(insuranceCards.facilityId, facilityId!)
+          eq(insuranceCards.facilityId, facilityId)
         ))
         .returning();
 
@@ -3908,7 +4164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get monthly visit statistics for billing
   app.get("/api/statistics/monthly/:year/:month", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { year, month } = req.params;
       const { patientId } = req.query;
 
@@ -3918,7 +4174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Build where conditions
       const whereConditions = [
-        eq(nursingRecords.facilityId, facilityId!),
+        eq(nursingRecords.facilityId, facilityId),
         gte(nursingRecords.recordDate, startDate),
         lte(nursingRecords.recordDate, endDate)
       ];
@@ -3946,14 +4202,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch all patients with their special management info
       const patientsWithSpecialMgmt = await db.query.patients.findMany({
         where: and(
-          eq(patients.facilityId, facilityId!),
+          eq(patients.facilityId, facilityId),
           inArray(patients.id, uniquePatientIds)
         )
       });
 
       // Fetch special management definitions for this facility
       const specialMgmtDefs = await db.query.specialManagementDefinitions.findMany({
-        where: eq(specialManagementDefinitions.facilityId, facilityId!)
+        where: eq(specialManagementDefinitions.facilityId, facilityId)
       });
 
       // Create a map for quick lookup
@@ -4068,7 +4324,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export monthly statistics as CSV for billing
   app.get("/api/statistics/monthly/:year/:month/export", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { year, month } = req.params;
 
       // Calculate start and end dates for the month
@@ -4078,7 +4334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch all nursing records for the period with patient and insurance info
       const records = await db.query.nursingRecords.findMany({
         where: and(
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.recordDate, startDate),
           lte(nursingRecords.recordDate, endDate)
         ),
@@ -4096,7 +4352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patientIds = Array.from(new Set(records.map(r => r.patientId)));
       const allInsuranceCards = await db.query.insuranceCards.findMany({
         where: and(
-          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.facilityId, facilityId),
           eq(insuranceCards.isActive, true)
         )
       });
@@ -4104,14 +4360,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch patients with special management info
       const patientsWithSpecialMgmt = await db.query.patients.findMany({
         where: and(
-          eq(patients.facilityId, facilityId!),
+          eq(patients.facilityId, facilityId),
           inArray(patients.id, patientIds)
         )
       });
 
       // Fetch special management definitions
       const specialMgmtDefs = await db.query.specialManagementDefinitions.findMany({
-        where: eq(specialManagementDefinitions.facilityId, facilityId!)
+        where: eq(specialManagementDefinitions.facilityId, facilityId)
       });
       const specialMgmtDefsMap = new Map(specialMgmtDefs.map(def => [def.category, def]));
 
@@ -4233,11 +4489,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all care plans with optional patient filter
   app.get("/api/care-plans", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { patientId } = req.query;
 
       const whereConditions = [
-        eq(carePlans.facilityId, facilityId!),
+        eq(carePlans.facilityId, facilityId),
         eq(carePlans.isActive, true)
       ];
 
@@ -4267,12 +4523,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const plan = await db.query.carePlans.findFirst({
         where: and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!)
+          eq(carePlans.facilityId, facilityId)
         ),
         with: {
           patient: true,
@@ -4296,7 +4552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create care plan
   app.post("/api/care-plans", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const userId = req.session.userId;
 
       if (!facilityId || !userId) {
@@ -4349,7 +4605,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/care-plans/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const validatedData = updateCarePlanSchema.parse(req.body);
 
@@ -4363,7 +4619,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(carePlans)
           .where(and(
             eq(carePlans.id, id),
-            eq(carePlans.facilityId, facilityId!)
+            eq(carePlans.facilityId, facilityId)
           ))
           .limit(1);
 
@@ -4385,7 +4641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updateData)
         .where(and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!)
+          eq(carePlans.facilityId, facilityId)
         ))
         .returning();
 
@@ -4422,13 +4678,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-plans/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [plan] = await db.select()
         .from(carePlans)
         .where(and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!)
+          eq(carePlans.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -4472,13 +4728,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/care-plans/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [currentPlan] = await db.select()
         .from(carePlans)
         .where(and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!)
+          eq(carePlans.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -4498,7 +4754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ filePath: null, originalFileName: null, updatedAt: new Date() })
         .where(and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!)
+          eq(carePlans.facilityId, facilityId)
         ))
         .returning();
 
@@ -4512,13 +4768,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [plan] = await db.update(carePlans)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!)
+          eq(carePlans.facilityId, facilityId)
         ))
         .returning();
 
@@ -4538,11 +4794,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all service care plans with optional patient filter
   app.get("/api/service-care-plans", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { patientId } = req.query;
 
       const whereConditions = [
-        eq(serviceCarePlans.facilityId, facilityId!),
+        eq(serviceCarePlans.facilityId, facilityId),
         eq(serviceCarePlans.isActive, true)
       ];
 
@@ -4570,12 +4826,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/service-care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const plan = await db.query.serviceCarePlans.findFirst({
         where: and(
           eq(serviceCarePlans.id, id),
-          eq(serviceCarePlans.facilityId, facilityId!)
+          eq(serviceCarePlans.facilityId, facilityId)
         ),
         with: {
           patient: true,
@@ -4597,7 +4853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create service care plan
   app.post("/api/service-care-plans", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "認証情報が見つかりません" });
@@ -4642,7 +4898,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/service-care-plans/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       if (!facilityId) {
         return res.status(401).json({ error: "認証情報が見つかりません" });
@@ -4697,12 +4953,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/service-care-plans/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const plan = await db.query.serviceCarePlans.findFirst({
         where: and(
           eq(serviceCarePlans.id, id),
-          eq(serviceCarePlans.facilityId, facilityId!)
+          eq(serviceCarePlans.facilityId, facilityId)
         )
       });
 
@@ -4742,12 +4998,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/service-care-plans/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const plan = await db.query.serviceCarePlans.findFirst({
         where: and(
           eq(serviceCarePlans.id, id),
-          eq(serviceCarePlans.facilityId, facilityId!)
+          eq(serviceCarePlans.facilityId, facilityId)
         )
       });
 
@@ -4782,13 +5038,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/service-care-plans/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [plan] = await db.update(serviceCarePlans)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(serviceCarePlans.id, id),
-          eq(serviceCarePlans.facilityId, facilityId!)
+          eq(serviceCarePlans.facilityId, facilityId)
         ))
         .returning();
 
@@ -4808,11 +5064,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all care reports with optional patient filter
   app.get("/api/care-reports", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { patientId } = req.query;
 
       const whereConditions = [
-        eq(careReports.facilityId, facilityId!),
+        eq(careReports.facilityId, facilityId),
         eq(careReports.isActive, true)
       ];
 
@@ -4842,12 +5098,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const report = await db.query.careReports.findFirst({
         where: and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!)
+          eq(careReports.facilityId, facilityId)
         ),
         with: {
           patient: true,
@@ -4871,7 +5127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create care report
   app.post("/api/care-reports", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const userId = req.session.userId;
 
       if (!facilityId || !userId) {
@@ -4928,7 +5184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/care-reports/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // FormDataの場合は数値型を変換
       const requestData = { ...req.body };
@@ -4948,7 +5204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(careReports)
           .where(and(
             eq(careReports.id, id),
-            eq(careReports.facilityId, facilityId!)
+            eq(careReports.facilityId, facilityId)
           ))
           .limit(1);
 
@@ -4970,7 +5226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updateData)
         .where(and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!)
+          eq(careReports.facilityId, facilityId)
         ))
         .returning();
 
@@ -5007,13 +5263,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-reports/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [report] = await db.select()
         .from(careReports)
         .where(and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!)
+          eq(careReports.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -5057,13 +5313,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/care-reports/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [currentReport] = await db.select()
         .from(careReports)
         .where(and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!)
+          eq(careReports.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -5083,7 +5339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ filePath: null, originalFileName: null, updatedAt: new Date() })
         .where(and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!)
+          eq(careReports.facilityId, facilityId)
         ))
         .returning();
 
@@ -5097,13 +5353,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/care-reports/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [report] = await db.update(careReports)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!)
+          eq(careReports.facilityId, facilityId)
         ))
         .returning();
 
@@ -5124,13 +5380,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-plans/:id/pdf", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Fetch care plan with relations
       const plan = await db.query.carePlans.findFirst({
         where: and(
           eq(carePlans.id, id),
-          eq(carePlans.facilityId, facilityId!),
+          eq(carePlans.facilityId, facilityId),
           eq(carePlans.isActive, true)
         ),
         with: {
@@ -5211,13 +5467,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/care-reports/:id/pdf", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Fetch care report with relations
       const report = await db.query.careReports.findFirst({
         where: and(
           eq(careReports.id, id),
-          eq(careReports.facilityId, facilityId!),
+          eq(careReports.facilityId, facilityId),
           eq(careReports.isActive, true)
         ),
         with: {
@@ -5319,11 +5575,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all contracts (with optional patient filter)
   app.get("/api/contracts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { patientId } = req.query;
 
       const whereConditions = [
-        eq(contracts.facilityId, facilityId!),
+        eq(contracts.facilityId, facilityId),
         eq(contracts.isActive, true)
       ];
 
@@ -5355,12 +5611,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new contract
   app.post("/api/contracts", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const validatedData = insertContractSchema.parse(req.body);
 
       const contractData: any = {
         ...validatedData,
-        facilityId: facilityId!,
+        facilityId: facilityId,
       };
 
       // Add file path and original filename if file was uploaded
@@ -5405,7 +5661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/contracts/:id", requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const validatedData = updateContractSchema.parse(req.body);
 
       const updateData: any = {
@@ -5420,7 +5676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(contracts)
           .where(and(
             eq(contracts.id, id),
-            eq(contracts.facilityId, facilityId!)
+            eq(contracts.facilityId, facilityId)
           ))
           .limit(1);
 
@@ -5442,7 +5698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updateData)
         .where(and(
           eq(contracts.id, id),
-          eq(contracts.facilityId, facilityId!)
+          eq(contracts.facilityId, facilityId)
         ))
         .returning();
 
@@ -5481,13 +5737,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/contracts/:id/attachment/download", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [contract] = await db.select()
         .from(contracts)
         .where(and(
           eq(contracts.id, id),
-          eq(contracts.facilityId, facilityId!)
+          eq(contracts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -5531,14 +5787,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/contracts/:id/attachment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Get current contract to find file path
       const [currentContract] = await db.select()
         .from(contracts)
         .where(and(
           eq(contracts.id, id),
-          eq(contracts.facilityId, facilityId!)
+          eq(contracts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -5560,7 +5816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ filePath: null, originalFileName: null, updatedAt: new Date() })
         .where(and(
           eq(contracts.id, id),
-          eq(contracts.facilityId, facilityId!)
+          eq(contracts.facilityId, facilityId)
         ))
         .returning();
 
@@ -5574,13 +5830,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/contracts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const [contract] = await db.update(contracts)
         .set({ isActive: false, updatedAt: new Date() })
         .where(and(
           eq(contracts.id, id),
-          eq(contracts.facilityId, facilityId!)
+          eq(contracts.facilityId, facilityId)
         ))
         .returning();
 
@@ -5599,13 +5855,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/patients/:patientId/contracts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const patientContracts = await db.select()
         .from(contracts)
         .where(and(
           eq(contracts.patientId, patientId),
-          eq(contracts.facilityId, facilityId!),
+          eq(contracts.facilityId, facilityId),
           eq(contracts.isActive, true)
         ))
         .orderBy(contracts.contractDate);
@@ -5622,13 +5878,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all bonus masters (global + facility-specific)
   app.get("/api/bonus-masters", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { insuranceType, isActive } = req.query;
 
       let conditions: any[] = [
         or(
           isNull(bonusMaster.facilityId),
-          eq(bonusMaster.facilityId, facilityId!)
+          eq(bonusMaster.facilityId, facilityId)
         )
       ];
 
@@ -5655,7 +5911,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create bonus master (admin only)
   app.post("/api/bonus-masters", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const bonusData = insertBonusMasterSchema.parse(req.body);
 
       // Set facilityId to null for global bonuses, or use facility ID from request body
@@ -5723,7 +5979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/bonus-masters/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const bonusData = updateBonusMasterSchema.parse(req.body);
 
       // Check if bonus exists and user has permission
@@ -5733,7 +5989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(bonusMaster.id, id),
           or(
             isNull(bonusMaster.facilityId),
-            eq(bonusMaster.facilityId, facilityId!)
+            eq(bonusMaster.facilityId, facilityId)
           )
         ))
         .limit(1);
@@ -5810,7 +6066,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/bonus-masters/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Check if bonus exists and user has permission
       const existing = await db.select()
@@ -5819,7 +6075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(bonusMaster.id, id),
           or(
             isNull(bonusMaster.facilityId),
-            eq(bonusMaster.facilityId, facilityId!)
+            eq(bonusMaster.facilityId, facilityId)
           )
         ))
         .limit(1);
@@ -5845,10 +6101,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all monthly receipts (with filters)
   app.get("/api/monthly-receipts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { year, month, insuranceType, patientId, isConfirmed } = req.query;
 
-      const conditions = [eq(monthlyReceipts.facilityId, facilityId!)];
+      const conditions = [eq(monthlyReceipts.facilityId, facilityId)];
 
       if (year && year !== 'all') {
         conditions.push(eq(monthlyReceipts.targetYear, parseInt(year as string)));
@@ -5893,7 +6149,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/monthly-receipts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const receiptData = await db.select({
         receipt: monthlyReceipts,
@@ -5905,7 +6161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .leftJoin(users, eq(monthlyReceipts.confirmedBy, users.id))
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -5932,7 +6188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .leftJoin(schedules, eq(nursingRecords.scheduleId, schedules.id))
         .where(and(
           eq(nursingRecords.patientId, patientId),
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0])
         ))
@@ -5957,7 +6213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(insuranceCards)
         .where(and(
           eq(insuranceCards.patientId, patientId),
-          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.facilityId, facilityId),
           eq(insuranceCards.cardType, insuranceType === 'medical' ? 'medical' : 'long_term_care')
         ))
         .orderBy(desc(insuranceCards.validFrom))
@@ -5972,7 +6228,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .leftJoin(medicalInstitutions, eq(doctorOrders.medicalInstitutionId, medicalInstitutions.id))
         .where(and(
           eq(doctorOrders.patientId, patientId),
-          eq(doctorOrders.facilityId, facilityId!)
+          eq(doctorOrders.facilityId, facilityId)
         ))
         .orderBy(desc(doctorOrders.orderDate))
         .limit(1);
@@ -5999,7 +6255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate monthly receipts for a specific month
   app.post("/api/monthly-receipts/generate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { year, month, insuranceType } = req.body;
 
       if (!year || !month || !insuranceType) {
@@ -6017,7 +6273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(nursingRecords)
         .leftJoin(patients, eq(nursingRecords.patientId, patients.id))
         .where(and(
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
           eq(nursingRecords.status, 'completed')
@@ -6028,7 +6284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const insuranceCardsForPatients = await db.select()
         .from(insuranceCards)
         .where(and(
-          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.facilityId, facilityId),
           inArray(insuranceCards.patientId, patientIds),
           eq(insuranceCards.cardType, insuranceType === 'medical' ? 'medical' : 'long_term_care')
         ));
@@ -6120,14 +6376,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(doctorOrders)
           .where(and(
             eq(doctorOrders.patientId, patientId),
-            eq(doctorOrders.facilityId, facilityId!)
+            eq(doctorOrders.facilityId, facilityId)
           ));
 
         const insuranceCardsForPatient = await db.select()
           .from(insuranceCards)
           .where(and(
             eq(insuranceCards.patientId, patientId),
-            eq(insuranceCards.facilityId, facilityId!)
+            eq(insuranceCards.facilityId, facilityId)
           ));
 
         const bonusCalculations = bonusHistoryForRecords.map(bc => ({
@@ -6181,7 +6437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const existingReceipt = await db.select()
           .from(monthlyReceipts)
           .where(and(
-            eq(monthlyReceipts.facilityId, facilityId!),
+            eq(monthlyReceipts.facilityId, facilityId),
             eq(monthlyReceipts.patientId, patientId),
             eq(monthlyReceipts.targetYear, year),
             eq(monthlyReceipts.targetMonth, month),
@@ -6220,7 +6476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Create new receipt
           const [newReceipt] = await db.insert(monthlyReceipts)
             .values({
-              facilityId: facilityId!,
+              facilityId: facilityId,
               patientId,
               targetYear: year,
               targetMonth: month,
@@ -6262,14 +6518,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/monthly-receipts/:id/finalize", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const userId = req.session.userId;
 
       const existing = await db.select()
         .from(monthlyReceipts)
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -6297,7 +6553,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(nursingRecords)
           .where(and(
             eq(nursingRecords.patientId, patientId),
-            eq(nursingRecords.facilityId, facilityId!),
+            eq(nursingRecords.facilityId, facilityId),
             sql`EXTRACT(YEAR FROM ${nursingRecords.visitDate}) = ${targetYear}`,
             sql`EXTRACT(MONTH FROM ${nursingRecords.visitDate}) = ${targetMonth}`
           )),
@@ -6305,13 +6561,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(doctorOrders)
           .where(and(
             eq(doctorOrders.patientId, patientId),
-            eq(doctorOrders.facilityId, facilityId!)
+            eq(doctorOrders.facilityId, facilityId)
           )),
         db.select()
           .from(insuranceCards)
           .where(and(
             eq(insuranceCards.patientId, patientId),
-            eq(insuranceCards.facilityId, facilityId!)
+            eq(insuranceCards.facilityId, facilityId)
           ))
       ]);
 
@@ -6422,13 +6678,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/monthly-receipts/:id/reopen", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const existing = await db.select()
         .from(monthlyReceipts)
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -6465,13 +6721,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/monthly-receipts/:id/recalculate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const existing = await db.select()
         .from(monthlyReceipts)
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -6493,7 +6749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const records = await db.select()
         .from(nursingRecords)
         .where(and(
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           eq(nursingRecords.patientId, patientId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
@@ -6575,14 +6831,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/monthly-receipts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const updateData = req.body;
 
       const existing = await db.select()
         .from(monthlyReceipts)
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -6613,13 +6869,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/monthly-receipts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       const existing = await db.select()
         .from(monthlyReceipts)
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -6644,7 +6900,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export monthly receipts to CSV (Care Insurance Format)
   app.get("/api/monthly-receipts/export/care-insurance", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { year, month } = req.query;
 
       if (!year || !month) {
@@ -6659,7 +6915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(monthlyReceipts)
         .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
         .where(and(
-          eq(monthlyReceipts.facilityId, facilityId!),
+          eq(monthlyReceipts.facilityId, facilityId),
           eq(monthlyReceipts.targetYear, parseInt(year as string)),
           eq(monthlyReceipts.targetMonth, parseInt(month as string)),
           eq(monthlyReceipts.insuranceType, 'care')
@@ -6717,7 +6973,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export monthly receipts to CSV (Medical Insurance Format)
   app.get("/api/monthly-receipts/export/medical-insurance", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
       const { year, month } = req.query;
 
       if (!year || !month) {
@@ -6732,7 +6988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(monthlyReceipts)
         .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
         .where(and(
-          eq(monthlyReceipts.facilityId, facilityId!),
+          eq(monthlyReceipts.facilityId, facilityId),
           eq(monthlyReceipts.targetYear, parseInt(year as string)),
           eq(monthlyReceipts.targetMonth, parseInt(month as string)),
           eq(monthlyReceipts.insuranceType, 'medical')
@@ -6791,7 +7047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/monthly-receipts/:id/validate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Get receipt with all related data
       const receiptData = await db.select({
@@ -6802,7 +7058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
         .where(and(
           eq(monthlyReceipts.id, id),
-          eq(monthlyReceipts.facilityId, facilityId!)
+          eq(monthlyReceipts.facilityId, facilityId)
         ))
         .limit(1);
 
@@ -6821,7 +7077,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const records = await db.select()
         .from(nursingRecords)
         .where(and(
-          eq(nursingRecords.facilityId, facilityId!),
+          eq(nursingRecords.facilityId, facilityId),
           eq(nursingRecords.patientId, patientId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
@@ -6832,7 +7088,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orders = await db.select()
         .from(doctorOrders)
         .where(and(
-          eq(doctorOrders.facilityId, facilityId!),
+          eq(doctorOrders.facilityId, facilityId),
           eq(doctorOrders.patientId, patientId)
         ));
 
@@ -6840,7 +7096,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cards = await db.select()
         .from(insuranceCards)
         .where(and(
-          eq(insuranceCards.facilityId, facilityId!),
+          eq(insuranceCards.facilityId, facilityId),
           eq(insuranceCards.patientId, patientId)
         ));
 
@@ -6955,7 +7211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/nursing-records/:id/bonus-suggestions", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const facilityId = req.session.facilityId;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // Get nursing record
       const recordData = await db.select({
@@ -6966,7 +7222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .leftJoin(patients, eq(nursingRecords.patientId, patients.id))
         .where(and(
           eq(nursingRecords.id, id),
-          eq(nursingRecords.facilityId, facilityId!)
+          eq(nursingRecords.facilityId, facilityId)
         ))
         .limit(1);
 
