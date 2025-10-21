@@ -17,6 +17,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Building2,
   Plus,
   Edit,
@@ -25,7 +36,8 @@ import {
   Phone,
   Mail,
   Globe,
-  Settings
+  Settings,
+  Trash2
 } from "lucide-react";
 import { facilityApi, type CreateFacilityRequest } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -160,6 +172,44 @@ export function FacilityManagement() {
       toast({
         title: "エラー",
         description: "施設情報の更新に失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeactivateFacility = async (facility: Facility) => {
+    setIsSubmitting(true);
+    try {
+      const result = await facilityApi.deactivateFacility(facility.id);
+
+      refetch();
+
+      // Show warnings if any
+      if (result.warnings && result.warnings.length > 0) {
+        toast({
+          title: "施設を削除しました",
+          description: (
+            <div className="space-y-1">
+              <p>施設は無効化されました</p>
+              {result.warnings.map((warning, idx) => (
+                <p key={idx} className="text-sm text-yellow-600">⚠ {warning}</p>
+              ))}
+            </div>
+          ),
+        });
+      } else {
+        toast({
+          title: "削除完了",
+          description: "施設を削除しました",
+        });
+      }
+    } catch (error: any) {
+      console.error('Failed to deactivate facility:', error);
+      toast({
+        title: "エラー",
+        description: error.message || "施設の削除に失敗しました",
         variant: "destructive",
       });
     } finally {
@@ -312,6 +362,50 @@ export function FacilityManagement() {
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>
+
+                    {/* Delete Button - only for corporate admin */}
+                    {currentUser?.role === 'corporate_admin' && !facility.isHeadquarters && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="ml-auto text-destructive hover:text-destructive"
+                            disabled={isSubmitting}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>施設を削除しますか？</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              <div className="space-y-2">
+                                <p>
+                                  <strong>{facility.name}</strong> を削除します。
+                                </p>
+                                <p>
+                                  この操作により施設は無効化されます。施設に紐づく利用者データや記録は保持されますが、
+                                  施設一覧には表示されなくなります。
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  ※ 本社施設、企業内の最後の施設は削除できません。
+                                </p>
+                              </div>
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDeactivateFacility(facility)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              削除する
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                   </div>
                 </CardContent>
               </Card>

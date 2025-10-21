@@ -688,6 +688,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Deactivate facility (soft delete - corporate admin only)
+  app.patch("/api/facilities/:id/deactivate", requireAuth, requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userFacility = await storage.getFacility(req.user.facilityId);
+
+      if (!userFacility) {
+        return res.status(400).json({ error: "ユーザーの施設情報が見つかりません" });
+      }
+
+      // Get the facility to deactivate
+      const existingFacility = await storage.getFacility(id);
+      if (!existingFacility) {
+        return res.status(404).json({ error: "施設が見つかりません" });
+      }
+
+      // Ensure facility belongs to the same company
+      if (existingFacility.companyId !== userFacility.companyId) {
+        return res.status(403).json({ error: "他社の施設を削除することはできません" });
+      }
+
+      // Check if already deleted
+      if (!existingFacility.isActive) {
+        return res.status(400).json({ error: "この施設は既に削除されています" });
+      }
+
+      // Cannot delete headquarters
+      if (existingFacility.isHeadquarters) {
+        return res.status(403).json({ error: "本社施設は削除できません" });
+      }
+
+      // Check if this is the last active facility in the company
+      const activeFacilities = await db.query.facilities.findMany({
+        where: and(
+          eq(facilities.companyId, existingFacility.companyId),
+          eq(facilities.isActive, true)
+        )
+      });
+
+      if (activeFacilities.length === 1) {
+        return res.status(403).json({ error: "企業内の最後の施設は削除できません" });
+      }
+
+      // Get warnings about related data
+      const warnings: string[] = [];
+
+      // Check active users
+      const activeUsers = await db.query.users.findMany({
+        where: and(
+          eq(users.facilityId, id),
+          eq(users.isActive, true)
+        )
+      });
+
+      if (activeUsers.length > 0) {
+        warnings.push(`${activeUsers.length}名のアクティブユーザーが紐づいています`);
+      }
+
+      // Check active patients
+      const activePatients = await db.query.patients.findMany({
+        where: and(
+          eq(patients.facilityId, id),
+          eq(patients.isActive, true)
+        )
+      });
+
+      if (activePatients.length > 0) {
+        warnings.push(`${activePatients.length}名のアクティブ利用者が紐づいています`);
+      }
+
+      // Check uncompleted schedules
+      const now = new Date();
+      const uncompletedSchedules = await db.query.schedules.findMany({
+        where: and(
+          eq(schedules.facilityId, id),
+          or(
+            eq(schedules.status, 'scheduled'),
+            eq(schedules.status, 'in_progress')
+          ),
+          gte(schedules.scheduledDate, now)
+        )
+      });
+
+      if (uncompletedSchedules.length > 0) {
+        warnings.push(`${uncompletedSchedules.length}件の未完了スケジュールがあります`);
+      }
+
+      // Perform soft delete
+      const updatedFacility = await storage.updateFacility(id, {
+        isActive: false,
+        deletedAt: new Date(),
+        deletedBy: req.user.id
+      });
+
+      res.json({
+        facility: updatedFacility,
+        warnings: warnings.length > 0 ? warnings : undefined
+      });
+
+    } catch (error) {
+      console.error("Deactivate facility error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Users Routes ==========
   
   // Get users in facility

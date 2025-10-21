@@ -172,7 +172,7 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async getFacilitiesByCompany(companyId: string): Promise<Facility[]> {
-    return await db.select().from(facilities).where(eq(facilities.companyId, companyId));
+    return await db.select().from(facilities).where(and(eq(facilities.companyId, companyId), eq(facilities.isActive, true)));
   }
 
   async createFacility(facility: InsertFacility & { companyId: string }): Promise<Facility> {
@@ -180,7 +180,7 @@ export class PostgreSQLStorage implements IStorage {
     return result[0];
   }
 
-  async updateFacility(id: string, facility: Partial<InsertFacility>): Promise<Facility | undefined> {
+  async updateFacility(id: string, facility: Partial<InsertFacility> & { isActive?: boolean; deletedAt?: Date | null; deletedBy?: string | null }): Promise<Facility | undefined> {
     const result = await db
       .update(facilities)
       .set({ ...facility, updatedAt: new Date() })

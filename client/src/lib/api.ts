@@ -163,6 +163,13 @@ export const facilityApi = {
       body: JSON.stringify(facilityData),
     });
   },
+
+  // Deactivate facility (soft delete - Corporate Admin only)
+  async deactivateFacility(id: string): Promise<{ facility: Facility; warnings?: string[] }> {
+    return fetchApi<{ facility: Facility; warnings?: string[] }>(`/facilities/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+  },
 };
 
 // Tenant/Subdomain utility functions

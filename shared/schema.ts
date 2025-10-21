@@ -47,11 +47,14 @@ export const facilities = pgTable("facilities", {
   name: text("name").notNull(),
   slug: text("slug").notNull(), // e.g., "tokyo-honin", "sakura-station"
   isHeadquarters: boolean("is_headquarters").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
   address: text("address"),
   phone: text("phone"),
   email: text("email"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedBy: varchar("deleted_by"), // Foreign key to users.id (defined in relations)
 });
 
 // ========== Buildings Table (Same Building Management) ==========
@@ -1069,6 +1072,20 @@ export interface PaginatedResult<T> {
 }
 
 // ========== Relations ==========
+
+export const facilitiesRelations = relations(facilities, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [facilities.companyId],
+    references: [companies.id],
+  }),
+  deletedByUser: one(users, {
+    fields: [facilities.deletedBy],
+    references: [users.id],
+  }),
+  users: many(users),
+  patients: many(patients),
+  buildings: many(buildings),
+}));
 
 export const patientsRelations = relations(patients, ({ one, many }) => ({
   facility: one(facilities, {
