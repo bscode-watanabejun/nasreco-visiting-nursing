@@ -39,6 +39,7 @@ import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
 import ComingSoon from "@/components/ComingSoon";
 import { AccessDeniedPage } from "@/components/AccessDeniedPage";
+import { CompanyManagement } from "@/components/CompanyManagement";
 
 // Theme provider for dark/light mode
 function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -94,6 +95,11 @@ function MainLayout() {
   const hasTenantAccess = () => {
     if (!currentUser || !currentUser.facility) return true; // Let authentication handle this
 
+    // System admins have access to all routes
+    if (currentUser.role === 'system_admin') {
+      return true;
+    }
+
     // Check if user is a corporate admin (based on actual user role, not UI context)
     const isUserCorporateAdmin = currentUser.role === 'corporate_admin' &&
                                   currentUser.accessLevel === 'corporate';
@@ -136,6 +142,22 @@ function MainLayout() {
   useEffect(() => {
     if (currentUser) {
       setIsAuthenticated(true);
+
+      // System Admin redirect: always redirect to /system-admin/companies
+      if (currentUser.role === 'system_admin') {
+        const currentPath = window.location.pathname;
+
+        // If not already on system-admin route, redirect
+        if (!currentPath.startsWith('/system-admin')) {
+          console.log(`[App] Redirecting system admin to /system-admin/companies`);
+          setIsRedirecting(true);
+          window.location.replace('/system-admin/companies');
+          return;
+        }
+
+        // System admin is on correct route, continue
+        return;
+      }
 
       // Redirect regular users from legacy routes to path-based routes
       const currentPath = window.location.pathname;
@@ -186,6 +208,9 @@ function MainLayout() {
 
   // Get user role display string
   const getUserRoleDisplay = (user: any) => {
+    if (user?.role === 'system_admin') {
+      return 'システム管理者';
+    }
     if (user?.role === 'corporate_admin' && user?.accessLevel === 'corporate') {
       return '企業管理者';
     }
@@ -337,6 +362,35 @@ function MainLayout() {
     "--sidebar-width-icon": "4rem",
   };
 
+  // System Admin layout (no sidebar)
+  if (currentUser?.role === 'system_admin') {
+    return (
+      <div className="flex h-screen w-full overflow-x-hidden">
+        <div className="flex flex-col flex-1 min-w-0 overflow-x-hidden">
+          <header className="border-b bg-background">
+            <div className="flex items-center justify-between px-4 py-3">
+              <h1 className="text-lg font-semibold">システム管理</h1>
+              <Navbar
+                currentFacility="システム管理"
+                onFacilityChange={handleFacilityChange}
+                userName={currentUser?.fullName || 'ユーザー'}
+                userRole={getUserRoleDisplay(currentUser)}
+                onLogout={handleLogout}
+              />
+            </div>
+          </header>
+          <main className="flex-1 overflow-y-auto overflow-x-hidden">
+            <Switch>
+              <Route path="/system-admin/companies" component={CompanyManagement} />
+              <Route component={CompanyManagement} />
+            </Switch>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular user layout (with sidebar)
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full overflow-x-hidden">
@@ -356,6 +410,9 @@ function MainLayout() {
           </header>
           <main className="flex-1 overflow-y-auto overflow-x-hidden">
             <Switch>
+              {/* System Admin routes should not reach here */}
+              <Route path="/system-admin/companies" component={CompanyManagement} />
+
               {/* Path-based multi-tenant routes: /:companySlug/:facilitySlug/* */}
               <Route path="/:companySlug/:facilitySlug/dashboard" component={shouldShowHeadquartersFeatures ? HeadquartersDashboard : Dashboard} />
               <Route path="/:companySlug/:facilitySlug/facilities" component={FacilityManagement} />

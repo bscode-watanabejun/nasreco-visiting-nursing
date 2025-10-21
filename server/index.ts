@@ -69,13 +69,18 @@ app.use('/api', async (req, res, next) => {
 });
 
 // Path-based security checks (must come after authentication)
-// Apply to all API routes EXCEPT authentication endpoints
+// Apply to all API routes EXCEPT authentication and system-admin endpoints
 app.use('/api', (req, res, next) => {
   // Skip security checks for authentication endpoints
   if (req.path === '/auth/login' ||
       req.path === '/auth/logout' ||
       req.path === '/auth/register' ||
       req.path.startsWith('/auth/')) {
+    return next();
+  }
+
+  // Skip security checks for system-admin endpoints
+  if (req.path.startsWith('/system-admin/')) {
     return next();
   }
 

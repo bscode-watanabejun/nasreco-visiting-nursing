@@ -5,7 +5,7 @@ interface CurrentUser {
   username: string;
   email: string;
   fullName: string;
-  role: 'admin' | 'nurse' | 'manager' | 'corporate_admin';
+  role: 'admin' | 'nurse' | 'manager' | 'corporate_admin' | 'system_admin';
   accessLevel: 'facility' | 'corporate';
   licenseNumber: string | null;
   phone: string | null;

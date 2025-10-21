@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Enums for various status fields
-export const userRoleEnum = pgEnum("user_role", ["admin", "nurse", "manager", "corporate_admin"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "nurse", "manager", "corporate_admin", "system_admin"]);
 export const userAccessLevelEnum = pgEnum("user_access_level", ["facility", "corporate"]);
 export const genderEnum = pgEnum("gender", ["male", "female", "other"]);
 export const recordTypeEnum = pgEnum("record_type", ["vital_signs", "medication", "wound_care", "general_care", "assessment"]);

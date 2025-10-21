@@ -397,7 +397,7 @@ export function FacilityManagement() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>施設を削除しますか？</AlertDialogTitle>
                             <AlertDialogDescription>
-                              <div className="space-y-2">
+                              <div className="space-y-3">
                                 <p>
                                   <strong>{facility.name}</strong> を削除します。
                                 </p>
@@ -405,6 +405,14 @@ export function FacilityManagement() {
                                   この操作により施設は無効化されます。施設に紐づく利用者データや記録は保持されますが、
                                   施設一覧には表示されなくなります。
                                 </p>
+                                <div className="rounded-md bg-destructive/10 p-3 border border-destructive/20">
+                                  <p className="text-sm font-semibold text-destructive">
+                                    ⚠️ 重要：この操作は復元できません
+                                  </p>
+                                  <p className="text-sm text-destructive/90 mt-1">
+                                    削除した施設を再度有効化することはできません。慎重に実行してください。
+                                  </p>
+                                </div>
                                 <p className="text-sm text-muted-foreground">
                                   ※ 本社施設、企業内の最後の施設は削除できません。
                                 </p>

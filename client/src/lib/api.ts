@@ -125,7 +125,7 @@ export const userApi = {
   },
 };
 
-// Company API functions (Corporate Admin only)
+// Company API functions (Corporate Admin only - Deprecated)
 export const companyApi = {
   // Get all companies
   async getCompanies(): Promise<Company[]> {
@@ -137,6 +137,82 @@ export const companyApi = {
     return fetchApi<Company>('/companies', {
       method: 'POST',
       body: JSON.stringify(companyData),
+    });
+  },
+};
+
+// System Admin API functions (System Administrator only)
+export interface CreateCompanyWithAdminRequest {
+  companyName: string;
+  companySlug: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  facilityName: string;
+  facilitySlug: string;
+  facilityAddress?: string;
+  facilityPhone?: string;
+  facilityEmail?: string;
+  adminUsername: string;
+  adminEmail: string;
+  adminFullName: string;
+  adminPassword: string;
+  adminPhone?: string;
+}
+
+export interface CompanyDetail extends Company {
+  facilities: Facility[];
+  statistics: {
+    facilityCount: number;
+    userCount: number;
+    patientCount: number;
+  };
+}
+
+export interface CreateCompanyResponse {
+  company: Company;
+  facility: Facility;
+  adminUser: {
+    id: string;
+    username: string;
+    email: string;
+    fullName: string;
+    role: string;
+  };
+  loginUrl: string;
+}
+
+export const systemAdminApi = {
+  // Get all companies (excludes SYSTEM)
+  async getCompanies(): Promise<Company[]> {
+    return fetchApi<Company[]>('/system-admin/companies');
+  },
+
+  // Get company detail with statistics
+  async getCompanyDetail(id: string): Promise<CompanyDetail> {
+    return fetchApi<CompanyDetail>(`/system-admin/companies/${id}`);
+  },
+
+  // Create company with headquarters and initial admin user
+  async createCompany(data: CreateCompanyWithAdminRequest): Promise<CreateCompanyResponse> {
+    return fetchApi<CreateCompanyResponse>('/system-admin/companies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update company
+  async updateCompany(id: string, data: Partial<Company>): Promise<Company> {
+    return fetchApi<Company>(`/system-admin/companies/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete company
+  async deleteCompany(id: string): Promise<{ message: string }> {
+    return fetchApi<{ message: string }>(`/system-admin/companies/${id}`, {
+      method: 'DELETE',
     });
   },
 };

@@ -115,6 +115,7 @@ export const pathTenantMiddleware = async (req: PathTenantRequest, res: Response
 
     // Skip tenant resolution for specific paths
     if (pathParts.length === 0 ||
+        req.path.startsWith('/system-admin') ||  // System admin routes
         req.path.startsWith('/assets') ||
         req.path.startsWith('/uploads') ||
         req.path.startsWith('/@') ||           // Vite internals: /@vite, /@fs, /@react-refresh, etc.
@@ -149,7 +150,8 @@ export const pathTenantMiddleware = async (req: PathTenantRequest, res: Response
         'settings', 'reports', 'login', 'facilities', 'headquarters',
         'medical-institutions', 'care-managers', 'buildings',
         'insurance-cards', 'statistics', 'care-plans', 'care-reports',
-        'contracts', 'special-management', 'bonus-master', 'receipts'
+        'contracts', 'special-management', 'bonus-master', 'receipts',
+        'system-admin'
       ];
 
       if (knownPages.includes(pathParts[0])) {

@@ -9,6 +9,7 @@ import PDFDocument from "pdfkit";
 import { storage } from "./storage";
 import { uploadFile, downloadFile, deleteFile } from "./object-storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
+import { requireSystemAdmin } from "./middleware/system-admin";
 import {
   insertUserSchema,
   insertPatientSchema,
@@ -570,10 +571,301 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api', requireAuth);
   app.use('/api', checkSubdomainAccess);
 
-  // ========== Companies Routes (Corporate Admin only) ==========
+  // ========== System Admin Routes (System Administrator only) ==========
 
-  // Get companies (corporate admin only)
-  app.get("/api/companies", requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  // Get all companies (system admin only)
+  app.get("/api/system-admin/companies", requireAuth, requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const companies = await storage.getCompanies();
+      // Exclude SYSTEM company from the list
+      const filteredCompanies = companies.filter(c => c.slug !== 'system');
+      res.json(filteredCompanies);
+    } catch (error) {
+      console.error("Get companies error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get company detail with statistics (system admin only)
+  app.get("/api/system-admin/companies/:id", requireAuth, requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const company = await storage.getCompany(id);
+
+      if (!company) {
+        return res.status(404).json({ error: "企業が見つかりません" });
+      }
+
+      // Get facilities for this company
+      const facilities = await storage.getFacilitiesByCompany(id);
+
+      // Get user count across all facilities
+      let totalUsers = 0;
+      for (const facility of facilities) {
+        const users = await storage.getUsersByFacility(facility.id);
+        totalUsers += users.length;
+      }
+
+      // Get patient count across all facilities
+      let totalPatients = 0;
+      for (const facility of facilities) {
+        const patients = await storage.getPatientsByFacility(facility.id);
+        totalPatients += patients.length;
+      }
+
+      res.json({
+        ...company,
+        facilities,
+        statistics: {
+          facilityCount: facilities.length,
+          userCount: totalUsers,
+          patientCount: totalPatients
+        }
+      });
+    } catch (error) {
+      console.error("Get company detail error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create company with headquarters and initial admin (system admin only)
+  app.post("/api/system-admin/companies", requireAuth, requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const {
+        companyName,
+        companySlug,
+        companyAddress,
+        companyPhone,
+        companyEmail,
+        facilityName,
+        facilitySlug,
+        facilityAddress,
+        facilityPhone,
+        facilityEmail,
+        adminUsername,
+        adminEmail,
+        adminFullName,
+        adminPassword,
+        adminPhone
+      } = req.body;
+
+      // Validate required fields
+      if (!companyName || !companySlug || !facilityName || !facilitySlug || !adminUsername || !adminEmail || !adminFullName || !adminPassword) {
+        return res.status(400).json({ error: "必須項目が入力されていません" });
+      }
+
+      // Check if company slug already exists
+      const existingCompany = await storage.getCompanyBySlug(companySlug);
+      if (existingCompany) {
+        return res.status(400).json({ error: "この企業スラッグは既に使用されています" });
+      }
+
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(adminUsername);
+      if (existingUser) {
+        return res.status(400).json({ error: "このユーザー名は既に使用されています" });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+
+      // Create company
+      const company = await storage.createCompany({
+        name: companyName,
+        slug: companySlug,
+        address: companyAddress,
+        phone: companyPhone,
+        email: companyEmail
+      });
+
+      // Create headquarters facility
+      const facility = await storage.createFacility({
+        companyId: company.id,
+        name: facilityName,
+        slug: facilitySlug,
+        isHeadquarters: true,
+        address: facilityAddress || companyAddress,
+        phone: facilityPhone || companyPhone,
+        email: facilityEmail || companyEmail
+      });
+
+      // Create initial admin user
+      const adminUser = await storage.createUser({
+        facilityId: facility.id,
+        username: adminUsername,
+        password: hashedPassword,
+        email: adminEmail,
+        fullName: adminFullName,
+        role: 'corporate_admin',
+        accessLevel: 'corporate',
+        phone: adminPhone,
+        isActive: true,
+        mustChangePassword: true
+      });
+
+      res.status(201).json({
+        company,
+        facility,
+        adminUser: {
+          id: adminUser.id,
+          username: adminUser.username,
+          email: adminUser.email,
+          fullName: adminUser.fullName,
+          role: adminUser.role
+        },
+        loginUrl: `/${companySlug}/${facilitySlug}/login`
+      });
+    } catch (error: any) {
+      console.error("Create company error:", error);
+      if (error.code === '23505') { // Unique violation
+        return res.status(400).json({ error: "スラッグまたはユーザー名が既に使用されています" });
+      }
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update company (system admin only)
+  app.put("/api/system-admin/companies/:id", requireAuth, requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { name, slug, address, phone, email } = req.body;
+
+      // Prevent updating SYSTEM company
+      const company = await storage.getCompany(id);
+      if (!company) {
+        return res.status(404).json({ error: "企業が見つかりません" });
+      }
+
+      if (company.slug === 'system') {
+        return res.status(403).json({ error: "SYSTEM企業は編集できません" });
+      }
+
+      // Check if new slug is already taken
+      if (slug && slug !== company.slug) {
+        const existingCompany = await storage.getCompanyBySlug(slug);
+        if (existingCompany && existingCompany.id !== id) {
+          return res.status(400).json({ error: "この企業スラッグは既に使用されています" });
+        }
+      }
+
+      const updatedCompany = await storage.updateCompany(id, {
+        name,
+        slug,
+        address,
+        phone,
+        email
+      });
+
+      if (!updatedCompany) {
+        return res.status(404).json({ error: "企業が見つかりません" });
+      }
+
+      res.json(updatedCompany);
+    } catch (error) {
+      console.error("Update company error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete company (system admin only) - logical delete
+  app.delete("/api/system-admin/companies/:id", requireAuth, requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Prevent deleting SYSTEM company
+      const company = await storage.getCompany(id);
+      if (!company) {
+        return res.status(404).json({ error: "企業が見つかりません" });
+      }
+
+      if (company.slug === 'system') {
+        return res.status(403).json({ error: "SYSTEM企業は削除できません" });
+      }
+
+      // Check if company has any active non-headquarters facilities
+      // Get all facilities (including logically deleted ones)
+      const allFacilities = await db.select().from(facilities).where(eq(facilities.companyId, id));
+
+      // Only check for active non-headquarters facilities
+      const activeFacilities = allFacilities.filter(f => f.isActive);
+      const activeNonHqFacilities = activeFacilities.filter(f => !f.isHeadquarters);
+
+      if (activeNonHqFacilities.length > 0) {
+        return res.status(400).json({
+          error: "本社以外のアクティブな施設が存在する企業は削除できません",
+          details: `先に施設管理から${activeNonHqFacilities.length}個の施設を削除してください。`
+        });
+      }
+
+      // All facilities (including logically deleted ones) will be physically deleted
+
+      // Count users before deletion for response message
+      let totalDeletedUsers = 0;
+      for (const facility of allFacilities) {
+        const users = await storage.getUsersByFacility(facility.id);
+        totalDeletedUsers += users.length;
+      }
+
+      // Delete all related data for each facility
+      for (const facility of allFacilities) {
+        // Delete all patients and their related data
+        const patients = await storage.getPatientsByFacility(facility.id);
+        for (const patient of patients) {
+          // Delete patient-related data using raw queries
+          await db.execute(sql`DELETE FROM nursing_records WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM visits WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM schedules WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM medications WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM additional_payments WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM doctor_orders WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM insurance_cards WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM care_plans WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM service_care_plans WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM care_reports WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM contracts WHERE patient_id = ${patient.id}`);
+          await db.execute(sql`DELETE FROM monthly_receipts WHERE patient_id = ${patient.id}`);
+          // Delete patient
+          await storage.deletePatient(patient.id);
+        }
+
+        // Delete facility-specific data
+        await db.execute(sql`DELETE FROM buildings WHERE facility_id = ${facility.id}`);
+        await db.execute(sql`DELETE FROM medical_institutions WHERE facility_id = ${facility.id}`);
+        await db.execute(sql`DELETE FROM care_managers WHERE facility_id = ${facility.id}`);
+        await db.execute(sql`DELETE FROM special_management_definitions WHERE facility_id = ${facility.id}`);
+        await db.execute(sql`DELETE FROM bonus_master WHERE facility_id = ${facility.id}`);
+
+        // Delete all users in the facility
+        const users = await storage.getUsersByFacility(facility.id);
+        for (const user of users) {
+          await storage.deleteUser(user.id);
+        }
+
+        // Finally delete the facility
+        await storage.deleteFacility(facility.id);
+      }
+
+      // Delete company
+      const success = await storage.deleteCompany(id);
+      if (!success) {
+        return res.status(404).json({ error: "企業が見つかりません" });
+      }
+
+      res.json({
+        message: "企業を削除しました",
+        deletedFacilities: allFacilities.length,
+        deletedUsers: totalDeletedUsers
+      });
+    } catch (error) {
+      console.error("Delete company error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // ========== Companies Routes (Deprecated - kept for backward compatibility) ==========
+
+  // Get companies (system admin only)
+  app.get("/api/companies", requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const companies = await storage.getCompanies();
       res.json(companies);
@@ -583,8 +875,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create company (corporate admin only)
-  app.post("/api/companies", requireCorporateAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  // Create company (system admin only)
+  app.post("/api/companies", requireSystemAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validatedData = insertCompanySchema.parse(req.body);
       const company = await storage.createCompany(validatedData);
@@ -618,7 +910,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "権限がありません" });
       }
 
-      res.json(facilities);
+      // Exclude SYSTEM facility from customer-facing API
+      const filteredFacilities = facilities.filter(f => f.slug !== 'system');
+
+      res.json(filteredFacilities);
 
     } catch (error) {
       console.error("Get facilities error:", error);
