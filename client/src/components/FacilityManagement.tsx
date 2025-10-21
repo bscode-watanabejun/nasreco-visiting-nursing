@@ -70,6 +70,8 @@ export function FacilityManagement() {
   const [formData, setFormData] = useState<FacilityFormData>(initialFormData);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSlugWarning, setShowSlugWarning] = useState(false);
+  const [originalSlug, setOriginalSlug] = useState<string>("");
 
   const { data: currentUser } = useCurrentUser();
 
@@ -135,6 +137,7 @@ export function FacilityManagement() {
 
   const handleEditFacility = (facility: Facility) => {
     setSelectedFacility(facility);
+    setOriginalSlug(facility.slug); // 元のスラッグを保存
     setFormData({
       name: facility.name,
       slug: facility.slug,
@@ -149,6 +152,18 @@ export function FacilityManagement() {
   const handleUpdateFacility = async () => {
     if (!selectedFacility || !formData.name || !formData.slug) return;
 
+    // URLスラッグが変更された場合、警告を表示
+    if (originalSlug !== formData.slug) {
+      setShowSlugWarning(true);
+      return;
+    }
+
+    await performUpdate();
+  };
+
+  const performUpdate = async () => {
+    if (!selectedFacility || !formData.name || !formData.slug) return;
+
     setIsSubmitting(true);
     try {
       await facilityApi.updateFacility(selectedFacility.id, {
@@ -160,8 +175,10 @@ export function FacilityManagement() {
         isHeadquarters: formData.isHeadquarters,
       });
       setIsEditDialogOpen(false);
+      setShowSlugWarning(false);
       setSelectedFacility(null);
       setFormData(initialFormData);
+      setOriginalSlug("");
       refetch();
       toast({
         title: "更新完了",
@@ -441,6 +458,60 @@ export function FacilityManagement() {
           companySlug={companySlug}
         />
       </Dialog>
+
+      {/* URL Slug Change Warning Dialog */}
+      <AlertDialog open={showSlugWarning} onOpenChange={setShowSlugWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>URLスラッグを変更しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3">
+                <p className="font-semibold text-destructive">
+                  ⚠️ 稼働中の施設のURLを変更すると、業務に影響があります
+                </p>
+                <div className="space-y-2 text-sm">
+                  <p>変更前: <code className="bg-muted px-2 py-1 rounded">/{companySlug}/{originalSlug}</code></p>
+                  <p>変更後: <code className="bg-muted px-2 py-1 rounded">/{companySlug}/{formData.slug}</code></p>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <p className="font-semibold">影響:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>既存のブックマークURLが無効になります</li>
+                    <li>ログイン中のユーザーがページ遷移時にエラーになる可能性があります</li>
+                    <li>外部システムからの連携リンクが切れる可能性があります</li>
+                  </ul>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <p className="font-semibold">推奨対応:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>事前に全ユーザーに新URLを周知してください</li>
+                    <li>業務時間外（深夜など）に変更してください</li>
+                    <li>変更後、全ユーザーにログアウト→再ログインを依頼してください</li>
+                  </ul>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  ※ データベースのデータや権限設定には影響ありません（内部的にはUUIDで管理されています）
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowSlugWarning(false);
+              // 元のスラッグに戻す
+              setFormData(prev => ({ ...prev, slug: originalSlug }));
+            }}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={performUpdate}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              理解した上で変更する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
