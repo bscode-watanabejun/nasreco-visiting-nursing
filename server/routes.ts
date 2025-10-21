@@ -260,8 +260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         company: {
           id: company.id,
           name: company.name,
-          slug: company.slug,
-          domain: company.domain
+          slug: company.slug
         },
         facility: {
           id: facility.id,

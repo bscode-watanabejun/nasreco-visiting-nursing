@@ -19,7 +19,6 @@ export interface IStorage {
 
   // ========== Companies ==========
   getCompany(id: string): Promise<Company | undefined>;
-  getCompanyByDomain(domain: string): Promise<Company | undefined>;
   getCompanyBySlug(slug: string): Promise<Company | undefined>;
   getCompanies(): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
@@ -113,11 +112,6 @@ export class PostgreSQLStorage implements IStorage {
   // ========== Companies ==========
   async getCompany(id: string): Promise<Company | undefined> {
     const result = await db.select().from(companies).where(eq(companies.id, id)).limit(1);
-    return result[0];
-  }
-
-  async getCompanyByDomain(domain: string): Promise<Company | undefined> {
-    const result = await db.select().from(companies).where(eq(companies.domain, domain)).limit(1);
     return result[0];
   }
 
