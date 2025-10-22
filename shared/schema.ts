@@ -51,6 +51,14 @@ export const facilities = pgTable("facilities", {
   address: text("address"),
   phone: text("phone"),
   email: text("email"),
+
+  // Phase2-1: 施設体制フラグ（24時間対応体制・緊急時訪問看護）
+  has24hSupportSystem: boolean("has_24h_support_system").default(false), // 24時間対応体制加算（医療保険）
+  has24hSupportSystemEnhanced: boolean("has_24h_support_system_enhanced").default(false), // 24時間対応体制加算（看護業務負担軽減）
+  hasEmergencySupportSystem: boolean("has_emergency_support_system").default(false), // 緊急時訪問看護加算（I）（介護保険）
+  hasEmergencySupportSystemEnhanced: boolean("has_emergency_support_system_enhanced").default(false), // 緊急時訪問看護加算（II）（介護保険）
+  burdenReductionMeasures: json("burden_reduction_measures"), // 看護業務負担軽減の取り組み（JSON配列）
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),

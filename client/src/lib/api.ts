@@ -49,6 +49,21 @@ export interface CreateFacilityRequest {
   email?: string;
 }
 
+export interface UpdateFacilityRequest {
+  name?: string;
+  slug?: string;
+  isHeadquarters?: boolean;
+  address?: string;
+  phone?: string;
+  email?: string;
+  // Phase2-1: 施設体制フラグ
+  has24hSupportSystem?: boolean;
+  has24hSupportSystemEnhanced?: boolean;
+  hasEmergencySupportSystem?: boolean;
+  hasEmergencySupportSystemEnhanced?: boolean;
+  burdenReductionMeasures?: string[];
+}
+
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -233,7 +248,7 @@ export const facilityApi = {
   },
 
   // Update facility
-  async updateFacility(id: string, facilityData: Partial<CreateFacilityRequest>): Promise<Facility> {
+  async updateFacility(id: string, facilityData: UpdateFacilityRequest): Promise<Facility> {
     return fetchApi<Facility>(`/facilities/${id}`, {
       method: 'PUT',
       body: JSON.stringify(facilityData),

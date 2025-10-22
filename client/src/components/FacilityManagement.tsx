@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,12 @@ interface FacilityFormData {
   phone: string;
   email: string;
   isHeadquarters: boolean;
+  // Phase2-1: 施設体制フラグ
+  has24hSupportSystem: boolean;
+  has24hSupportSystemEnhanced: boolean;
+  hasEmergencySupportSystem: boolean;
+  hasEmergencySupportSystemEnhanced: boolean;
+  burdenReductionMeasures: string[];
 }
 
 const initialFormData: FacilityFormData = {
@@ -61,6 +68,12 @@ const initialFormData: FacilityFormData = {
   phone: "",
   email: "",
   isHeadquarters: false,
+  // Phase2-1: 施設体制フラグ初期値
+  has24hSupportSystem: false,
+  has24hSupportSystemEnhanced: false,
+  hasEmergencySupportSystem: false,
+  hasEmergencySupportSystemEnhanced: false,
+  burdenReductionMeasures: [],
 };
 
 export function FacilityManagement() {
@@ -84,7 +97,7 @@ export function FacilityManagement() {
     queryFn: facilityApi.getFacilities,
   });
 
-  const handleInputChange = (field: keyof FacilityFormData, value: string | boolean) => {
+  const handleInputChange = (field: keyof FacilityFormData, value: string | boolean | string[]) => {
     setFormData(prev => ({
       ...prev,
       [field]: value,
@@ -145,6 +158,12 @@ export function FacilityManagement() {
       phone: facility.phone || "",
       email: facility.email || "",
       isHeadquarters: facility.isHeadquarters,
+      // Phase2-1: 施設体制フラグをロード
+      has24hSupportSystem: facility.has24hSupportSystem || false,
+      has24hSupportSystemEnhanced: facility.has24hSupportSystemEnhanced || false,
+      hasEmergencySupportSystem: facility.hasEmergencySupportSystem || false,
+      hasEmergencySupportSystemEnhanced: facility.hasEmergencySupportSystemEnhanced || false,
+      burdenReductionMeasures: (facility.burdenReductionMeasures as string[]) || [],
     });
     setIsEditDialogOpen(true);
   };
@@ -173,6 +192,12 @@ export function FacilityManagement() {
         phone: formData.phone,
         email: formData.email,
         isHeadquarters: formData.isHeadquarters,
+        // Phase2-1: 施設体制フラグ
+        has24hSupportSystem: formData.has24hSupportSystem,
+        has24hSupportSystemEnhanced: formData.has24hSupportSystemEnhanced,
+        hasEmergencySupportSystem: formData.hasEmergencySupportSystem,
+        hasEmergencySupportSystemEnhanced: formData.hasEmergencySupportSystemEnhanced,
+        burdenReductionMeasures: formData.burdenReductionMeasures,
       });
       setIsEditDialogOpen(false);
       setShowSlugWarning(false);
@@ -529,7 +554,7 @@ interface FacilityFormDialogProps {
   title: string;
   description: string;
   formData: FacilityFormData;
-  onInputChange: (field: keyof FacilityFormData, value: string | boolean) => void;
+  onInputChange: (field: keyof FacilityFormData, value: string | boolean | string[]) => void;
   onSubmit: () => void;
   isSubmitting: boolean;
   isEdit?: boolean;
@@ -624,6 +649,99 @@ function FacilityFormDialog({
             onCheckedChange={(checked) => onInputChange('isHeadquarters', checked)}
           />
           <Label htmlFor="headquarters">本社として設定</Label>
+        </div>
+
+        {/* Phase2-1: 施設体制フラグ */}
+        <div className="space-y-4 pt-4 border-t">
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">加算管理設定</Label>
+            <p className="text-sm text-muted-foreground">
+              施設の体制に応じて自動適用される加算を設定します
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="has24hSupportSystem"
+                checked={formData.has24hSupportSystem}
+                onCheckedChange={(checked) => onInputChange('has24hSupportSystem', !!checked)}
+              />
+              <Label htmlFor="has24hSupportSystem" className="text-sm font-normal">
+                24時間対応体制加算
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="has24hSupportSystemEnhanced"
+                checked={formData.has24hSupportSystemEnhanced}
+                onCheckedChange={(checked) => onInputChange('has24hSupportSystemEnhanced', !!checked)}
+              />
+              <Label htmlFor="has24hSupportSystemEnhanced" className="text-sm font-normal">
+                24時間対応体制加算（看護業務負担軽減）
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="hasEmergencySupportSystem"
+                checked={formData.hasEmergencySupportSystem}
+                onCheckedChange={(checked) => onInputChange('hasEmergencySupportSystem', !!checked)}
+              />
+              <Label htmlFor="hasEmergencySupportSystem" className="text-sm font-normal">
+                緊急時訪問看護加算（I）
+              </Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="hasEmergencySupportSystemEnhanced"
+                checked={formData.hasEmergencySupportSystemEnhanced}
+                onCheckedChange={(checked) => onInputChange('hasEmergencySupportSystemEnhanced', !!checked)}
+              />
+              <Label htmlFor="hasEmergencySupportSystemEnhanced" className="text-sm font-normal">
+                緊急時訪問看護加算（II）
+              </Label>
+            </div>
+          </div>
+
+          {/* 看護業務負担軽減の取り組み */}
+          {formData.has24hSupportSystemEnhanced && (
+            <div className="space-y-2 pl-6 border-l-2 border-orange-200">
+              <Label className="text-sm">看護業務負担軽減の取り組み（2項目以上選択）</Label>
+              <div className="space-y-2">
+                {[
+                  "夜間対応翌日の勤務間隔確保",
+                  "夜間対応の連続回数制限",
+                  "夜間対応後の暦日休日確保",
+                  "夜間勤務ニーズを踏まえた勤務体制",
+                  "ICT・AI・IoT等の活用",
+                  "電話連絡・相談担当者への支援体制"
+                ].map((measure) => (
+                  <div key={measure} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`measure-${measure}`}
+                      checked={formData.burdenReductionMeasures.includes(measure)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          onInputChange('burdenReductionMeasures', [...formData.burdenReductionMeasures, measure]);
+                        } else {
+                          onInputChange('burdenReductionMeasures', formData.burdenReductionMeasures.filter(m => m !== measure));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`measure-${measure}`} className="text-sm font-normal">
+                      {measure}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              {formData.burdenReductionMeasures.length < 2 && (
+                <p className="text-xs text-destructive">※ 2項目以上の選択が必要です</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

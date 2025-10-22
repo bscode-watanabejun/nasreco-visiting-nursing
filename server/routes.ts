@@ -2731,6 +2731,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return { calculatedPoints, appliedBonuses };
     }
 
+    // Phase2-1: Get facility information for context
+    const facility = await db.query.facilities.findFirst({
+      where: eq(facilities.id, facilityId)
+    });
+
     // Calculate patient age
     let patientAge: number | undefined;
     if (patient.dateOfBirth) {
@@ -2778,6 +2783,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       buildingId: patient.buildingId,
       insuranceType: (patient.insuranceType || "medical") as "medical" | "care",
       dailyVisitCount,
+      // Phase2-1: 施設体制フラグ
+      has24hSupportSystem: facility?.has24hSupportSystem || false,
+      has24hSupportSystemEnhanced: facility?.has24hSupportSystemEnhanced || false,
+      hasEmergencySupportSystem: facility?.hasEmergencySupportSystem || false,
+      hasEmergencySupportSystemEnhanced: facility?.hasEmergencySupportSystemEnhanced || false,
+      burdenReductionMeasures: facility?.burdenReductionMeasures || [],
     };
 
     // Calculate bonuses using the new rule engine

@@ -116,6 +116,19 @@ export function evaluatePredefinedCondition(
     case "has_building":
       return evaluateHasBuilding(context);
 
+    // Phase2-1: 施設体制フラグ条件
+    case "has_24h_support_system":
+      return evaluateHas24hSupportSystem(context);
+
+    case "has_24h_support_system_enhanced":
+      return evaluateHas24hSupportSystemEnhanced(context);
+
+    case "has_emergency_support_system":
+      return evaluateHasEmergencySupportSystem(context);
+
+    case "has_emergency_support_system_enhanced":
+      return evaluateHasEmergencySupportSystemEnhanced(context);
+
     default:
       return { passed: false, reason: `Unknown condition type: ${type}` };
   }
@@ -217,6 +230,63 @@ function evaluateHasBuilding(context: BonusCalculationContext): ConditionEvaluat
   return {
     passed,
     reason: passed ? "Patient has building assignment" : "Patient has no building assignment",
+  };
+}
+
+// ========== Phase2-1: Facility System Flags Evaluators ==========
+
+/**
+ * 24時間対応体制加算（医療保険）の条件評価
+ */
+function evaluateHas24hSupportSystem(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.has24hSupportSystem === true;
+  return {
+    passed,
+    reason: passed ? "24時間対応体制あり" : "24時間対応体制なし",
+  };
+}
+
+/**
+ * 24時間対応体制加算（看護業務負担軽減）の条件評価
+ */
+function evaluateHas24hSupportSystemEnhanced(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.has24hSupportSystemEnhanced === true;
+
+  // 看護業務負担軽減の取り組みが2項目以上あるかチェック
+  const measures = context.burdenReductionMeasures || [];
+  const hasSufficientMeasures = Array.isArray(measures) && measures.length >= 2;
+
+  const finalPassed = passed && hasSufficientMeasures;
+
+  return {
+    passed: finalPassed,
+    reason: finalPassed
+      ? `24時間対応体制（看護業務負担軽減）あり（取り組み${measures.length}項目）`
+      : passed
+        ? `24時間対応体制はあるが、負担軽減の取り組みが不足（${measures.length}項目/2項目以上必要）`
+        : "24時間対応体制（看護業務負担軽減）なし",
+  };
+}
+
+/**
+ * 緊急時訪問看護加算（I）（介護保険）の条件評価
+ */
+function evaluateHasEmergencySupportSystem(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.hasEmergencySupportSystem === true;
+  return {
+    passed,
+    reason: passed ? "緊急時訪問看護加算（I）体制あり" : "緊急時訪問看護加算（I）体制なし",
+  };
+}
+
+/**
+ * 緊急時訪問看護加算（II）（介護保険）の条件評価
+ */
+function evaluateHasEmergencySupportSystemEnhanced(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.hasEmergencySupportSystemEnhanced === true;
+  return {
+    passed,
+    reason: passed ? "緊急時訪問看護加算（II）体制あり" : "緊急時訪問看護加算（II）体制なし",
   };
 }
 
@@ -606,6 +676,13 @@ export async function calculateBonuses(
     context.facilityId,
     context.insuranceType
   );
+
+  // 1.5. Phase2-1: 点数の高い順にソート（高い点数の加算を優先適用）
+  applicableBonuses.sort((a, b) => {
+    const pointsA = a.fixedPoints || 0;
+    const pointsB = b.fixedPoints || 0;
+    return pointsB - pointsA; // 降順
+  });
 
   // 2. 各加算を評価
   for (const bonus of applicableBonuses) {
