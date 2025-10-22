@@ -309,7 +309,7 @@ export function PatientDetail() {
           </TabsTrigger>
           <TabsTrigger value="care">
             <FileText className="mr-2 h-4 w-4" />
-            ケアプラン
+            計画書
           </TabsTrigger>
         </TabsList>
 
