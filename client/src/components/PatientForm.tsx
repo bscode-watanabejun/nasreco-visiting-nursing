@@ -75,6 +75,12 @@ const patientFormSchema = z.object({
   specialManagementTypes: z.array(z.string()).optional(),
   specialManagementStartDate: z.date().optional(),
   specialManagementEndDate: z.date().optional(),
+  // 介護・保険管理フィールド
+  insuranceType: z.enum(["medical", "care"]).optional(),
+  careLevel: z.enum(["support1", "support2", "care1", "care2", "care3", "care4", "care5"]).optional(),
+  specialCareType: z.enum(["none", "bedsore", "rare_disease", "mental"]).optional(),
+  isInHospital: z.boolean().optional(),
+  isInShortStay: z.boolean().optional(),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -169,6 +175,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       specialManagementTypes: [],
       specialManagementStartDate: undefined,
       specialManagementEndDate: undefined,
+      // 介護・保険管理フィールド
+      insuranceType: undefined,
+      careLevel: undefined,
+      specialCareType: "none",
+      isInHospital: false,
+      isInShortStay: false,
     },
   })
 
@@ -201,6 +213,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           specialManagementTypes: patient.specialManagementTypes || [],
           specialManagementStartDate: patient.specialManagementStartDate ? new Date(patient.specialManagementStartDate + 'T00:00:00') : undefined,
           specialManagementEndDate: patient.specialManagementEndDate ? new Date(patient.specialManagementEndDate + 'T00:00:00') : undefined,
+          // 介護・保険管理フィールド
+          insuranceType: patient.insuranceType || undefined,
+          careLevel: patient.careLevel || undefined,
+          specialCareType: patient.specialCareType || "none",
+          isInHospital: patient.isInHospital ?? false,
+          isInShortStay: patient.isInShortStay ?? false,
         })
       } else if (mode === 'create') {
         console.log("Resetting form for create mode")
@@ -228,6 +246,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           specialManagementTypes: [],
           specialManagementStartDate: undefined,
           specialManagementEndDate: undefined,
+          // 介護・保険管理フィールド
+          insuranceType: undefined,
+          careLevel: undefined,
+          specialCareType: "none",
+          isInHospital: false,
+          isInShortStay: false,
         })
       }
     }
@@ -773,6 +797,142 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                       </FormItem>
                     )}
                   />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 保険・介護情報 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">保険・介護情報</CardTitle>
+                <CardDescription>保険種別、介護度、特別訪問看護等を入力してください</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="insuranceType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>保険種別</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="選択してください" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="medical">医療保険</SelectItem>
+                            <SelectItem value="care">介護保険</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="careLevel"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>介護度</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="選択してください" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="support1">要支援1</SelectItem>
+                            <SelectItem value="support2">要支援2</SelectItem>
+                            <SelectItem value="care1">要介護1</SelectItem>
+                            <SelectItem value="care2">要介護2</SelectItem>
+                            <SelectItem value="care3">要介護3</SelectItem>
+                            <SelectItem value="care4">要介護4</SelectItem>
+                            <SelectItem value="care5">要介護5</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="specialCareType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>特別訪問看護</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="選択してください" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">なし</SelectItem>
+                          <SelectItem value="bedsore">褥瘡ケア</SelectItem>
+                          <SelectItem value="rare_disease">難病等</SelectItem>
+                          <SelectItem value="mental">精神科訪問看護</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Separator className="my-4" />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between space-x-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base font-semibold">入院中</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        現在入院中の場合は有効にしてください
+                      </p>
+                    </div>
+                    <FormField
+                      control={form.control}
+                      name="isInHospital"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between space-x-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base font-semibold">ショートステイ中</FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        現在ショートステイ中の場合は有効にしてください
+                      </p>
+                    </div>
+                    <FormField
+                      control={form.control}
+                      name="isInShortStay"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>

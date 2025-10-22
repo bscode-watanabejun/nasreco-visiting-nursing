@@ -336,16 +336,20 @@ export function PatientDetail() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Personal Information */}
+                {/* 1. 基本情報 */}
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg flex items-center gap-2">
                     <User className="h-5 w-5" />
-                    個人情報
+                    基本情報
                   </h3>
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-muted-foreground">患者番号</p>
                       <p className="font-medium">{patient.patientNumber || '未登録'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">氏名</p>
+                      <p className="font-medium">{patient.lastName} {patient.firstName}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">生年月日</p>
@@ -361,7 +365,7 @@ export function PatientDetail() {
                   </div>
                 </div>
 
-                {/* Contact Information */}
+                {/* 2. 連絡先情報 */}
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg flex items-center gap-2">
                     <Phone className="h-5 w-5" />
@@ -369,20 +373,12 @@ export function PatientDetail() {
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-muted-foreground">電話番号</p>
-                      <p className="font-medium">{patient.phone || '未登録'}</p>
-                    </div>
-                    <div>
                       <p className="text-sm text-muted-foreground">住所</p>
                       <p className="font-medium whitespace-pre-wrap">{patient.address || '未登録'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">建物</p>
-                      <p className="font-medium">{patient.building?.name || '未登録'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">保険番号</p>
-                      <p className="font-medium">{patient.insuranceNumber || '未登録'}</p>
+                      <p className="text-sm text-muted-foreground">電話番号</p>
+                      <p className="font-medium">{patient.phone || '未登録'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">緊急連絡先（氏名）</p>
@@ -392,50 +388,20 @@ export function PatientDetail() {
                       <p className="text-sm text-muted-foreground">緊急連絡先（電話番号）</p>
                       <p className="font-medium">{patient.emergencyPhone || '未登録'}</p>
                     </div>
-                  </div>
-                </div>
-
-                {/* Medical Institution and Care Manager */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    医療機関・ケアマネ情報
-                  </h3>
-                  <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-muted-foreground">主治医・医療機関</p>
-                      <p className="font-medium">
-                        {patient.medicalInstitution
-                          ? `${patient.medicalInstitution.name} - ${patient.medicalInstitution.doctorName}`
-                          : '未登録'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">ケアマネージャー</p>
-                      <p className="font-medium">
-                        {patient.careManager
-                          ? `${patient.careManager.officeName} - ${patient.careManager.managerName}`
-                          : '未登録'}
-                      </p>
+                      <p className="text-sm text-muted-foreground">保険番号</p>
+                      <p className="font-medium">{patient.insuranceNumber || '未登録'}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Medical Information */}
+                {/* 3. 医療情報 */}
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg flex items-center gap-2">
                     <Heart className="h-5 w-5" />
                     医療情報
                   </h3>
                   <div className="space-y-3">
-                    <div>
-                      <p className="text-sm text-muted-foreground">介護度</p>
-                      <p className="font-medium">{patient.careLevel || '未登録'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">保険種別</p>
-                      <p className="font-medium">{patient.insuranceType || '未登録'}</p>
-                    </div>
                     <div>
                       <p className="text-sm text-muted-foreground">既往歴</p>
                       <p className="font-medium whitespace-pre-wrap">{patient.medicalHistory || '未登録'}</p>
@@ -447,6 +413,10 @@ export function PatientDetail() {
                     <div>
                       <p className="text-sm text-muted-foreground">現在の服薬</p>
                       <p className="font-medium whitespace-pre-wrap">{patient.currentMedications || '未登録'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">ケアノート</p>
+                      <p className="font-medium whitespace-pre-wrap">{patient.careNotes || 'なし'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">重要患者設定</p>
@@ -461,18 +431,64 @@ export function PatientDetail() {
                   </div>
                 </div>
 
-                {/* Care Notes */}
+                {/* 4. 保険・介護情報 */}
                 <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">ケアノート</h3>
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <CreditCard className="h-5 w-5" />
+                    保険・介護情報
+                  </h3>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-muted-foreground">ケアに関する注意事項</p>
-                      <p className="font-medium whitespace-pre-wrap">{patient.careNotes || 'なし'}</p>
+                      <p className="text-sm text-muted-foreground">保険種別</p>
+                      <p className="font-medium">
+                        {patient.insuranceType === 'medical' ? '医療保険' :
+                         patient.insuranceType === 'care' ? '介護保険' : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">介護度</p>
+                      <p className="font-medium">
+                        {patient.careLevel === 'support1' ? '要支援1' :
+                         patient.careLevel === 'support2' ? '要支援2' :
+                         patient.careLevel === 'care1' ? '要介護1' :
+                         patient.careLevel === 'care2' ? '要介護2' :
+                         patient.careLevel === 'care3' ? '要介護3' :
+                         patient.careLevel === 'care4' ? '要介護4' :
+                         patient.careLevel === 'care5' ? '要介護5' : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">特別訪問看護</p>
+                      <p className="font-medium">
+                        {patient.specialCareType === 'bedsore' ? '褥瘡ケア' :
+                         patient.specialCareType === 'rare_disease' ? '難病等' :
+                         patient.specialCareType === 'mental' ? '精神科訪問看護' : 'なし'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">入院中</p>
+                      <p className="font-medium">
+                        {patient.isInHospital ? (
+                          <Badge className="bg-blue-100 text-blue-800 border-blue-200">入院中</Badge>
+                        ) : (
+                          'なし'
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">ショートステイ中</p>
+                      <p className="font-medium">
+                        {patient.isInShortStay ? (
+                          <Badge className="bg-blue-100 text-blue-800 border-blue-200">ショートステイ中</Badge>
+                        ) : (
+                          'なし'
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Special Management */}
+                {/* 5. 特別管理加算 */}
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg flex items-center gap-2">
                     <AlertCircle className="h-5 w-5" />
@@ -515,6 +531,36 @@ export function PatientDetail() {
                           ? new Date(patient.specialManagementEndDate).toLocaleDateString('ja-JP')
                           : '継続中'}
                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6. 関連情報 */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    関連情報
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">主治医・医療機関</p>
+                      <p className="font-medium">
+                        {patient.medicalInstitution
+                          ? `${patient.medicalInstitution.name} - ${patient.medicalInstitution.doctorName}`
+                          : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">ケアマネージャー</p>
+                      <p className="font-medium">
+                        {patient.careManager
+                          ? `${patient.careManager.officeName} - ${patient.careManager.managerName}`
+                          : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">建物</p>
+                      <p className="font-medium">{patient.building?.name || '未登録'}</p>
                     </div>
                   </div>
                 </div>
