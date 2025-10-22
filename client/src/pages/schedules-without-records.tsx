@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useBasePath } from "@/hooks/useBasePath";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -48,6 +49,7 @@ type User = {
 
 export default function SchedulesWithoutRecords() {
   const [, setLocation] = useLocation();
+  const basePath = useBasePath();
   const today = new Date();
   const thirtyDaysAgo = new Date(today);
   thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -85,7 +87,7 @@ export default function SchedulesWithoutRecords() {
 
   const handleCreateRecord = (schedule: ScheduleWithoutRecord) => {
     // Navigate to nursing records page with schedule info
-    setLocation(`/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patient.id}`);
+    setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patient.id}`);
   };
 
   const formatDateTime = (dateTimeStr: string) => {

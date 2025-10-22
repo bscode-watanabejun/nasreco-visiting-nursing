@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "wouter"
+import { useBasePath } from "@/hooks/useBasePath"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -263,12 +264,19 @@ const getInitialFormData = (): FormData => ({
 export function NursingRecords() {
   const queryClient = useQueryClient()
   const searchParams = useSearch()
+  const basePath = useBasePath()
   const { data: currentUser } = useCurrentUser()
   const { toast } = useToast()
+
+  // Check URL parameters for initial state
+  const urlParams = new URLSearchParams(searchParams)
+  const modeFromUrl = urlParams.get('mode')
+  const initialIsCreating = modeFromUrl === 'create'
+
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
+  const [isCreating, setIsCreating] = useState(initialIsCreating)
   const [isEditing, setIsEditing] = useState(false)
   const [activeTab, setActiveTab] = useState<'basic' | 'vitals' | 'care' | 'special' | 'photos'>('basic')
   const [isSaving, setIsSaving] = useState(false)
@@ -376,11 +384,9 @@ export function NursingRecords() {
     ? serviceCarePlans.sort((a, b) => new Date(b.planDate).getTime() - new Date(a.planDate).getTime())[0]
     : null
 
-  // Fetch schedule data if scheduleId is in URL
-  const urlParams = new URLSearchParams(searchParams)
+  // Get additional URL parameters
   const scheduleIdFromUrl = urlParams.get('scheduleId')
   const patientIdFromUrl = urlParams.get('patientId')
-  const modeFromUrl = urlParams.get('mode')
   const recordIdFromUrl = urlParams.get('recordId')
 
   const { data: scheduleFromUrl } = useQuery({
@@ -518,8 +524,8 @@ export function NursingRecords() {
       })
       setSaveError(null)
 
-      // Clear URL parameters by replacing current history entry
-      window.history.replaceState({}, '', '/records')
+      // Don't clear URL parameters - keep mode=create to maintain state
+      // The history will be cleaned up when user saves or cancels
     } else if (modeFromUrl === 'create' && !scheduleIdFromUrl) {
       // Create new record without schedule (from Dashboard new record button)
       setCameFromUrl(true) // Mark that we came from URL
@@ -528,10 +534,10 @@ export function NursingRecords() {
       setFormData(getInitialFormData())
       setSaveError(null)
 
-      // Clear URL parameters by replacing current history entry
-      window.history.replaceState({}, '', '/records')
+      // Don't clear URL parameters - keep mode=create to maintain state
+      // The history will be cleaned up when user saves or cancels
     }
-  }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl, patientIdFromUrl])
+  }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl, patientIdFromUrl, basePath])
 
   // Handle recordId from URL to open record detail view
   useEffect(() => {
