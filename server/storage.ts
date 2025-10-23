@@ -10,7 +10,7 @@ import {
   type PaginationOptions, type PaginatedResult,
   users, companies, facilities, patients, visits, nursingRecords, medications, schedules
 } from "@shared/schema";
-import { eq, and, desc, count, isNull, gte, lte } from "drizzle-orm";
+import { eq, and, desc, asc, count, isNull, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 
 // Storage interface for all visiting nursing system operations
@@ -104,6 +104,17 @@ export interface IStorage {
   getNursingRecordsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>>;
   getNursingRecordsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>>;
   getNursingRecordsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>>;
+  searchNursingRecordsPaginated(facilityId: string, searchParams: {
+    page: number;
+    limit: number;
+    status?: 'draft' | 'completed' | 'reviewed';
+    patientId?: string;
+    nurseId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sortBy?: 'visitDate' | 'recordDate';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<PaginatedResult<NursingRecord> & { stats: { draft: number; completed: number; reviewed: number } }>;
   getMedicationsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>>;
   getMedicationsByPatientPaginated(patientId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>>;
 }
@@ -802,7 +813,7 @@ export class PostgreSQLStorage implements IStorage {
 
   async getNursingRecordsByNursePaginated(nurseId: string, facilityId: string, options: PaginationOptions): Promise<PaginatedResult<NursingRecord>> {
     const offset = (options.page - 1) * options.limit;
-    
+
     const [data, totalResult] = await Promise.all([
       db.select().from(nursingRecords)
         .where(and(
@@ -821,6 +832,128 @@ export class PostgreSQLStorage implements IStorage {
 
     const total = Number(totalResult[0].count);
     return this.createPaginatedResult(data, total, options.page, options.limit);
+  }
+
+  async searchNursingRecordsPaginated(facilityId: string, searchParams: {
+    page: number;
+    limit: number;
+    status?: 'draft' | 'completed' | 'reviewed';
+    patientId?: string;
+    nurseId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sortBy?: 'visitDate' | 'recordDate';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<PaginatedResult<NursingRecord> & { stats: { draft: number; completed: number; reviewed: number } }> {
+    const { page, limit: requestedLimit, status, patientId, nurseId, dateFrom, dateTo, sortBy = 'visitDate', sortOrder = 'desc' } = searchParams;
+
+    // Enforce maximum limit of 1000
+    const limit = Math.min(requestedLimit, 1000);
+    const offset = (page - 1) * limit;
+
+    // Build WHERE conditions dynamically
+    const conditions = [
+      eq(nursingRecords.facilityId, facilityId),
+      isNull(nursingRecords.deletedAt)
+    ];
+
+    if (status) {
+      conditions.push(eq(nursingRecords.status, status));
+    }
+
+    if (patientId) {
+      conditions.push(eq(nursingRecords.patientId, patientId));
+    }
+
+    if (nurseId) {
+      conditions.push(eq(nursingRecords.nurseId, nurseId));
+    }
+
+    if (dateFrom) {
+      console.log('🔍 DEBUG - Date filter FROM:', dateFrom, 'Type:', typeof dateFrom);
+      conditions.push(gte(nursingRecords.visitDate, dateFrom));
+    }
+
+    if (dateTo) {
+      console.log('🔍 DEBUG - Date filter TO:', dateTo, 'Type:', typeof dateTo);
+      conditions.push(lte(nursingRecords.visitDate, dateTo));
+    }
+
+    // Determine sort order
+    // When sorting by visitDate, also sort by actualStartTime as secondary sort key
+    const sortColumn = sortBy === 'visitDate' ? nursingRecords.visitDate : nursingRecords.recordDate;
+    const primaryOrder = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
+    const secondaryOrder = sortBy === 'visitDate'
+      ? (sortOrder === 'asc' ? asc(nursingRecords.actualStartTime) : desc(nursingRecords.actualStartTime))
+      : undefined;
+
+    // Execute queries in parallel for performance
+    const [data, totalResult, draftCount, completedCount, reviewedCount] = await Promise.all([
+      // Main data query
+      db.select().from(nursingRecords)
+        .where(and(...conditions))
+        .orderBy(primaryOrder, ...(secondaryOrder ? [secondaryOrder] : []))
+        .limit(limit)
+        .offset(offset),
+
+      // Total count for filtered results
+      db.select({ count: count() }).from(nursingRecords)
+        .where(and(...conditions)),
+
+      // Status counts (全体の件数、フィルタ適用済み - statusフィルタを除く)
+      db.select({ count: count() }).from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt),
+          eq(nursingRecords.status, 'draft'),
+          ...(patientId ? [eq(nursingRecords.patientId, patientId)] : []),
+          ...(nurseId ? [eq(nursingRecords.nurseId, nurseId)] : []),
+          ...(dateFrom ? [gte(nursingRecords.visitDate, dateFrom)] : []),
+          ...(dateTo ? [lte(nursingRecords.visitDate, dateTo)] : [])
+        )),
+
+      db.select({ count: count() }).from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt),
+          eq(nursingRecords.status, 'completed'),
+          ...(patientId ? [eq(nursingRecords.patientId, patientId)] : []),
+          ...(nurseId ? [eq(nursingRecords.nurseId, nurseId)] : []),
+          ...(dateFrom ? [gte(nursingRecords.visitDate, dateFrom)] : []),
+          ...(dateTo ? [lte(nursingRecords.visitDate, dateTo)] : [])
+        )),
+
+      db.select({ count: count() }).from(nursingRecords)
+        .where(and(
+          eq(nursingRecords.facilityId, facilityId),
+          isNull(nursingRecords.deletedAt),
+          eq(nursingRecords.status, 'reviewed'),
+          ...(patientId ? [eq(nursingRecords.patientId, patientId)] : []),
+          ...(nurseId ? [eq(nursingRecords.nurseId, nurseId)] : []),
+          ...(dateFrom ? [gte(nursingRecords.visitDate, dateFrom)] : []),
+          ...(dateTo ? [lte(nursingRecords.visitDate, dateTo)] : [])
+        ))
+    ]);
+
+    const total = Number(totalResult[0].count);
+
+    // DEBUG: Log search results
+    console.log('🔍 DEBUG - Search results count:', data.length);
+    if (data.length > 0) {
+      console.log('🔍 DEBUG - First record visitDate:', data[0].visitDate);
+      console.log('🔍 DEBUG - First record visitDate type:', typeof data[0].visitDate);
+    }
+
+    const paginatedResult = this.createPaginatedResult(data, total, page, limit);
+
+    return {
+      ...paginatedResult,
+      stats: {
+        draft: Number(draftCount[0].count),
+        completed: Number(completedCount[0].count),
+        reviewed: Number(reviewedCount[0].count)
+      }
+    };
   }
 
   async getMedicationsByFacilityPaginated(facilityId: string, options: PaginationOptions): Promise<PaginatedResult<Medication>> {

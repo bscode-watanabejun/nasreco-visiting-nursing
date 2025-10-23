@@ -32,6 +32,10 @@ import {
   AlertCircle,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Trash2,
   Camera,
   Upload,
@@ -41,7 +45,11 @@ import {
   Download,
   ZoomIn,
   ExternalLink,
-  CheckCircle
+  CheckCircle,
+  Filter,
+  Sliders,
+  RotateCcw,
+  CalendarDays
 } from "lucide-react"
 import {
   Accordion,
@@ -52,7 +60,7 @@ import {
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useToast } from "@/hooks/use-toast"
 
-import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan, NursingRecordSearchResult } from "@shared/schema"
 
 // Type definitions for special management (API response)
 type SpecialManagementField = {
@@ -237,29 +245,38 @@ const getStatusText = (status: string) => {
 }
 
 // Helper function to get initial form data (unified with VisitRecordDialog)
-const getInitialFormData = (): FormData => ({
-  patientId: '',
-  recordType: 'general_care',
-  visitDate: new Date().toISOString().split('T')[0], // Default to today
-  visitStatusRecord: 'pending',
-  actualStartTime: new Date().toTimeString().slice(0, 5),
-  actualEndTime: new Date().toTimeString().slice(0, 5),
-  observations: '',
-  isSecondVisit: false,
-  bloodPressureSystolic: '',
-  bloodPressureDiastolic: '',
-  heartRate: '',
-  temperature: '',
-  respiratoryRate: '',
-  oxygenSaturation: '',
-  careProvided: '',
-  nextVisitNotes: '',
-  multipleVisitReason: '',
-  emergencyVisitReason: '',
-  longVisitReason: '',
-  selectedScheduleId: '',
-  specialManagementData: {}
-})
+const getInitialFormData = (): FormData => {
+  const now = new Date()
+  const startTime = now.toTimeString().slice(0, 5)
+
+  // Calculate end time as 1 hour after start time
+  const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000)
+  const endTime = oneHourLater.toTimeString().slice(0, 5)
+
+  return {
+    patientId: '',
+    recordType: 'general_care',
+    visitDate: now.toISOString().split('T')[0], // Default to today
+    visitStatusRecord: 'pending',
+    actualStartTime: startTime,
+    actualEndTime: endTime,
+    observations: '',
+    isSecondVisit: false,
+    bloodPressureSystolic: '',
+    bloodPressureDiastolic: '',
+    heartRate: '',
+    temperature: '',
+    respiratoryRate: '',
+    oxygenSaturation: '',
+    careProvided: '',
+    nextVisitNotes: '',
+    multipleVisitReason: '',
+    emergencyVisitReason: '',
+    longVisitReason: '',
+    selectedScheduleId: '',
+    specialManagementData: {}
+  }
+}
 
 export function NursingRecords() {
   const queryClient = useQueryClient()
@@ -273,8 +290,6 @@ export function NursingRecords() {
   const modeFromUrl = urlParams.get('mode')
   const initialIsCreating = modeFromUrl === 'create'
 
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
   const [isCreating, setIsCreating] = useState(initialIsCreating)
   const [isEditing, setIsEditing] = useState(false)
@@ -285,6 +300,20 @@ export function NursingRecords() {
   const [recordToDelete, setRecordToDelete] = useState<NursingRecordDisplay | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [cameFromUrl, setCameFromUrl] = useState(false)
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(20)
+
+  // Advanced search/filter state
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
+  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
+  const [filterPatientId, setFilterPatientId] = useState<string>('all')
+  const [filterNurseId, setFilterNurseId] = useState<string>('all')
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('')
+  const [filterDateTo, setFilterDateTo] = useState<string>('')
+  const [sortBy, setSortBy] = useState<'visitDate' | 'recordDate'>('visitDate')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // File attachments state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
@@ -299,6 +328,24 @@ export function NursingRecords() {
   const [lightboxImage, setLightboxImage] = useState<NursingRecordAttachment | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
 
+  // Set default date range to last 1 month
+  useEffect(() => {
+    const today = new Date()
+    const oneMonthAgo = new Date(today)
+    oneMonthAgo.setMonth(today.getMonth() - 1)
+
+    // Use local date to avoid timezone issues
+    const formatLocalDate = (date: Date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    setFilterDateFrom(formatLocalDate(oneMonthAgo))
+    setFilterDateTo(formatLocalDate(today))
+  }, [])
+
   // Fetch patients from API
   const { data: patientsData, isLoading: isPatientsLoading } = useQuery<PaginatedResult<Patient>>({
     queryKey: ["patients"],
@@ -311,16 +358,43 @@ export function NursingRecords() {
     },
   })
 
-  // Fetch nursing records from API
-  const { data: recordsData, isLoading: isRecordsLoading } = useQuery<PaginatedResult<NursingRecord>>({
-    queryKey: ["nursing-records"],
+  // Fetch nursing records from API with search filters
+  const { data: recordsData, isLoading: isRecordsLoading } = useQuery<NursingRecordSearchResult>({
+    queryKey: ["nursing-records", currentPage, itemsPerPage, filterStatus, filterPatientId, filterNurseId, filterDateFrom, filterDateTo, sortBy, sortOrder],
     queryFn: async () => {
-      const response = await fetch("/api/nursing-records")
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+      })
+
+      // Add filters if set
+      if (filterStatus !== 'all') {
+        params.append('status', filterStatus)
+      }
+      if (filterPatientId !== 'all') {
+        params.append('patientId', filterPatientId)
+      }
+      if (filterNurseId !== 'all') {
+        params.append('nurseId', filterNurseId)
+      }
+      if (filterDateFrom) {
+        params.append('dateFrom', filterDateFrom)
+      }
+      if (filterDateTo) {
+        params.append('dateTo', filterDateTo)
+      }
+      params.append('sortBy', sortBy)
+      params.append('sortOrder', sortOrder)
+
+      const response = await fetch(`/api/nursing-records/search?${params}`)
       if (!response.ok) {
         throw new Error("看護記録の取得に失敗しました")
       }
       return response.json()
     },
+    refetchOnMount: 'always',  // マウント時に常に最新データを取得
+    staleTime: 0,              // データを常に古いものとして扱い、再取得を促す
+    enabled: !!filterDateFrom && !!filterDateTo, // 日付範囲が設定されている場合のみクエリ実行
   })
 
   // Fetch users data for nurse names
@@ -557,11 +631,14 @@ export function NursingRecords() {
           nurseName: nurse?.fullName || '担当者不明'
         }
 
+        // Mark that we came from URL to enable history back
+        setCameFromUrl(true)
+
         // Open the record detail view
         handleViewRecord(recordToView)
 
-        // Clear URL parameters
-        window.history.replaceState({}, '', '/records')
+        // Clear URL parameters (preserve tenant path)
+        window.history.replaceState({}, '', `${basePath}/records`)
       }
     }
   }, [recordIdFromUrl, rawRecords, patients, users, isCreating, selectedRecord])
@@ -579,16 +656,13 @@ export function NursingRecords() {
     }
   })
 
-  const filteredRecords = records.filter(record => {
-    const matchesSearch = (record.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
-                         (record.nurseName?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
-    const matchesStatus = statusFilter === 'all' || record.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  // All filtering is now done server-side, so just use the records as-is
+  const filteredRecords = records
 
-  const draftRecords = records.filter(r => r.status === 'draft').length
-  const completedRecords = records.filter(r => r.status === 'completed').length
-  const reviewedRecords = records.filter(r => r.status === 'reviewed').length
+  // Use stats from API response instead of filtering client-side
+  const draftRecords = recordsData?.stats?.draft || 0
+  const completedRecords = recordsData?.stats?.completed || 0
+  const reviewedRecords = recordsData?.stats?.reviewed || 0
 
   const handleCreateNew = () => {
     setIsCreating(true)
@@ -807,7 +881,8 @@ export function NursingRecords() {
       setFilePreviews([])
       setFileCaptions({})
       setIsCreating(false)
-      setSelectedRecord(null)
+      // Show the created record details instead of going back to list
+      setSelectedRecord(savedRecord)
     } catch (error) {
       console.error('Save draft error:', error)
       console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'draft'))
@@ -891,7 +966,8 @@ export function NursingRecords() {
       setFileCaptions({})
       setIsCreating(false)
       setIsEditing(false)
-      setSelectedRecord(null)
+      // Show the created/updated record details instead of going back to list
+      setSelectedRecord(savedRecord)
     } catch (error) {
       console.error('Complete record error:', error)
       console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'completed'))
@@ -957,7 +1033,8 @@ export function NursingRecords() {
       setFilePreviews([])
       setFileCaptions({})
       setIsEditing(false)
-      setSelectedRecord(null)
+      // Show the updated record details instead of going back to list
+      setSelectedRecord(updatedRecord)
     } catch (error) {
       console.error('Update record error:', error)
       setSaveError(error instanceof Error ? error.message : '更新中にエラーが発生しました')
@@ -1207,7 +1284,7 @@ export function NursingRecords() {
             </div>
 
             {/* 特別管理加算対象患者エリア */}
-            {selectedPatient?.isCritical && (
+            {selectedPatient?.specialManagementTypes && selectedPatient.specialManagementTypes.length > 0 && (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
@@ -1216,8 +1293,12 @@ export function NursingRecords() {
                     <div className="text-xs text-yellow-800 mt-1">
                       <p>対象項目:</p>
                       <ul className="list-disc list-inside ml-2 mt-1">
-                        <li>在宅悪性腫瘍法</li>
-                        <li>点滴注射(週3日以上)</li>
+                        {selectedPatient.specialManagementTypes.map((typeCode, index) => {
+                          const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                          return (
+                            <li key={index}>{definition?.displayName || typeCode}</li>
+                          )
+                        })}
                       </ul>
                     </div>
                   </div>
@@ -1291,7 +1372,7 @@ export function NursingRecords() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">記録ステータス</p>
-                    <Badge className={getStatusColor(selectedRecord.status)}>
+                    <Badge className={`text-sm ${getStatusColor(selectedRecord.status)}`}>
                       {getStatusText(selectedRecord.status)}
                     </Badge>
                   </div>
@@ -1575,9 +1656,17 @@ export function NursingRecords() {
                 </Button>
               )}
               <Button variant="outline" onClick={() => {
-                setSelectedRecord(null)
-                setIsCreating(false)
-                setIsEditing(false)
+                if (cameFromUrl) {
+                  // Came from URL (Schedule list or other page) - use browser history
+                  window.history.back()
+                } else {
+                  // Came from within this page (record list) - reset state to show list
+                  setIsCreating(false)
+                  setIsEditing(false)
+                  setSelectedRecord(null)
+                  setSaveError(null)
+                  setCameFromUrl(false)
+                }
               }}>
                 閉じる
               </Button>
@@ -1820,7 +1909,19 @@ export function NursingRecords() {
                     id="start-time"
                     type="time"
                     value={formData.actualStartTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, actualStartTime: e.target.value }))}
+                    onChange={(e) => {
+                      const startTime = e.target.value
+                      setFormData(prev => {
+                        // Calculate end time as 1 hour after start time
+                        let endTime = prev.actualEndTime
+                        if (startTime) {
+                          const [hours, minutes] = startTime.split(':').map(Number)
+                          const endHours = (hours + 1) % 24
+                          endTime = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+                        }
+                        return { ...prev, actualStartTime: startTime, actualEndTime: endTime }
+                      })
+                    }}
                   />
                 </div>
 
@@ -2561,6 +2662,281 @@ export function NursingRecords() {
         </Button>
       </div>
 
+      {/* Advanced Search Panel */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <CardTitle className="text-sm sm:text-base md:text-lg">検索・フィルタ</CardTitle>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs sm:text-sm"
+              onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+            >
+              <Sliders className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">{showAdvancedSearch ? '詳細検索を閉じる' : '詳細検索を開く'}</span>
+              <span className="sm:hidden">{showAdvancedSearch ? '閉じる' : '詳細'}</span>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Quick Filters */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2 mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full md:w-auto"
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0]
+                setFilterDateFrom(today)
+                setFilterDateTo(today)
+                setCurrentPage(1)
+              }}
+            >
+              <CalendarDays className="mr-1 h-4 w-4 md:mr-2" />
+              <span className="text-xs sm:text-sm">今日</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full md:w-auto"
+              onClick={() => {
+                const today = new Date()
+                const weekAgo = new Date(today)
+                weekAgo.setDate(today.getDate() - 7)
+                setFilterDateFrom(weekAgo.toISOString().split('T')[0])
+                setFilterDateTo(today.toISOString().split('T')[0])
+                setCurrentPage(1)
+              }}
+            >
+              <CalendarDays className="mr-1 h-4 w-4 md:mr-2" />
+              <span className="text-xs sm:text-sm">今週</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full md:w-auto"
+              onClick={() => {
+                const today = new Date()
+                const monthAgo = new Date(today)
+                monthAgo.setMonth(today.getMonth() - 1)
+                setFilterDateFrom(monthAgo.toISOString().split('T')[0])
+                setFilterDateTo(today.toISOString().split('T')[0])
+                setCurrentPage(1)
+              }}
+            >
+              <CalendarDays className="mr-1 h-4 w-4 md:mr-2" />
+              <span className="text-xs sm:text-sm">今月</span>
+            </Button>
+            {currentUser && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full md:w-auto"
+                onClick={() => {
+                  setFilterNurseId(currentUser.id)
+                  setCurrentPage(1)
+                }}
+              >
+                <User className="mr-1 h-4 w-4 md:mr-2" />
+                <span className="text-xs sm:text-sm">自分の記録</span>
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full md:w-auto"
+              onClick={() => {
+                setFilterStatus('draft')
+                setCurrentPage(1)
+              }}
+            >
+              <AlertCircle className="mr-1 h-4 w-4 md:mr-2" />
+              <span className="text-xs sm:text-sm">下書きのみ</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full md:w-auto col-span-2 sm:col-span-1"
+              onClick={() => {
+                // Reset all filters
+                setFilterStatus('all')
+                setFilterPatientId('all')
+                setFilterNurseId('all')
+                const today = new Date()
+                const monthAgo = new Date(today)
+                monthAgo.setMonth(today.getMonth() - 1)
+                setFilterDateFrom(monthAgo.toISOString().split('T')[0])
+                setFilterDateTo(today.toISOString().split('T')[0])
+                setSortBy('visitDate')
+                setSortOrder('desc')
+                setCurrentPage(1)
+              }}
+            >
+              <RotateCcw className="mr-1 h-4 w-4 md:mr-2" />
+              <span className="text-xs sm:text-sm">リセット</span>
+            </Button>
+          </div>
+
+          {/* Active Filters Display */}
+          {(filterStatus !== 'all' || filterPatientId !== 'all' || filterNurseId !== 'all' || filterDateFrom || filterDateTo) && (
+            <div className="flex flex-wrap gap-2 mb-4 p-2 sm:p-3 bg-muted rounded-md">
+              <span className="text-xs sm:text-sm font-medium">フィルタ中:</span>
+              {(filterDateFrom || filterDateTo) && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <span className="hidden sm:inline">期間: </span>
+                  {filterDateFrom ? new Date(filterDateFrom).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }) : '開始日未設定'} ～ {filterDateTo ? new Date(filterDateTo).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }) : '終了日未設定'}
+                  <X
+                    className="h-3 w-3 cursor-pointer flex-shrink-0"
+                    onClick={() => {
+                      // Reset to default (last 1 month)
+                      const today = new Date()
+                      const monthAgo = new Date(today)
+                      monthAgo.setMonth(today.getMonth() - 1)
+                      setFilterDateFrom(monthAgo.toISOString().split('T')[0])
+                      setFilterDateTo(today.toISOString().split('T')[0])
+                    }}
+                  />
+                </Badge>
+              )}
+              {filterStatus !== 'all' && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  {filterStatus === 'draft' ? '下書き' : filterStatus === 'completed' ? '完成' : '確認済み'}
+                  <X
+                    className="h-3 w-3 cursor-pointer flex-shrink-0"
+                    onClick={() => setFilterStatus('all')}
+                  />
+                </Badge>
+              )}
+              {filterPatientId !== 'all' && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <span className="hidden sm:inline">患者: </span>
+                  {patients.find(p => p.id === filterPatientId)?.lastName} {patients.find(p => p.id === filterPatientId)?.firstName}
+                  <X
+                    className="h-3 w-3 cursor-pointer flex-shrink-0"
+                    onClick={() => setFilterPatientId('all')}
+                  />
+                </Badge>
+              )}
+              {filterNurseId !== 'all' && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <span className="hidden sm:inline">担当: </span>
+                  {users.find(u => u.id === filterNurseId)?.fullName}
+                  <X
+                    className="h-3 w-3 cursor-pointer flex-shrink-0"
+                    onClick={() => setFilterNurseId('all')}
+                  />
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Advanced Search Form */}
+          {showAdvancedSearch && (
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 pt-4 border-t">
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">期間指定</Label>
+                <div className="space-y-2 sm:space-y-0 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:gap-2 sm:items-center">
+                  <Input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="text-xs sm:text-sm h-9"
+                    placeholder="開始日"
+                  />
+                  <span className="hidden sm:inline text-xs">～</span>
+                  <Input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="text-xs sm:text-sm h-9"
+                    placeholder="終了日"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">ステータス</Label>
+                <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as any)}>
+                  <SelectTrigger className="text-xs sm:text-sm h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">すべて</SelectItem>
+                    <SelectItem value="draft">下書き</SelectItem>
+                    <SelectItem value="completed">完成</SelectItem>
+                    <SelectItem value="reviewed">確認済み</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 col-span-1 sm:col-span-2 lg:col-span-1">
+                <Label className="text-xs sm:text-sm">患者</Label>
+                <Select value={filterPatientId} onValueChange={setFilterPatientId}>
+                  <SelectTrigger className="text-xs sm:text-sm h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">すべて</SelectItem>
+                    {patients.map((patient) => (
+                      <SelectItem key={patient.id} value={patient.id}>
+                        {patient.lastName} {patient.firstName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 col-span-1 sm:col-span-2 lg:col-span-1">
+                <Label className="text-xs sm:text-sm">担当者</Label>
+                <Select value={filterNurseId} onValueChange={setFilterNurseId}>
+                  <SelectTrigger className="text-xs sm:text-sm h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">すべて</SelectItem>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 col-span-1 sm:col-span-2 lg:col-span-1">
+                <Label className="text-xs sm:text-sm">並び替え項目</Label>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                  <SelectTrigger className="text-xs sm:text-sm h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="visitDate">訪問日</SelectItem>
+                    <SelectItem value="recordDate">記録日</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 col-span-1 sm:col-span-2 lg:col-span-1">
+                <Label className="text-xs sm:text-sm">並び順</Label>
+                <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as any)}>
+                  <SelectTrigger className="text-xs sm:text-sm h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">降順</SelectItem>
+                    <SelectItem value="asc">昇順</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -2610,54 +2986,77 @@ export function NursingRecords() {
           <CardDescription>作成済みの訪問看護記録</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="患者名または看護師名で検索..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 placeholder:text-gray-400"
-                data-testid="input-record-search"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant={statusFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setStatusFilter('all')}
-              >
-                全て
-              </Button>
-              <Button 
-                variant={statusFilter === 'draft' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setStatusFilter('draft')}
-              >
-                下書き
-              </Button>
-              <Button 
-                variant={statusFilter === 'completed' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setStatusFilter('completed')}
-              >
-                完成
-              </Button>
-              <Button 
-                variant={statusFilter === 'reviewed' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setStatusFilter('reviewed')}
-              >
-                確認済み
-              </Button>
-            </div>
-          </div>
-          
           {/* Records */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {filteredRecords.map((record) => (
-              <div key={record.id} className="border rounded-lg p-4 hover-elevate">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div key={record.id} className="border rounded-lg p-3 sm:p-4 hover-elevate">
+                {/* Mobile layout (stacked) */}
+                <div className="sm:hidden space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-base">{record.patientName}</h3>
+                      <Badge className={`text-xs ${getStatusColor(record.status)}`}>
+                        {getStatusText(record.status)}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3 flex-shrink-0" />
+                        <span className="font-medium">訪問日:</span>
+                        <span>{record.visitDate ? new Date(record.visitDate).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }) : new Date(record.recordDate).toLocaleDateString('ja-JP')}</span>
+                      </div>
+                      {record.actualStartTime && record.actualEndTime && (
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3 flex-shrink-0" />
+                          <span className="font-medium">訪問時間:</span>
+                          <span>{new Date(record.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} - {new Date(record.actualEndTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1">
+                        <User className="h-3 w-3 flex-shrink-0" />
+                        <span className="font-medium">担当:</span>
+                        <span>{record.nurseName}</span>
+                      </div>
+                      {record.observations && <p className="line-clamp-2 text-xs">📋 {record.observations}</p>}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-8 flex-1"
+                      onClick={() => handleViewRecord(record)}
+                      data-testid={`button-view-${record.id}`}
+                    >
+                      <Eye className="mr-1 h-3 w-3" />
+                      詳細
+                    </Button>
+                    {record.status === 'draft' && (
+                      <Button
+                        size="sm"
+                        className="text-xs h-8 flex-1"
+                        onClick={() => handleEditRecord(record)}
+                        data-testid={`button-edit-${record.id}`}
+                      >
+                        <Edit className="mr-1 h-3 w-3" />
+                        編集
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-xs h-8 flex-1"
+                      onClick={() => setRecordToDelete(record)}
+                      data-testid={`button-delete-${record.id}`}
+                    >
+                      <Trash2 className="mr-1 h-3 w-3" />
+                      削除
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Desktop layout (horizontal) */}
+                <div className="hidden sm:flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-lg">{record.patientName}</h3>
@@ -2688,10 +3087,10 @@ export function NursingRecords() {
                       {record.observations && <p className="truncate max-w-md">📋 {record.observations}</p>}
                     </div>
                   </div>
-                  
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
+
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => handleViewRecord(record)}
                       data-testid={`button-view-${record.id}`}
@@ -2734,6 +3133,60 @@ export function NursingRecords() {
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="mx-auto h-12 w-12 mb-4 opacity-50" />
               <p>条件に一致する記録が見つかりません</p>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {recordsData && recordsData.pagination.totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t">
+              <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
+                全 {recordsData.pagination.total} 件中 {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, recordsData.pagination.total)} 件を表示
+              </div>
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  aria-label="最初のページ"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  aria-label="前のページ"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs sm:text-sm px-2 min-w-[4rem] text-center">
+                  {currentPage} / {recordsData.pagination.totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage(p => Math.min(recordsData.pagination.totalPages, p + 1))}
+                  disabled={currentPage === recordsData.pagination.totalPages}
+                  aria-label="次のページ"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage(recordsData.pagination.totalPages)}
+                  disabled={currentPage === recordsData.pagination.totalPages}
+                  aria-label="最後のページ"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

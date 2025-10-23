@@ -2712,6 +2712,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Search nursing records with advanced filters
+  app.get("/api/nursing-records/search", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { status, patientId, nurseId, dateFrom, dateTo, sortBy, sortOrder } = req.query;
+
+      // Parse pagination parameters
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 1000); // Max 1000 per page
+
+      if (page < 1 || limit < 1) {
+        return res.status(400).json({ error: "ページ番号と件数は1以上である必要があります" });
+      }
+
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
+      const result = await storage.searchNursingRecordsPaginated(targetFacilityId, {
+        page,
+        limit,
+        status: status as 'draft' | 'completed' | 'reviewed' | undefined,
+        patientId: patientId as string | undefined,
+        nurseId: nurseId as string | undefined,
+        dateFrom: dateFrom as string | undefined,
+        dateTo: dateTo as string | undefined,
+        sortBy: sortBy as 'visitDate' | 'recordDate' | undefined,
+        sortOrder: sortOrder as 'asc' | 'desc' | undefined,
+      });
+
+      res.json(result);
+
+    } catch (error) {
+      console.error("Search nursing records error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Helper function: Calculate bonuses and points for nursing record (Phase 4 - Rule Engine)
   async function calculateBonusesAndPoints(recordData: any, facilityId: string, nursingRecordId?: string) {
     const appliedBonuses: any[] = [];
@@ -2864,7 +2900,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Recalculate and save bonus history with record ID (Phase 4)
       await calculateBonusesAndPoints(recordData, req.user.facilityId, record.id);
 
-      res.status(201).json(record);
+      // Fetch patient and nurse information for the response
+      const patient = await storage.getPatient(record.patientId);
+      const nurse = await storage.getUser(record.nurseId);
+
+      // Add patient and nurse names to the record
+      const recordWithNames = {
+        ...record,
+        patientName: patient ? `${patient.lastName} ${patient.firstName}` : undefined,
+        nurseName: nurse?.fullName || undefined,
+      };
+
+      res.status(201).json(recordWithNames);
 
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2939,7 +2986,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Recalculate and save bonus history with record ID (Phase 4)
       await calculateBonusesAndPoints(mergedData, req.user.facilityId, id);
 
-      res.json(record);
+      // Fetch patient and nurse information for the response
+      const patient = await storage.getPatient(record.patientId);
+      const nurse = await storage.getUser(record.nurseId);
+
+      // Add patient and nurse names to the record
+      const recordWithNames = {
+        ...record,
+        patientName: patient ? `${patient.lastName} ${patient.firstName}` : undefined,
+        nurseName: nurse?.fullName || undefined,
+      };
+
+      res.json(recordWithNames);
 
     } catch (error) {
       if (error instanceof z.ZodError) {

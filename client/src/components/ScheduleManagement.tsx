@@ -144,7 +144,7 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
   return (
     <Button
       size={size}
-      variant={variant}
+      variant={hasRecord ? "outline" : variant}
       onClick={handleClick}
       title={hasRecord ? "訪問記録を確認" : "訪問記録を作成"}
       className={className}
@@ -152,12 +152,12 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
       {hasRecord ? (
         <>
           <Eye className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
-          {showLabel && "記録確認"}
+          {showLabel && "記録詳細"}
         </>
       ) : (
         <>
           <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
-          {showLabel && "記録"}
+          {showLabel && "記録作成"}
         </>
       )}
     </Button>

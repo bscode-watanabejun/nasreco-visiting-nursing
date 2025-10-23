@@ -1079,6 +1079,27 @@ export interface PaginatedResult<T> {
   };
 }
 
+// Nursing Records Search Types
+export interface NursingRecordSearchParams {
+  page: number;
+  limit: number;
+  status?: 'draft' | 'completed' | 'reviewed';
+  patientId?: string;
+  nurseId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: 'visitDate' | 'recordDate';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface NursingRecordSearchResult extends PaginatedResult<NursingRecord> {
+  stats: {
+    draft: number;
+    completed: number;
+    reviewed: number;
+  };
+}
+
 // ========== Relations ==========
 
 export const facilitiesRelations = relations(facilities, ({ one, many }) => ({
