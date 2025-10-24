@@ -113,6 +113,11 @@ interface FormData {
   multipleVisitReason: string
   emergencyVisitReason: string
   longVisitReason: string
+  // Phase 2-A: 記録フラグ（加算判定用）
+  isDischargeDate: boolean
+  isFirstVisitOfPlan: boolean
+  hasCollaborationRecord: boolean
+  isTerminalCare: boolean
   // Selected schedule ID (for multiple schedules)
   selectedScheduleId: string
   // Special management record data
@@ -165,6 +170,12 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
     ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
     ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
+
+    // Phase 2-A: 記録フラグ（加算判定用）
+    isDischargeDate: formData.isDischargeDate,
+    isFirstVisitOfPlan: formData.isFirstVisitOfPlan,
+    hasCollaborationRecord: formData.hasCollaborationRecord,
+    isTerminalCare: formData.isTerminalCare,
 
     // 特別管理記録データ
     ...(Object.keys(formData.specialManagementData).length > 0 && {
@@ -273,6 +284,10 @@ const getInitialFormData = (): FormData => {
     multipleVisitReason: '',
     emergencyVisitReason: '',
     longVisitReason: '',
+    isDischargeDate: false,
+    isFirstVisitOfPlan: false,
+    hasCollaborationRecord: false,
+    isTerminalCare: false,
     selectedScheduleId: '',
     specialManagementData: {}
   }
@@ -707,6 +722,10 @@ export function NursingRecords() {
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
+      isDischargeDate: record.isDischargeDate || false,
+      isFirstVisitOfPlan: record.isFirstVisitOfPlan || false,
+      hasCollaborationRecord: record.hasCollaborationRecord || false,
+      isTerminalCare: record.isTerminalCare || false,
       selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {}
     })
@@ -743,6 +762,10 @@ export function NursingRecords() {
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
+      isDischargeDate: record.isDischargeDate || false,
+      isFirstVisitOfPlan: record.isFirstVisitOfPlan || false,
+      hasCollaborationRecord: record.hasCollaborationRecord || false,
+      isTerminalCare: record.isTerminalCare || false,
       selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {}
     })
@@ -2022,6 +2045,64 @@ export function NursingRecords() {
                       </div>
                     ) : null
                   })()}
+
+                  {/* Phase 2-A: 記録フラグ（加算判定用） */}
+                  <div className="border-t pt-4 mt-4">
+                    <h4 className="text-sm font-medium mb-3">記録フラグ（加算判定用）</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="is-discharge-date"
+                          checked={formData.isDischargeDate}
+                          onChange={(e) => setFormData(prev => ({ ...prev, isDischargeDate: e.target.checked }))}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <Label htmlFor="is-discharge-date" className="cursor-pointer font-normal">
+                          退院日当日の訪問
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="is-first-visit-of-plan"
+                          checked={formData.isFirstVisitOfPlan}
+                          onChange={(e) => setFormData(prev => ({ ...prev, isFirstVisitOfPlan: e.target.checked }))}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <Label htmlFor="is-first-visit-of-plan" className="cursor-pointer font-normal">
+                          新規計画書作成後の初回訪問
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="has-collaboration-record"
+                          checked={formData.hasCollaborationRecord}
+                          onChange={(e) => setFormData(prev => ({ ...prev, hasCollaborationRecord: e.target.checked }))}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <Label htmlFor="has-collaboration-record" className="cursor-pointer font-normal">
+                          多職種連携記録あり
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="is-terminal-care"
+                          checked={formData.isTerminalCare}
+                          onChange={(e) => setFormData(prev => ({ ...prev, isTerminalCare: e.target.checked }))}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <Label htmlFor="is-terminal-care" className="cursor-pointer font-normal">
+                          ターミナルケア実施
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </TabsContent>

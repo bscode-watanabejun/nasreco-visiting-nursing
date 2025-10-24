@@ -268,18 +268,26 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, mode])
 
+  // Helper function to format date as YYYY-MM-DD in local timezone
+  const formatDateForAPI = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   // Create patient mutation
   const createPatientMutation = useMutation({
     mutationFn: async (data: PatientFormData): Promise<Patient> => {
       const patientData: InsertPatient = {
         ...data,
-        dateOfBirth: data.dateOfBirth.toISOString().split('T')[0], // Convert to YYYY-MM-DD
-        specialManagementStartDate: data.specialManagementStartDate?.toISOString().split('T')[0],
-        specialManagementEndDate: data.specialManagementEndDate?.toISOString().split('T')[0],
+        dateOfBirth: formatDateForAPI(data.dateOfBirth), // Convert to YYYY-MM-DD
+        specialManagementStartDate: data.specialManagementStartDate ? formatDateForAPI(data.specialManagementStartDate) : undefined,
+        specialManagementEndDate: data.specialManagementEndDate ? formatDateForAPI(data.specialManagementEndDate) : undefined,
         // undefinedの場合はnullを送信してフィールドをクリア
-        lastDischargeDate: data.lastDischargeDate ? data.lastDischargeDate.toISOString().split('T')[0] : null,
-        lastPlanCreatedDate: data.lastPlanCreatedDate ? data.lastPlanCreatedDate.toISOString().split('T')[0] : null,
-        deathDate: data.deathDate ? data.deathDate.toISOString().split('T')[0] : null,
+        lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
+        lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
+        deathDate: data.deathDate ? formatDateForAPI(data.deathDate) : null,
         facilityId: "", // Will be set by the backend
       }
 
@@ -324,13 +332,13 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
 
       const updateData: UpdatePatient = {
         ...data,
-        dateOfBirth: data.dateOfBirth.toISOString().split('T')[0], // Convert to YYYY-MM-DD
-        specialManagementStartDate: data.specialManagementStartDate?.toISOString().split('T')[0],
-        specialManagementEndDate: data.specialManagementEndDate?.toISOString().split('T')[0],
+        dateOfBirth: formatDateForAPI(data.dateOfBirth), // Convert to YYYY-MM-DD
+        specialManagementStartDate: data.specialManagementStartDate ? formatDateForAPI(data.specialManagementStartDate) : undefined,
+        specialManagementEndDate: data.specialManagementEndDate ? formatDateForAPI(data.specialManagementEndDate) : undefined,
         // undefinedの場合はnullを送信してフィールドをクリア
-        lastDischargeDate: data.lastDischargeDate ? data.lastDischargeDate.toISOString().split('T')[0] : null,
-        lastPlanCreatedDate: data.lastPlanCreatedDate ? data.lastPlanCreatedDate.toISOString().split('T')[0] : null,
-        deathDate: data.deathDate ? data.deathDate.toISOString().split('T')[0] : null,
+        lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
+        lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
+        deathDate: data.deathDate ? formatDateForAPI(data.deathDate) : null,
       }
 
       const response = await fetch(`/api/patients/${patient.id}`, {

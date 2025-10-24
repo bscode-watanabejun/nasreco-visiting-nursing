@@ -40,10 +40,20 @@ export interface BonusCalculationContext {
   multipleVisitReason?: string | null;
   longVisitReason?: string | null;
 
+  // Phase 2-A: 記録フラグ（加算判定用）
+  isDischargeDate?: boolean; // 退院日当日訪問
+  isFirstVisitOfPlan?: boolean; // 新規計画初回訪問
+  hasCollaborationRecord?: boolean; // 多職種連携記録あり
+  isTerminalCare?: boolean; // ターミナルケア実施
+  terminalCareDeathDate?: Date | null; // ターミナルケア対象患者の死亡日
+
   // 患者情報
   patientAge?: number;
   buildingId?: string | null;
   insuranceType: "medical" | "care";
+  lastDischargeDate?: Date | null; // 直近の退院日
+  lastPlanCreatedDate?: Date | null; // 直近の訪問看護計画作成日
+  deathDate?: Date | null; // 死亡日
 
   // 追加コンテキスト（必要に応じて拡張）
   [key: string]: any;
@@ -89,49 +99,121 @@ export function evaluatePredefinedCondition(
   condition: any,
   context: BonusCalculationContext
 ): ConditionEvaluationResult {
-  const { type } = condition;
+  // Phase 2-A: 'pattern' フィールドをサポート（後方互換性のため 'type' も維持）
+  const type = condition.pattern || condition.type;
+
+  // Phase 2-A: パターン評価を実行
+  let result: ConditionEvaluationResult;
 
   switch (type) {
     case "field_not_empty":
-      return evaluateFieldNotEmpty(condition.field, context);
+      result = evaluateFieldNotEmpty(condition.field, context);
+      break;
 
     case "field_equals":
-      return evaluateFieldEquals(condition.field, condition.value, context);
+      result = evaluateFieldEquals(condition.field, condition.value, context);
+      break;
 
     case "visit_duration_gte":
-      return evaluateVisitDurationGte(condition.value, context);
+      result = evaluateVisitDurationGte(condition.value, context);
+      break;
 
     case "visit_duration_lt":
-      return evaluateVisitDurationLt(condition.value, context);
+      result = evaluateVisitDurationLt(condition.value, context);
+      break;
 
     case "age_lt":
-      return evaluateAgeLt(condition.value, context);
+      result = evaluateAgeLt(condition.value, context);
+      break;
 
     case "age_gte":
-      return evaluateAgeGte(condition.value, context);
+      result = evaluateAgeGte(condition.value, context);
+      break;
 
     case "is_second_visit":
-      return evaluateIsSecondVisit(context);
+      result = evaluateIsSecondVisit(context);
+      break;
 
     case "has_building":
-      return evaluateHasBuilding(context);
+      result = evaluateHasBuilding(context);
+      break;
 
     // Phase2-1: 施設体制フラグ条件
     case "has_24h_support_system":
-      return evaluateHas24hSupportSystem(context);
+      result = evaluateHas24hSupportSystem(context);
+      break;
 
     case "has_24h_support_system_enhanced":
-      return evaluateHas24hSupportSystemEnhanced(context);
+      result = evaluateHas24hSupportSystemEnhanced(context);
+      break;
 
     case "has_emergency_support_system":
-      return evaluateHasEmergencySupportSystem(context);
+      result = evaluateHasEmergencySupportSystem(context);
+      break;
 
     case "has_emergency_support_system_enhanced":
-      return evaluateHasEmergencySupportSystemEnhanced(context);
+      result = evaluateHasEmergencySupportSystemEnhanced(context);
+      break;
+
+    // Phase 2-A: 記録フラグ条件
+    case "is_discharge_date":
+      result = evaluateIsDischargeDate(context);
+      break;
+
+    case "is_first_visit_of_plan":
+      result = evaluateIsFirstVisitOfPlan(context);
+      break;
+
+    case "has_collaboration_record":
+      result = evaluateHasCollaborationRecord(context);
+      break;
+
+    case "is_terminal_care":
+      result = evaluateIsTerminalCare(context);
+      break;
+
+    // Phase 2-A: 介護保険の時間帯・時間長条件
+    case "care_early_morning_time":
+      result = evaluateCareEarlyMorningTime(context);
+      break;
+
+    case "care_night_time":
+      result = evaluateCareNightTime(context);
+      break;
+
+    case "care_late_night_time":
+      result = evaluateCareLateNightTime(context);
+      break;
+
+    case "care_visit_duration_90plus":
+      result = evaluateCareVisitDuration90Plus(context);
+      break;
 
     default:
       return { passed: false, reason: `Unknown condition type: ${type}` };
   }
+
+  // Phase 2-A: operator と value のチェック
+  // 条件に value フィールドがある場合、結果の passed 値と比較
+  if (condition.operator === "equals" && condition.value !== undefined) {
+    const expectedValue = condition.value;
+
+    if (result.passed !== expectedValue) {
+      // 期待値と一致しない場合は条件不成立
+      return {
+        passed: false,
+        reason: `条件不一致: 期待値=${expectedValue}, 実際=${result.passed} (${result.reason})`,
+      };
+    }
+
+    // 期待値と一致した場合は条件成立
+    return {
+      passed: true,
+      reason: `${result.reason} (期待値: ${expectedValue})`,
+    };
+  }
+
+  return result;
 }
 
 // ========== Individual Condition Evaluators ==========
@@ -287,6 +369,131 @@ function evaluateHasEmergencySupportSystemEnhanced(context: BonusCalculationCont
   return {
     passed,
     reason: passed ? "緊急時訪問看護加算（II）体制あり" : "緊急時訪問看護加算（II）体制なし",
+  };
+}
+
+/**
+ * Phase 2-A: 退院日当日訪問の条件評価
+ */
+function evaluateIsDischargeDate(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.isDischargeDate === true;
+  return {
+    passed,
+    reason: passed ? "退院日当日の訪問" : "退院日当日ではない",
+  };
+}
+
+/**
+ * Phase 2-A: 新規計画初回訪問の条件評価
+ */
+function evaluateIsFirstVisitOfPlan(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.isFirstVisitOfPlan === true;
+  return {
+    passed,
+    reason: passed ? "新規計画初回訪問" : "新規計画初回訪問ではない",
+  };
+}
+
+/**
+ * Phase 2-A: 多職種連携記録ありの条件評価
+ */
+function evaluateHasCollaborationRecord(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.hasCollaborationRecord === true;
+  return {
+    passed,
+    reason: passed ? "多職種連携記録あり" : "多職種連携記録なし",
+  };
+}
+
+/**
+ * Phase 2-A: ターミナルケア実施の条件評価
+ */
+function evaluateIsTerminalCare(context: BonusCalculationContext): ConditionEvaluationResult {
+  const passed = context.isTerminalCare === true;
+  return {
+    passed,
+    reason: passed ? "ターミナルケア実施" : "ターミナルケア未実施",
+  };
+}
+
+/**
+ * Phase 2-A: 介護保険の時間帯判定（早朝：6:00-8:00）
+ */
+function evaluateCareEarlyMorningTime(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime) {
+    return { passed: false, reason: "訪問開始時刻が未設定" };
+  }
+
+  const startTime = new Date(context.visitStartTime);
+  const hours = startTime.getHours();
+  const passed = hours >= 6 && hours < 8;
+
+  return {
+    passed,
+    reason: passed
+      ? `早朝時間帯（6:00-8:00）の訪問（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`
+      : `早朝時間帯外（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`,
+  };
+}
+
+/**
+ * Phase 2-A: 介護保険の時間帯判定（夜間：18:00-22:00）
+ */
+function evaluateCareNightTime(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime) {
+    return { passed: false, reason: "訪問開始時刻が未設定" };
+  }
+
+  const startTime = new Date(context.visitStartTime);
+  const hours = startTime.getHours();
+  const passed = hours >= 18 && hours < 22;
+
+  return {
+    passed,
+    reason: passed
+      ? `夜間時間帯（18:00-22:00）の訪問（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`
+      : `夜間時間帯外（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`,
+  };
+}
+
+/**
+ * Phase 2-A: 介護保険の時間帯判定（深夜：22:00-6:00）
+ */
+function evaluateCareLateNightTime(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime) {
+    return { passed: false, reason: "訪問開始時刻が未設定" };
+  }
+
+  const startTime = new Date(context.visitStartTime);
+  const hours = startTime.getHours();
+  const passed = hours >= 22 || hours < 6;
+
+  return {
+    passed,
+    reason: passed
+      ? `深夜時間帯（22:00-6:00）の訪問（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`
+      : `深夜時間帯外（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`,
+  };
+}
+
+/**
+ * Phase 2-A: 介護保険の訪問時間長判定（90分以上）
+ */
+function evaluateCareVisitDuration90Plus(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime || !context.visitEndTime) {
+    return { passed: false, reason: "訪問開始時刻または終了時刻が未設定" };
+  }
+
+  const startTime = new Date(context.visitStartTime);
+  const endTime = new Date(context.visitEndTime);
+  const durationMinutes = Math.floor((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+  const passed = durationMinutes >= 90;
+
+  return {
+    passed,
+    reason: passed
+      ? `訪問時間90分以上（${durationMinutes}分）`
+      : `訪問時間90分未満（${durationMinutes}分）`,
   };
 }
 

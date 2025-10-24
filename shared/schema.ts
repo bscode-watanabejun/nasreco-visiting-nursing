@@ -133,6 +133,11 @@ export const patients = pgTable("patients", {
   specialManagementStartDate: date("special_management_start_date"), // 特管開始日
   specialManagementEndDate: date("special_management_end_date"), // 特管終了日（nullは継続中）
 
+  // Phase 2-A: 退院・計画・死亡情報
+  lastDischargeDate: date("last_discharge_date"), // 直近の退院日
+  lastPlanCreatedDate: date("last_plan_created_date"), // 直近の訪問看護計画作成日
+  deathDate: date("death_date"), // 死亡日
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -245,6 +250,13 @@ export const nursingRecords = pgTable("nursing_records", {
 
   // Special management record data (特別管理記録データ)
   specialManagementData: json("special_management_data"), // 特管記録（JSON形式）
+
+  // Phase 2-A: 記録フラグ（加算判定用）
+  isDischargeDate: boolean("is_discharge_date").default(false), // 退院日当日訪問
+  isFirstVisitOfPlan: boolean("is_first_visit_of_plan").default(false), // 新規計画初回訪問
+  hasCollaborationRecord: boolean("has_collaboration_record").default(false), // 多職種連携記録あり
+  isTerminalCare: boolean("is_terminal_care").default(false), // ターミナルケア実施
+  terminalCareDeathDate: date("terminal_care_death_date"), // ターミナルケア対象患者の死亡日
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

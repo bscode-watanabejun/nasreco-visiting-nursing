@@ -485,6 +485,30 @@ export function PatientDetail() {
                         )}
                       </p>
                     </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">直近の退院日</p>
+                      <p className="font-medium">
+                        {patient.lastDischargeDate
+                          ? new Date(patient.lastDischargeDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })
+                          : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">直近の訪問看護計画作成日</p>
+                      <p className="font-medium">
+                        {patient.lastPlanCreatedDate
+                          ? new Date(patient.lastPlanCreatedDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })
+                          : '未登録'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">死亡日</p>
+                      <p className="font-medium">
+                        {patient.deathDate
+                          ? new Date(patient.deathDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })
+                          : '未登録'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 

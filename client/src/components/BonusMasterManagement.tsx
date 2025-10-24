@@ -75,6 +75,163 @@ const initialFormData: BonusFormData = {
   isActive: true,
 }
 
+// Helper component to display predefined conditions
+function PredefinedConditionsDisplay({ conditions }: { conditions: unknown }) {
+  const conditionsArray = conditions as any[];
+
+  // パターン名から人間が読みやすい具体的な表現を生成
+  const getReadableCondition = (condition: any): string => {
+    const pattern = condition.pattern || condition.type;
+    const operator = condition.operator;
+    const value = condition.value;
+
+    // パターンごとの具体的な表現マップ
+    const patternDescriptions: Record<string, { withCheck: string; withoutCheck: string }> = {
+      // Phase 2-A: 訪問記録のチェックボックス条件
+      is_discharge_date: {
+        withCheck: '訪問記録の「退院日当日の訪問」にチェックあり',
+        withoutCheck: '訪問記録の「退院日当日の訪問」にチェックなし',
+      },
+      is_first_visit_of_plan: {
+        withCheck: '訪問記録の「新規計画書作成後の初回訪問」にチェックあり',
+        withoutCheck: '訪問記録の「新規計画書作成後の初回訪問」にチェックなし',
+      },
+      has_collaboration_record: {
+        withCheck: '訪問記録の「多職種連携記録」にチェックあり',
+        withoutCheck: '訪問記録の「多職種連携記録」にチェックなし',
+      },
+      is_terminal_care: {
+        withCheck: '訪問記録の「ターミナルケア」にチェックあり',
+        withoutCheck: '訪問記録の「ターミナルケア」にチェックなし',
+      },
+
+      // Phase 2-A: 訪問時間の条件
+      care_visit_duration_90plus: {
+        withCheck: '訪問時間が90分以上',
+        withoutCheck: '訪問時間が90分未満',
+      },
+      care_early_morning_time: {
+        withCheck: '訪問時刻が早朝（6:00-8:00）',
+        withoutCheck: '訪問時刻が早朝（6:00-8:00）以外',
+      },
+      care_night_time: {
+        withCheck: '訪問時刻が夜間（18:00-22:00）',
+        withoutCheck: '訪問時刻が夜間（18:00-22:00）以外',
+      },
+      care_late_night_time: {
+        withCheck: '訪問時刻が深夜（22:00-6:00）',
+        withoutCheck: '訪問時刻が深夜（22:00-6:00）以外',
+      },
+
+      // Phase 2-1: 施設体制フラグ条件
+      has_24h_support_system: {
+        withCheck: '施設管理の「24時間対応体制加算（基本）」が有効',
+        withoutCheck: '施設管理の「24時間対応体制加算（基本）」が無効',
+      },
+      has_24h_support_system_enhanced: {
+        withCheck: '施設管理の「24時間対応体制加算（看護業務負担軽減）」が有効',
+        withoutCheck: '施設管理の「24時間対応体制加算（看護業務負担軽減）」が無効',
+      },
+      has_emergency_support_system: {
+        withCheck: '施設管理の「緊急時訪問看護加算（I）」が有効',
+        withoutCheck: '施設管理の「緊急時訪問看護加算（I）」が無効',
+      },
+      has_emergency_support_system_enhanced: {
+        withCheck: '施設管理の「緊急時訪問看護加算（II）」が有効',
+        withoutCheck: '施設管理の「緊急時訪問看護加算（II）」が無効',
+      },
+
+      // Phase 1: 基本的な条件
+      field_not_empty: {
+        withCheck: `訪問記録の「${condition.field || '指定フィールド'}」に入力あり`,
+        withoutCheck: `訪問記録の「${condition.field || '指定フィールド'}」に入力なし`,
+      },
+      is_second_visit: {
+        withCheck: '当日2回目の訪問',
+        withoutCheck: '当日2回目の訪問ではない',
+      },
+      has_building: {
+        withCheck: '患者に建物（施設）が設定されている',
+        withoutCheck: '患者に建物（施設）が設定されていない',
+      },
+    };
+
+    // パターンが定義されている場合
+    if (pattern && patternDescriptions[pattern]) {
+      // operator と value が設定されている場合
+      if (operator === "equals") {
+        return value === true
+          ? patternDescriptions[pattern].withCheck
+          : patternDescriptions[pattern].withoutCheck;
+      }
+      // operator が設定されていない場合（デフォルトで true とみなす）
+      if (!operator || operator === undefined) {
+        return patternDescriptions[pattern].withCheck;
+      }
+    }
+
+    // 数値比較の場合
+    if (operator === "gte") {
+      return `${condition.description || pattern}（${value}以上）`;
+    }
+    if (operator === "lte") {
+      return `${condition.description || pattern}（${value}以下）`;
+    }
+    if (operator === "gt") {
+      return `${condition.description || pattern}（${value}より大きい）`;
+    }
+    if (operator === "lt") {
+      return `${condition.description || pattern}（${value}より小さい）`;
+    }
+
+    // その他の演算子
+    if (operator === "met") {
+      return `${condition.description || pattern}（条件を満たす）`;
+    }
+    if (operator === "not_met") {
+      return `${condition.description || pattern}（条件を満たさない）`;
+    }
+
+    // デフォルト: description をそのまま使用
+    if (condition.description) {
+      if (operator === "equals" && value !== undefined) {
+        return value === true
+          ? `${condition.description}（該当する）`
+          : `${condition.description}（該当しない）`;
+      }
+      return condition.description;
+    }
+
+    // フォールバック
+    return pattern || "条件説明なし";
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>適用条件</Label>
+      <div className="border rounded-md p-3 bg-muted/50 space-y-2">
+        {Array.isArray(conditionsArray) && conditionsArray.length > 0 ? (
+          conditionsArray.map((condition: any, index: number) => (
+            <div key={index} className="flex items-start gap-2 text-sm">
+              <Badge variant="outline" className="mt-0.5">{index + 1}</Badge>
+              <div className="flex-1">
+                <p className="text-foreground">
+                  {getReadableCondition(condition)}
+                </p>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">条件なし（常に適用）</p>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mt-1">
+        ※ 適用条件はプログラムで管理されています。詳細な補足説明が必要な場合は備考欄をご利用ください。
+      </p>
+    </div>
+  );
+}
+
 export default function BonusMasterManagement() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -758,6 +915,11 @@ export default function BonusMasterManagement() {
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-4 mt-4">
+                {/* 適用条件の表示（読み取り専用） */}
+                {editingBonus?.predefinedConditions ? (
+                  <PredefinedConditionsDisplay conditions={editingBonus.predefinedConditions} />
+                ) : null}
+
                 <div className="space-y-2">
                   <Label htmlFor="displayOrder">表示順序</Label>
                   <Input
@@ -775,7 +937,7 @@ export default function BonusMasterManagement() {
                     value={formData.notes}
                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                     rows={4}
-                    placeholder="特記事項があれば入力してください"
+                    placeholder="適用条件の補足説明や特記事項があれば入力してください"
                   />
                 </div>
 

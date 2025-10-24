@@ -2825,6 +2825,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       hasEmergencySupportSystem: facility?.hasEmergencySupportSystem || false,
       hasEmergencySupportSystemEnhanced: facility?.hasEmergencySupportSystemEnhanced || false,
       burdenReductionMeasures: facility?.burdenReductionMeasures || [],
+      // Phase 2-A: 記録フラグ（加算判定用）
+      isDischargeDate: recordData.isDischargeDate || false,
+      isFirstVisitOfPlan: recordData.isFirstVisitOfPlan || false,
+      hasCollaborationRecord: recordData.hasCollaborationRecord || false,
+      isTerminalCare: recordData.isTerminalCare || false,
+      terminalCareDeathDate: recordData.terminalCareDeathDate ? new Date(recordData.terminalCareDeathDate) : null,
+      // Phase 2-A: 患者情報（日付フィールド）
+      lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate) : null,
+      lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate) : null,
+      deathDate: patient.deathDate ? new Date(patient.deathDate) : null,
     };
 
     // Calculate bonuses using the new rule engine
