@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
@@ -81,6 +81,10 @@ const patientFormSchema = z.object({
   specialCareType: z.enum(["none", "bedsore", "rare_disease", "mental"]).optional(),
   isInHospital: z.boolean().optional(),
   isInShortStay: z.boolean().optional(),
+  // Phase 2-A: 退院・計画・死亡情報
+  lastDischargeDate: z.date().nullish(),
+  lastPlanCreatedDate: z.date().nullish(),
+  deathDate: z.date().nullish(),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -98,6 +102,14 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [isStartDateOpen, setIsStartDateOpen] = useState(false)
   const [isEndDateOpen, setIsEndDateOpen] = useState(false)
+  // Phase 2-A: 日付ピッカーの状態
+  const [isLastDischargeDateOpen, setIsLastDischargeDateOpen] = useState(false)
+  const [isLastPlanDateOpen, setIsLastPlanDateOpen] = useState(false)
+  const [isDeathDateOpen, setIsDeathDateOpen] = useState(false)
+  // 現在ロードされている患者IDを追跡
+  const [loadedPatientId, setLoadedPatientId] = useState<string | null>(null)
+  // フォームが初期化済みかどうかを追跡
+  const isFormInitialized = useRef(false)
 
   // Fetch medical institutions and care managers
   const { data: medicalInstitutions = [] } = useQuery<MedicalInstitution[]>({
@@ -121,34 +133,6 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     enabled: isOpen,
   });
 
-  // Debug: Check if form is being rendered
-  React.useEffect(() => {
-    if (isOpen) {
-      console.log("PatientForm opened:", { mode, patient })
-
-      // Test API connection
-      fetch('/api/auth/me', { credentials: 'include' })
-        .then(res => {
-          console.log("Auth check status:", res.status)
-          if (res.ok) {
-            return res.json()
-          } else {
-            throw new Error("Not authenticated")
-          }
-        })
-        .then(data => {
-          console.log("Current user:", data)
-        })
-        .catch(err => {
-          console.error("Auth check failed:", err)
-          toast({
-            variant: "destructive",
-            title: "認証エラー",
-            description: "ログインが必要です。再度ログインしてください。",
-          })
-        })
-    }
-  }, [isOpen, mode, patient, toast])
 
   const form = useForm<PatientFormData>({
     resolver: zodResolver(patientFormSchema),
@@ -181,14 +165,31 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       specialCareType: "none",
       isInHospital: false,
       isInShortStay: false,
+      // Phase 2-A: 退院・計画・死亡情報
+      lastDischargeDate: undefined,
+      lastPlanCreatedDate: undefined,
+      deathDate: undefined,
     },
   })
 
   // Reset form when patient data changes or mode changes
-  React.useEffect(() => {
+  useEffect(() => {
+    if (!isOpen) {
+      // ダイアログが閉じられた時はloadedPatientIdと初期化フラグをクリア
+      setLoadedPatientId(null)
+      isFormInitialized.current = false
+      return
+    }
+
     if (isOpen) {
+      // 既に同じ患者で初期化済みの場合はスキップ
+      if (patient && loadedPatientId === patient.id && isFormInitialized.current) {
+        return
+      }
+
       if (patient && mode === 'edit') {
-        console.log("Resetting form for edit mode with patient data:", patient)
+        setLoadedPatientId(patient.id)
+        isFormInitialized.current = true
         // Reset form with patient data for editing
         form.reset({
           patientNumber: patient.patientNumber || "",
@@ -219,9 +220,14 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           specialCareType: patient.specialCareType || "none",
           isInHospital: patient.isInHospital ?? false,
           isInShortStay: patient.isInShortStay ?? false,
+          // Phase 2-A: 退院・計画・死亡情報
+          lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate + 'T00:00:00') : undefined,
+          lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate + 'T00:00:00') : undefined,
+          deathDate: patient.deathDate ? new Date(patient.deathDate + 'T00:00:00') : undefined,
         })
       } else if (mode === 'create') {
-        console.log("Resetting form for create mode")
+        setLoadedPatientId(null)
+        isFormInitialized.current = false
         // Reset form with empty values for creating
         form.reset({
           patientNumber: "",
@@ -252,25 +258,30 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           specialCareType: "none",
           isInHospital: false,
           isInShortStay: false,
+          // Phase 2-A: 退院・計画・死亡情報
+          lastDischargeDate: undefined,
+          lastPlanCreatedDate: undefined,
+          deathDate: undefined,
         })
       }
     }
-  }, [isOpen, patient, mode, form])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, mode])
 
   // Create patient mutation
   const createPatientMutation = useMutation({
     mutationFn: async (data: PatientFormData): Promise<Patient> => {
-      console.log("Creating patient with data:", data)
-
       const patientData: InsertPatient = {
         ...data,
         dateOfBirth: data.dateOfBirth.toISOString().split('T')[0], // Convert to YYYY-MM-DD
         specialManagementStartDate: data.specialManagementStartDate?.toISOString().split('T')[0],
         specialManagementEndDate: data.specialManagementEndDate?.toISOString().split('T')[0],
+        // undefinedの場合はnullを送信してフィールドをクリア
+        lastDischargeDate: data.lastDischargeDate ? data.lastDischargeDate.toISOString().split('T')[0] : null,
+        lastPlanCreatedDate: data.lastPlanCreatedDate ? data.lastPlanCreatedDate.toISOString().split('T')[0] : null,
+        deathDate: data.deathDate ? data.deathDate.toISOString().split('T')[0] : null,
         facilityId: "", // Will be set by the backend
       }
-
-      console.log("Sending patient data to API:", patientData)
 
       const response = await fetch("/api/patients", {
         method: "POST",
@@ -281,17 +292,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
         credentials: "include", // Include session cookies
       })
 
-      console.log("API response status:", response.status)
-
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Unknown error" }))
-        console.error("API error response:", error)
         throw new Error(error.error || "患者の登録に失敗しました")
       }
 
-      const result = await response.json()
-      console.log("Patient created successfully:", result)
-      return result
+      return await response.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
@@ -303,7 +309,6 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       onClose()
     },
     onError: (error) => {
-      console.error("Patient creation error:", error)
       toast({
         variant: "destructive",
         title: "登録エラー",
@@ -317,16 +322,16 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     mutationFn: async (data: PatientFormData): Promise<Patient> => {
       if (!patient?.id) throw new Error("患者IDが見つかりません")
 
-      console.log("Updating patient with data:", data)
-
       const updateData: UpdatePatient = {
         ...data,
         dateOfBirth: data.dateOfBirth.toISOString().split('T')[0], // Convert to YYYY-MM-DD
         specialManagementStartDate: data.specialManagementStartDate?.toISOString().split('T')[0],
         specialManagementEndDate: data.specialManagementEndDate?.toISOString().split('T')[0],
+        // undefinedの場合はnullを送信してフィールドをクリア
+        lastDischargeDate: data.lastDischargeDate ? data.lastDischargeDate.toISOString().split('T')[0] : null,
+        lastPlanCreatedDate: data.lastPlanCreatedDate ? data.lastPlanCreatedDate.toISOString().split('T')[0] : null,
+        deathDate: data.deathDate ? data.deathDate.toISOString().split('T')[0] : null,
       }
-
-      console.log("Sending update data to API:", updateData)
 
       const response = await fetch(`/api/patients/${patient.id}`, {
         method: "PUT",
@@ -337,17 +342,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
         credentials: "include", // Include session cookies
       })
 
-      console.log("Update API response status:", response.status)
-
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Unknown error" }))
-        console.error("Update API error response:", error)
         throw new Error(error.error || "患者情報の更新に失敗しました")
       }
 
-      const result = await response.json()
-      console.log("Patient updated successfully:", result)
-      return result
+      return await response.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
@@ -368,12 +368,9 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
   })
 
   const onSubmit = (data: PatientFormData) => {
-    console.log("Form submission started:", { mode, data })
-
     // Check for validation errors
     const errors = form.formState.errors
     if (Object.keys(errors).length > 0) {
-      console.error("Form validation errors:", errors)
       toast({
         variant: "destructive",
         title: "入力エラー",
@@ -383,10 +380,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     }
 
     if (mode === "create") {
-      console.log("Creating new patient...")
       createPatientMutation.mutate(data)
     } else {
-      console.log("Updating existing patient...")
       updatePatientMutation.mutate(data)
     }
   }
@@ -501,18 +496,20 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           </FormControl>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
-                          <DatePickerWithYearMonth
-                            selected={field.value}
-                            onSelect={(date) => {
-                              field.onChange(date)
-                              setIsCalendarOpen(false)
-                            }}
-                            disabled={(date) =>
-                              date > new Date() || date < new Date("1900-01-01")
-                            }
-                            minYear={1900}
-                            maxYear={new Date().getFullYear()}
-                          />
+                          {isCalendarOpen && (
+                            <DatePickerWithYearMonth
+                              selected={field.value}
+                              onSelect={(date) => {
+                                field.onChange(date)
+                                setIsCalendarOpen(false)
+                              }}
+                              disabled={(date) =>
+                                date > new Date() || date < new Date("1900-01-01")
+                              }
+                              minYear={1900}
+                              maxYear={new Date().getFullYear()}
+                            />
+                          )}
                         </PopoverContent>
                       </Popover>
                       <FormMessage />
@@ -934,6 +931,137 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                     />
                   </div>
                 </div>
+
+                <Separator className="my-4" />
+
+                {/* Phase 2-A: 退院・計画・死亡情報 */}
+                <div className="space-y-4">
+                  <h3 className="text-base font-semibold">退院・計画・死亡情報</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="lastDischargeDate"
+                      render={({ field }) => {
+                        // 常に最新の値を取得
+                        const currentValue = form.watch("lastDischargeDate")
+
+                        return (
+                          <FormItem>
+                            <FormLabel>直近の退院日</FormLabel>
+                            <Popover open={isLastDischargeDateOpen} onOpenChange={setIsLastDischargeDateOpen}>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    className={`w-full justify-start text-left font-normal ${!currentValue && "text-muted-foreground"}`}
+                                  >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {currentValue ? format(currentValue, "yyyy年MM月dd日", { locale: ja }) : <span>退院日を選択</span>}
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                {isLastDischargeDateOpen && (
+                                  <DatePickerWithYearMonth
+                                    selected={currentValue}
+                                    onSelect={(date) => {
+                                      field.onChange(date)
+                                      setTimeout(() => setIsLastDischargeDateOpen(false), 0)
+                                    }}
+                                    disabled={(date) =>
+                                      date > new Date() || date < new Date("1900-01-01")
+                                    }
+                                    minYear={1900}
+                                    maxYear={new Date().getFullYear()}
+                                  />
+                                )}
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )
+                      }}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="lastPlanCreatedDate"
+                      render={({ field }) => {
+                        const currentValue = form.watch("lastPlanCreatedDate")
+
+                        return (
+                          <FormItem>
+                            <FormLabel>直近の訪問看護計画作成日</FormLabel>
+                            <Popover open={isLastPlanDateOpen} onOpenChange={setIsLastPlanDateOpen}>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    className={`w-full justify-start text-left font-normal ${!currentValue && "text-muted-foreground"}`}
+                                  >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {currentValue ? format(currentValue, "yyyy年MM月dd日", { locale: ja }) : <span>計画作成日を選択</span>}
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                {isLastPlanDateOpen && (
+                                  <DatePickerWithYearMonth
+                                    selected={currentValue}
+                                    onSelect={(date) => {
+                                      field.onChange(date)
+                                      setTimeout(() => setIsLastPlanDateOpen(false), 0)
+                                    }}
+                                  />
+                                )}
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )
+                      }}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="deathDate"
+                      render={({ field }) => {
+                        const currentValue = form.watch("deathDate")
+
+                        return (
+                          <FormItem>
+                            <FormLabel>死亡日</FormLabel>
+                            <Popover open={isDeathDateOpen} onOpenChange={setIsDeathDateOpen}>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    className={`w-full justify-start text-left font-normal ${!currentValue && "text-muted-foreground"}`}
+                                  >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {currentValue ? format(currentValue, "yyyy年MM月dd日", { locale: ja }) : <span>死亡日を選択</span>}
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                {isDeathDateOpen && (
+                                  <DatePickerWithYearMonth
+                                    selected={currentValue}
+                                    onSelect={(date) => {
+                                      field.onChange(date)
+                                      setTimeout(() => setIsDeathDateOpen(false), 0)
+                                    }}
+                                  />
+                                )}
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )
+                      }}
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -1027,18 +1155,20 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                             </FormControl>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
-                            <DatePickerWithYearMonth
-                              selected={field.value}
-                              onSelect={(date) => {
-                                field.onChange(date)
-                                setIsStartDateOpen(false)
-                              }}
-                              disabled={(date) =>
-                                date > new Date() || date < new Date("2000-01-01")
-                              }
-                              minYear={2000}
-                              maxYear={new Date().getFullYear()}
-                            />
+                            {isStartDateOpen && (
+                              <DatePickerWithYearMonth
+                                selected={field.value}
+                                onSelect={(date) => {
+                                  field.onChange(date)
+                                  setIsStartDateOpen(false)
+                                }}
+                                disabled={(date) =>
+                                  date > new Date() || date < new Date("2000-01-01")
+                                }
+                                minYear={2000}
+                                maxYear={new Date().getFullYear()}
+                              />
+                            )}
                           </PopoverContent>
                         </Popover>
                         <FormMessage />
@@ -1068,18 +1198,20 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                             </FormControl>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
-                            <DatePickerWithYearMonth
-                              selected={field.value}
-                              onSelect={(date) => {
-                                field.onChange(date)
-                                setIsEndDateOpen(false)
-                              }}
-                              disabled={(date) =>
-                                date < new Date("2000-01-01")
-                              }
-                              minYear={2000}
-                              maxYear={new Date().getFullYear() + 5}
-                            />
+                            {isEndDateOpen && (
+                              <DatePickerWithYearMonth
+                                selected={field.value}
+                                onSelect={(date) => {
+                                  field.onChange(date)
+                                  setIsEndDateOpen(false)
+                                }}
+                                disabled={(date) =>
+                                  date < new Date("2000-01-01")
+                                }
+                                minYear={2000}
+                                maxYear={new Date().getFullYear() + 5}
+                              />
+                            )}
                           </PopoverContent>
                         </Popover>
                         <FormMessage />
@@ -1103,11 +1235,6 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
               <Button
                 type="submit"
                 disabled={isLoading}
-                onClick={() => {
-                  console.log("Submit button clicked")
-                  console.log("Form errors:", form.formState.errors)
-                  console.log("Form is valid:", form.formState.isValid)
-                }}
               >
                 <Save className="mr-2 h-4 w-4" />
                 {isLoading

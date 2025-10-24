@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface DatePickerWithYearMonthProps {
-  selected?: Date
-  onSelect: (date: Date | undefined) => void
+  selected?: Date | null
+  onSelect: (date: Date | undefined | null) => void
   disabled?: (date: Date) => boolean
   minYear?: number
   maxYear?: number
@@ -67,13 +67,17 @@ export function DatePickerWithYearMonth({
     setCurrentMonth(newDate)
   }
 
-  const handleTodayClick = () => {
+  const handleTodayClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
     const today = new Date()
     setCurrentMonth(today)
     onSelect(today)
   }
 
-  const handleClearClick = () => {
+  const handleClearClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
     onSelect(undefined)
   }
 
@@ -150,7 +154,7 @@ export function DatePickerWithYearMonth({
       {/* カレンダーグリッド */}
       <DayPicker
         mode="single"
-        selected={selected}
+        selected={selected ?? undefined}
         onSelect={onSelect}
         month={currentMonth}
         onMonthChange={setCurrentMonth}
@@ -179,17 +183,21 @@ export function DatePickerWithYearMonth({
       />
 
       {/* 操作ボタン */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t">
+      <div className="flex items-center justify-between mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           onClick={handleClearClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           className="text-red-600 hover:text-red-700 hover:bg-red-50"
         >
           <Trash2 className="h-3 w-3 mr-1" />
           削除
         </Button>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           onClick={handleTodayClick}
