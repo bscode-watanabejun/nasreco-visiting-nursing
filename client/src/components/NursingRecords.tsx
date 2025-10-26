@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,6 +111,7 @@ interface FormData {
   careProvided: string
   nextVisitNotes: string
   // Additional payment fields
+  hasEmergencyVisit: boolean
   multipleVisitReason: string
   emergencyVisitReason: string
   longVisitReason: string
@@ -281,6 +283,7 @@ const getInitialFormData = (): FormData => {
     oxygenSaturation: '',
     careProvided: '',
     nextVisitNotes: '',
+    hasEmergencyVisit: false,
     multipleVisitReason: '',
     emergencyVisitReason: '',
     longVisitReason: '',
@@ -734,6 +737,7 @@ export function NursingRecords() {
       oxygenSaturation: record.oxygenSaturation?.toString() || '',
       careProvided: record.interventions || '',
       nextVisitNotes: record.patientFamilyResponse || '',
+      hasEmergencyVisit: !!record.emergencyVisitReason,
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
@@ -774,6 +778,7 @@ export function NursingRecords() {
       oxygenSaturation: record.oxygenSaturation?.toString() || '',
       careProvided: record.interventions || '',
       nextVisitNotes: record.patientFamilyResponse || '',
+      hasEmergencyVisit: !!record.emergencyVisitReason,
       multipleVisitReason: record.multipleVisitReason || '',
       emergencyVisitReason: record.emergencyVisitReason || '',
       longVisitReason: record.longVisitReason || '',
@@ -1992,74 +1997,111 @@ export function NursingRecords() {
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="second-visit"
-                  checked={formData.isSecondVisit}
-                  onChange={(e) => setFormData(prev => ({ ...prev, isSecondVisit: e.target.checked }))}
-                  className="w-4 h-4"
-                />
-                <Label htmlFor="second-visit" className="cursor-pointer">
-                  本日2回目以降の訪問
-                </Label>
-              </div>
-
               {/* 加算管理セクション */}
               <div className="border-t pt-4 mt-4">
                 <h3 className="text-sm font-semibold mb-3">加算管理</h3>
-                <div className="space-y-4">
-                  {/* 緊急訪問理由 */}
-                  <div className="space-y-2">
-                    <Label htmlFor="emergency-visit-reason">
-                      緊急訪問看護加算の理由
-                    </Label>
-                    <Textarea
-                      id="emergency-visit-reason"
-                      placeholder="緊急訪問が必要な場合は理由を記載してください（例：呼吸困難のため緊急訪問）"
-                      value={formData.emergencyVisitReason}
-                      onChange={(e) => setFormData(prev => ({ ...prev, emergencyVisitReason: e.target.value }))}
-                      className="min-h-[80px] resize-none"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      ※ 緊急訪問看護加算を算定する場合は必ず記載してください
-                    </p>
+                <div className="space-y-3">
+                  {/* 緊急訪問看護加算 */}
+                  <div className="border rounded-lg">
+                    <div className="flex items-start space-x-3 p-3">
+                      <Checkbox
+                        id="emergency-visit"
+                        checked={formData.hasEmergencyVisit}
+                        onCheckedChange={(checked) =>
+                          setFormData(prev => ({ ...prev, hasEmergencyVisit: checked === true }))
+                        }
+                      />
+                      <div className="flex-1">
+                        <Label htmlFor="emergency-visit" className="cursor-pointer font-medium">
+                          緊急訪問看護加算
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          緊急訪問が必要な場合にチェック
+                        </p>
+                      </div>
+                    </div>
+                    {formData.hasEmergencyVisit && (
+                      <div className="px-3 pb-3 pt-0">
+                        <Label htmlFor="emergency-visit-reason" className="text-sm">
+                          理由 <span className="text-red-500">*</span>
+                        </Label>
+                        <Textarea
+                          id="emergency-visit-reason"
+                          placeholder="緊急訪問が必要な理由を記載してください（例：呼吸困難のため緊急訪問）"
+                          value={formData.emergencyVisitReason}
+                          onChange={(e) => setFormData(prev => ({ ...prev, emergencyVisitReason: e.target.value }))}
+                          className="min-h-[80px] resize-none mt-2"
+                        />
+                        <p className="text-xs text-muted-foreground mt-2">
+                          ※ 緊急訪問看護加算を算定する場合は必ず記載してください
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {formData.isSecondVisit && (
-                    <div className="space-y-2">
-                      <Label htmlFor="multiple-visit-reason">
-                        複数回訪問の理由 <span className="text-red-500">*</span>
-                      </Label>
-                      <Textarea
-                        id="multiple-visit-reason"
-                        placeholder="複数回訪問が必要な理由を記載してください"
-                        value={formData.multipleVisitReason}
-                        onChange={(e) => setFormData(prev => ({ ...prev, multipleVisitReason: e.target.value }))}
-                        className="min-h-[80px] resize-none"
+                  {/* 複数回訪問加算 */}
+                  <div className="border rounded-lg">
+                    <div className="flex items-start space-x-3 p-3">
+                      <Checkbox
+                        id="second-visit"
+                        checked={formData.isSecondVisit}
+                        onCheckedChange={(checked) =>
+                          setFormData(prev => ({ ...prev, isSecondVisit: checked === true }))
+                        }
                       />
+                      <div className="flex-1">
+                        <Label htmlFor="second-visit" className="cursor-pointer font-medium">
+                          本日2回目以降の訪問
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          同日に複数回訪問する場合にチェック
+                        </p>
+                      </div>
                     </div>
-                  )}
+                    {formData.isSecondVisit && (
+                      <div className="px-3 pb-3 pt-0">
+                        <Label htmlFor="multiple-visit-reason" className="text-sm">
+                          理由 <span className="text-red-500">*</span>
+                        </Label>
+                        <Textarea
+                          id="multiple-visit-reason"
+                          placeholder="複数回訪問が必要な理由を記載してください"
+                          value={formData.multipleVisitReason}
+                          onChange={(e) => setFormData(prev => ({ ...prev, multipleVisitReason: e.target.value }))}
+                          className="min-h-[80px] resize-none mt-2"
+                        />
+                      </div>
+                    )}
+                  </div>
 
+                  {/* 長時間訪問（90分超の場合のみ表示） */}
                   {(() => {
                     const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
                     const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
                     const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
                     return duration > 90 ? (
-                      <div className="space-y-2">
-                        <Label htmlFor="long-visit-reason">
-                          長時間訪問の理由 <span className="text-red-500">*</span>
-                        </Label>
-                        <Textarea
-                          id="long-visit-reason"
-                          placeholder="90分を超える訪問が必要な理由を記載してください"
-                          value={formData.longVisitReason}
-                          onChange={(e) => setFormData(prev => ({ ...prev, longVisitReason: e.target.value }))}
-                          className="min-h-[80px] resize-none"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          訪問時間: {Math.floor(duration)}分
-                        </p>
+                      <div className="border rounded-lg border-amber-300 bg-amber-50">
+                        <div className="p-3">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <AlertCircle className="h-4 w-4 text-amber-600" />
+                            <Label className="font-medium text-amber-900">
+                              長時間訪問（90分超）
+                            </Label>
+                          </div>
+                          <p className="text-xs text-amber-700 mb-3">
+                            訪問時間: {Math.floor(duration)}分 - 理由の記載が必要です
+                          </p>
+                          <Label htmlFor="long-visit-reason" className="text-sm">
+                            理由 <span className="text-red-500">*</span>
+                          </Label>
+                          <Textarea
+                            id="long-visit-reason"
+                            placeholder="90分を超える訪問が必要な理由を記載してください"
+                            value={formData.longVisitReason}
+                            onChange={(e) => setFormData(prev => ({ ...prev, longVisitReason: e.target.value }))}
+                            className="min-h-[80px] resize-none mt-2"
+                          />
+                        </div>
                       </div>
                     ) : null
                   })()}
