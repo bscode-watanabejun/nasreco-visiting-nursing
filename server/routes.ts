@@ -2748,6 +2748,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get single nursing record by ID (MUST come AFTER /search and base routes)
+  app.get("/api/nursing-records/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const record = await storage.getNursingRecord(id);
+
+      if (!record) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      // Check if nursing record belongs to user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      if (record.facilityId !== targetFacilityId) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      res.json(record);
+    } catch (error) {
+      console.error("Get nursing record error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Helper function: Calculate bonuses and points for nursing record (Phase 4 - Rule Engine)
   async function calculateBonusesAndPoints(recordData: any, facilityId: string, nursingRecordId?: string) {
     const appliedBonuses: any[] = [];

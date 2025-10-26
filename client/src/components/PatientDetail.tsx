@@ -1054,7 +1054,12 @@ export function PatientDetail() {
                     .map((record) => (
                       <div
                         key={record.id}
-                        className="border rounded-lg p-4 hover:bg-accent transition-colors"
+                        onClick={() => {
+                          const currentPath = window.location.pathname
+                          const encodedReturnTo = encodeURIComponent(currentPath)
+                          setLocation(`${basePath}/records?recordId=${record.id}&returnTo=${encodedReturnTo}`)
+                        }}
+                        className="border rounded-lg p-4 hover:bg-accent transition-colors cursor-pointer"
                       >
                         <div className="flex items-start justify-between">
                           <div className="space-y-2 flex-1">

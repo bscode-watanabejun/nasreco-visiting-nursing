@@ -839,7 +839,15 @@ export default function MonthlyReceiptDetail() {
                       : record.schedule?.endTime || '-'
 
                     return (
-                      <TableRow key={record.id}>
+                      <TableRow
+                        key={record.id}
+                        onClick={() => {
+                          const currentPath = window.location.pathname
+                          const encodedReturnTo = encodeURIComponent(currentPath)
+                          setLocation(`${basePath}/records?recordId=${record.id}&returnTo=${encodedReturnTo}`)
+                        }}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      >
                         <TableCell>{record.visitDate}</TableCell>
                         <TableCell>
                           {startTime} - {endTime}

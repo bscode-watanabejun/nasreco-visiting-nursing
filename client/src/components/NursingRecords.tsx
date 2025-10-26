@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useSearch } from "wouter"
+import { useSearch, useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -297,6 +297,7 @@ export function NursingRecords() {
   const queryClient = useQueryClient()
   const searchParams = useSearch()
   const basePath = useBasePath()
+  const [, setLocation] = useLocation()
   const { data: currentUser } = useCurrentUser()
   const { toast } = useToast()
 
@@ -477,6 +478,7 @@ export function NursingRecords() {
   const scheduleIdFromUrl = urlParams.get('scheduleId')
   const patientIdFromUrl = urlParams.get('patientId')
   const recordIdFromUrl = urlParams.get('recordId')
+  const returnTo = urlParams.get('returnTo')
 
   const { data: scheduleFromUrl } = useQuery({
     queryKey: ["schedule", scheduleIdFromUrl],
@@ -487,6 +489,18 @@ export function NursingRecords() {
       return response.json()
     },
     enabled: !!scheduleIdFromUrl,
+  })
+
+  // Fetch specific nursing record from URL
+  const { data: recordFromUrl } = useQuery({
+    queryKey: ["nursing-record", recordIdFromUrl],
+    queryFn: async () => {
+      if (!recordIdFromUrl) return null
+      const response = await fetch(`/api/nursing-records/${recordIdFromUrl}`)
+      if (!response.ok) return null
+      return response.json()
+    },
+    enabled: !!recordIdFromUrl,
   })
 
   // Fetch schedules for the selected patient on the visit date
@@ -630,33 +644,34 @@ export function NursingRecords() {
 
   // Handle recordId from URL to open record detail view
   useEffect(() => {
-    if (recordIdFromUrl && rawRecords.length > 0 && !isCreating && !selectedRecord) {
-      // Find the record with the given ID
-      const targetRecord = rawRecords.find(r => r.id === recordIdFromUrl)
+    if (recordIdFromUrl && recordFromUrl && !isCreating && !selectedRecord) {
+      // Use the fetched record from URL
+      const targetRecord = recordFromUrl
 
-      if (targetRecord) {
-        // Transform to display format and open detail view
-        const patient = patients.find(p => p.id === targetRecord.patientId)
-        const patientName = patient ? `${patient.lastName} ${patient.firstName}` : '不明'
-        const nurse = users.find(u => u.id === targetRecord.nurseId)
+      // Transform to display format and open detail view
+      const patient = patients.find(p => p.id === targetRecord.patientId)
+      const patientName = patient ? `${patient.lastName} ${patient.firstName}` : '不明'
+      const nurse = users.find(u => u.id === targetRecord.nurseId)
 
-        const recordToView: NursingRecordDisplay = {
-          ...targetRecord,
-          patientName,
-          nurseName: nurse?.fullName || '担当者不明'
-        }
-
-        // Mark that we came from URL to enable history back
-        setCameFromUrl(true)
-
-        // Open the record detail view
-        handleViewRecord(recordToView)
-
-        // Clear URL parameters (preserve tenant path)
-        window.history.replaceState({}, '', `${basePath}/records`)
+      const recordToView: NursingRecordDisplay = {
+        ...targetRecord,
+        patientName,
+        nurseName: nurse?.fullName || '担当者不明'
       }
+
+      // Mark that we came from URL to enable history back
+      setCameFromUrl(true)
+
+      // Open the record detail view
+      handleViewRecord(recordToView)
+
+      // Clear URL parameters (preserve tenant path and returnTo)
+      const newUrl = returnTo
+        ? `${basePath}/records?returnTo=${encodeURIComponent(returnTo)}`
+        : `${basePath}/records`
+      window.history.replaceState({}, '', newUrl)
     }
-  }, [recordIdFromUrl, rawRecords, patients, users, isCreating, selectedRecord])
+  }, [recordIdFromUrl, recordFromUrl, patients, users, isCreating, selectedRecord, returnTo, basePath])
 
   // Transform records to include patient and nurse names
   const records: NursingRecordDisplay[] = rawRecords.map(record => {
@@ -1148,7 +1163,10 @@ export function NursingRecords() {
           <Button
             variant="outline"
             onClick={() => {
-              if (cameFromUrl) {
+              if (returnTo) {
+                // Return to the specified page (e.g., monthly receipt detail)
+                setLocation(decodeURIComponent(returnTo))
+              } else if (cameFromUrl) {
                 // Came from URL (Dashboard or other page) - use browser history
                 window.history.back()
               } else {
