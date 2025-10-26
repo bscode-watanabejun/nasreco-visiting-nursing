@@ -635,14 +635,15 @@ export function UserManagement() {
             <div className="space-y-4">
               {filteredUsers.map((user) => (
                 <div key={user.id} className="border rounded-lg p-3 md:p-4 hover-elevate">
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 md:gap-4">
-                    <Avatar className="h-10 w-10 md:h-12 md:w-12 shrink-0">
-                      <AvatarFallback className="text-sm md:text-base">{user.name.charAt(0)}</AvatarFallback>
+                {/* Mobile layout (stacked) */}
+                <div className="sm:hidden space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-10 w-10 flex-shrink-0">
+                      <AvatarFallback className="text-sm">{user.name.charAt(0)}</AvatarFallback>
                     </Avatar>
-                    <div className="flex-1 space-y-2 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-base md:text-lg truncate">{user.name}</h3>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <h3 className="font-semibold text-base truncate">{user.name}</h3>
                         <Badge className={`${getRoleColor(user.role)} text-xs`}>
                           {getRoleText(user.role)}
                         </Badge>
@@ -650,7 +651,7 @@ export function UserManagement() {
                           {getStatusText(user.status)}
                         </Badge>
                       </div>
-                      <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+                      <div className="text-xs text-muted-foreground space-y-1">
                         <div className="flex items-center gap-2">
                           <Mail className="h-3 w-3 shrink-0" />
                           <span className="truncate">{user.email}</span>
@@ -661,21 +662,18 @@ export function UserManagement() {
                             <span>{user.phone}</span>
                           </div>
                         )}
-                        <div className="hidden sm:block space-y-1">
-                          <p>所属: {user.facility}</p>
-                          <p>最終ログイン: {new Date(user.lastLogin).toLocaleString('ja-JP')}</p>
-                        </div>
+                        <p>所属: {user.facility}</p>
+                        <p>最終ログイン: {new Date(user.lastLogin).toLocaleString('ja-JP')}</p>
                       </div>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 sm:flex gap-2 pt-2 border-t sm:border-0 sm:pt-0">
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleEditUser(user)}
                       data-testid={`button-edit-${user.id}`}
-                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      className="text-xs h-8"
                     >
                       <Edit className="mr-1 h-3 w-3" />
                       <span>編集</span>
@@ -686,11 +684,10 @@ export function UserManagement() {
                       onClick={() => handleResetPassword(user)}
                       disabled={!canManageUser(user) || currentUser?.id === user.id}
                       data-testid={`button-reset-password-${user.id}`}
-                      className="text-xs sm:text-sm h-8 sm:h-9"
+                      className="text-xs h-8"
                     >
                       <Settings className="mr-1 h-3 w-3" />
-                      <span className="hidden sm:inline">パスワード</span>
-                      <span className="sm:hidden">PW</span>
+                      <span>PW</span>
                     </Button>
                     {user.status === 'active' ? (
                       <Button
@@ -699,7 +696,7 @@ export function UserManagement() {
                         onClick={() => handleDeactivateUser(user)}
                         disabled={!canManageUser(user) || currentUser?.id === user.id}
                         data-testid={`button-deactivate-${user.id}`}
-                        className="col-span-2 sm:col-span-1 text-xs sm:text-sm h-8 sm:h-9"
+                        className="col-span-2 text-xs h-8"
                       >
                         <UserX className="mr-1 h-3 w-3" />
                         <span>無効化</span>
@@ -711,12 +708,93 @@ export function UserManagement() {
                         onClick={() => handleActivateUser(user)}
                         disabled={!canManageUser(user)}
                         data-testid={`button-activate-${user.id}`}
-                        className="col-span-2 sm:col-span-1 text-xs sm:text-sm h-8 sm:h-9"
+                        className="col-span-2 text-xs h-8"
                       >
                         <UserCheck className="mr-1 h-3 w-3" />
                         <span>有効化</span>
                       </Button>
                     )}
+                  </div>
+                </div>
+
+                {/* Desktop layout (horizontal) */}
+                <div className="hidden sm:flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="h-12 w-12">
+                      <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-lg">{user.name}</h3>
+                        <Badge className={getRoleColor(user.role)}>
+                          {getRoleText(user.role)}
+                        </Badge>
+                        <Badge className={getStatusColor(user.status)}>
+                          {getStatusText(user.status)}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-3 w-3" />
+                          {user.email}
+                        </div>
+                        {user.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3 w-3" />
+                            {user.phone}
+                          </div>
+                        )}
+                        <p>所属: {user.facility}</p>
+                        <p>最終ログイン: {new Date(user.lastLogin).toLocaleString('ja-JP')}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col md:items-end gap-2 flex-shrink-0">
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditUser(user)}
+                        data-testid={`button-edit-${user.id}`}
+                      >
+                        <Edit className="mr-1 h-3 w-3" />
+                        編集
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleResetPassword(user)}
+                        disabled={!canManageUser(user) || currentUser?.id === user.id}
+                        data-testid={`button-reset-password-${user.id}`}
+                      >
+                        <Settings className="mr-1 h-3 w-3" />
+                        パスワード
+                      </Button>
+                      {user.status === 'active' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeactivateUser(user)}
+                          disabled={!canManageUser(user) || currentUser?.id === user.id}
+                          data-testid={`button-deactivate-${user.id}`}
+                        >
+                          <UserX className="mr-1 h-3 w-3" />
+                          無効化
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleActivateUser(user)}
+                          disabled={!canManageUser(user)}
+                          data-testid={`button-activate-${user.id}`}
+                        >
+                          <UserCheck className="mr-1 h-3 w-3" />
+                          有効化
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
