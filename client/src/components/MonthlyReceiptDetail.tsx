@@ -143,12 +143,16 @@ interface MonthlyReceiptDetail {
 }
 
 export default function MonthlyReceiptDetail() {
-  const [, params] = useRoute("/monthly-receipts/:id")
   const [, setLocation] = useLocation()
   const basePath = useBasePath()
-  const receiptId = params?.id
   const { toast } = useToast()
   const queryClient = useQueryClient()
+
+  // Try both route patterns (with and without basePath)
+  const [matchMultiTenant, paramsMultiTenant] = useRoute("/:companySlug/:facilitySlug/monthly-receipts/:id")
+  const [matchSingle, paramsSingle] = useRoute("/monthly-receipts/:id")
+
+  const receiptId = paramsMultiTenant?.id || paramsSingle?.id
 
   // Dialog states
   const [insuranceCardDialogOpen, setInsuranceCardDialogOpen] = useState(false)
@@ -158,7 +162,10 @@ export default function MonthlyReceiptDetail() {
     queryKey: [`/api/monthly-receipts/${receiptId}`],
     queryFn: async () => {
       const response = await fetch(`/api/monthly-receipts/${receiptId}`)
-      if (!response.ok) throw new Error("レセプトの取得に失敗しました")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "レセプトの取得に失敗しました")
+      }
       return response.json()
     },
     enabled: !!receiptId,

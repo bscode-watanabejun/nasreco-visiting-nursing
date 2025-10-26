@@ -6749,7 +6749,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patient: receiptData[0].patient,
         confirmedByUser: receiptData[0].confirmedBy,
         insuranceCard: insuranceCardData[0] || null,
-        doctorOrder: doctorOrderData[0] || null,
+        doctorOrder: doctorOrderData[0] ? {
+          order: doctorOrderData[0].order,
+          medicalInstitution: doctorOrderData[0].medicalInstitution,
+        } : null,
         relatedRecords: relatedRecords.map(r => ({
           ...r.record,
           nurse: r.nurse,
