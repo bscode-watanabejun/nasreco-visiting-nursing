@@ -3120,16 +3120,6 @@ export function NursingRecords() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-8 flex-1"
-                      onClick={() => handleViewRecord(record)}
-                      data-testid={`button-view-${record.id}`}
-                    >
-                      <Eye className="mr-1 h-3 w-3" />
-                      詳細
-                    </Button>
                     {record.status === 'draft' && (
                       <Button
                         size="sm"
@@ -3141,6 +3131,16 @@ export function NursingRecords() {
                         編集
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-8 flex-1"
+                      onClick={() => handleViewRecord(record)}
+                      data-testid={`button-view-${record.id}`}
+                    >
+                      <Eye className="mr-1 h-3 w-3" />
+                      詳細
+                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"
@@ -3188,15 +3188,6 @@ export function NursingRecords() {
                   </div>
 
                   <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleViewRecord(record)}
-                      data-testid={`button-view-${record.id}`}
-                    >
-                      <Eye className="mr-1 h-3 w-3" />
-                      詳細
-                    </Button>
                     {record.status === 'draft' && (
                       <Button
                         size="sm"
@@ -3207,6 +3198,15 @@ export function NursingRecords() {
                         編集
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleViewRecord(record)}
+                      data-testid={`button-view-${record.id}`}
+                    >
+                      <Eye className="mr-1 h-3 w-3" />
+                      詳細
+                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"
