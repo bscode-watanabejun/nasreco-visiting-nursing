@@ -21,8 +21,6 @@ import {
   ChevronRight,
   Edit,
   Trash2,
-  CheckCircle,
-  Play,
   XCircle,
   Repeat,
   AlertCircle,
@@ -590,7 +588,7 @@ export function ScheduleManagement() {
                             const nurse = users.find(u => u.id === schedule.nurseId)
                             return (
                               <div key={schedule.id} className="mb-2 p-2 bg-white rounded border">
-                                <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center justify-between gap-2">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <span className="text-sm font-medium">
@@ -614,10 +612,30 @@ export function ScheduleManagement() {
                                     </div>
                                     <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
                                   </div>
-                                  <div className="flex gap-1">
-                                    <RecordActionButton schedule={schedule} variant="ghost" />
-                                    <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
-                                      <Edit className="h-3 w-3" />
+                                  <div className="flex gap-1 flex-shrink-0">
+                                    <RecordActionButton schedule={schedule} variant="default" showLabel />
+                                    {schedule.isRecurring && schedule.parentScheduleId && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleDeleteRecurringSeries(schedule.parentScheduleId!)}
+                                        title="シリーズ全体を削除"
+                                      >
+                                        <Repeat className="h-3 w-3 mr-1" />
+                                        シリーズ削除
+                                      </Button>
+                                    )}
+                                    <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      編集
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDeleteSchedule(schedule)}
+                                    >
+                                      <Trash2 className="h-3 w-3 mr-1" />
+                                      削除
                                     </Button>
                                   </div>
                                 </div>
@@ -672,37 +690,48 @@ export function ScheduleManagement() {
                                   const patient = patients.find(p => p.id === schedule.patientId)
                                   const nurse = users.find(u => u.id === schedule.nurseId)
                                   return (
-                                    <div key={schedule.id} className="p-2 bg-gray-50 rounded">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-sm font-medium">
-                                              {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
-                                            </span>
-                                            {schedule.status === 'completed' && (
-                                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
-                                            )}
-                                            {schedule.status === 'in_progress' && (
-                                              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
-                                            )}
-                                            {schedule.status === 'scheduled' && (
-                                              <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
-                                            )}
-                                            {schedule.status === 'cancelled' && (
-                                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
-                                            )}
-                                          </div>
-                                          <div className="text-sm text-muted-foreground truncate">
-                                            {patient ? getFullName(patient) : '不明'} / {nurse?.fullName || schedule.demoStaffName || '未割当'}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">{schedule.purpose}</div>
+                                    <div key={schedule.id} className="p-2 bg-gray-50 rounded space-y-2">
+                                      {/* 時刻とステータス */}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1 text-xs font-medium">
+                                          {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
+                                          <span className="text-muted-foreground">({schedule.duration}分)</span>
                                         </div>
-                                        <div className="flex gap-1">
-                                          <RecordActionButton schedule={schedule} variant="ghost" />
-                                          <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
-                                            <Edit className="h-3 w-3" />
-                                          </Button>
+                                        {schedule.status === 'completed' && (
+                                          <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] flex-shrink-0">完了</span>
+                                        )}
+                                        {schedule.status === 'in_progress' && (
+                                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] flex-shrink-0">実施中</span>
+                                        )}
+                                        {schedule.status === 'scheduled' && (
+                                          <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] flex-shrink-0">予定</span>
+                                        )}
+                                        {schedule.status === 'cancelled' && (
+                                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] flex-shrink-0">キャンセル</span>
+                                        )}
+                                      </div>
+                                      {/* 患者名と担当者 */}
+                                      <div className="space-y-0.5">
+                                        <div className="text-sm font-medium truncate">
+                                          {patient ? getFullName(patient) : '不明'}
                                         </div>
+                                        <div className="text-xs text-muted-foreground truncate">
+                                          {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
+                                        </div>
+                                      </div>
+                                      {/* アクションボタン */}
+                                      <div className="flex gap-1">
+                                        <RecordActionButton schedule={schedule} variant="ghost" size="sm" />
+                                        <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDeleteSchedule(schedule)}
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
                                       </div>
                                     </div>
                                   )
@@ -758,37 +787,48 @@ export function ScheduleManagement() {
                               <div key={schedule.id} className="border rounded p-2 bg-white sm:bg-gray-50">
                                 {/* Mobile Layout */}
                                 <div className="sm:hidden space-y-2">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0 flex-1 space-y-1">
-                                      <div className="flex items-center gap-1 text-xs">
-                                        <Clock className="h-3 w-3 flex-shrink-0" />
-                                        <span className="font-medium">
-                                          {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
-                                        </span>
-                                        {schedule.status === 'completed' && (
-                                          <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px]">完了</span>
-                                        )}
-                                        {schedule.status === 'in_progress' && (
-                                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px]">実施中</span>
-                                        )}
-                                        {schedule.status === 'scheduled' && (
-                                          <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px]">予定</span>
-                                        )}
-                                      </div>
-                                      <div className="text-sm font-medium truncate">
-                                        {patient ? getFullName(patient) : '患者不明'}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground truncate">
-                                        {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground line-clamp-1">{schedule.purpose}</div>
+                                  {/* 時刻とステータス */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1 text-xs font-medium">
+                                      <Clock className="h-3 w-3 flex-shrink-0" />
+                                      {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
+                                      <span className="text-muted-foreground">({schedule.duration}分)</span>
                                     </div>
-                                    <div className="flex gap-1 flex-shrink-0">
-                                      <RecordActionButton schedule={schedule} variant="ghost" />
-                                      <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
-                                        <Edit className="h-3 w-3" />
-                                      </Button>
+                                    {schedule.status === 'completed' && (
+                                      <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] flex-shrink-0">完了</span>
+                                    )}
+                                    {schedule.status === 'in_progress' && (
+                                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] flex-shrink-0">実施中</span>
+                                    )}
+                                    {schedule.status === 'scheduled' && (
+                                      <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] flex-shrink-0">予定</span>
+                                    )}
+                                    {schedule.status === 'cancelled' && (
+                                      <span className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] flex-shrink-0">キャンセル</span>
+                                    )}
+                                  </div>
+                                  {/* 患者名と担当者 */}
+                                  <div className="space-y-0.5">
+                                    <div className="text-sm font-medium truncate">
+                                      {patient ? getFullName(patient) : '患者不明'}
                                     </div>
+                                    <div className="text-xs text-muted-foreground truncate">
+                                      {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
+                                    </div>
+                                  </div>
+                                  {/* アクションボタン */}
+                                  <div className="flex gap-1">
+                                    <RecordActionButton schedule={schedule} variant="ghost" size="sm" />
+                                    <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleDeleteSchedule(schedule)}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
                                   </div>
                                 </div>
 
@@ -885,82 +925,111 @@ export function ScheduleManagement() {
                       const nurse = users.find(u => u.id === schedule.nurseId)
 
                       return (
-                        <div key={schedule.id} className="border rounded-lg p-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <Clock className="h-4 w-4" />
-                                <span className="font-semibold">
-                                  {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
-                                </span>
-                                <span className="text-sm text-muted-foreground">({schedule.duration}分)</span>
+                        <div key={schedule.id} className="border rounded-lg p-3 sm:p-4">
+                          {/* Mobile Layout */}
+                          <div className="sm:hidden space-y-2">
+                            {/* 時刻とステータス */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1 text-xs font-medium">
+                                <Clock className="h-3 w-3 flex-shrink-0" />
+                                {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
+                                <span className="text-muted-foreground">({schedule.duration}分)</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4" />
-                                <span>患者: {patient ? getFullName(patient) : '不明'}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4" />
-                                <span>担当: {nurse?.fullName || schedule.demoStaffName || '未割当'}</span>
-                              </div>
-                              <div className="text-sm text-muted-foreground">目的: {schedule.purpose}</div>
-                              {schedule.notes && (
-                                <div className="text-sm text-muted-foreground">備考: {schedule.notes}</div>
+                              {schedule.status === 'completed' && (
+                                <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] flex-shrink-0">完了</span>
                               )}
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs font-medium">ステータス:</span>
-                                {schedule.status === 'completed' && (
-                                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">完了</span>
-                                )}
-                                {schedule.status === 'in_progress' && (
-                                  <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">実施中</span>
-                                )}
-                                {schedule.status === 'scheduled' && (
-                                  <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">予定</span>
-                                )}
-                                {schedule.status === 'cancelled' && (
-                                  <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded">キャンセル</span>
-                                )}
+                              {schedule.status === 'in_progress' && (
+                                <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] flex-shrink-0">実施中</span>
+                              )}
+                              {schedule.status === 'scheduled' && (
+                                <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] flex-shrink-0">予定</span>
+                              )}
+                              {schedule.status === 'cancelled' && (
+                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] flex-shrink-0">キャンセル</span>
+                              )}
+                            </div>
+                            {/* 患者名と担当者 */}
+                            <div className="space-y-0.5">
+                              <div className="text-sm font-medium truncate">
+                                {patient ? getFullName(patient) : '患者不明'}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
                               </div>
                             </div>
-                            <div className="flex flex-col gap-2 flex-shrink-0">
-                              <div className="flex gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => updateStatusMutation.mutate({ id: schedule.id, status: 'in_progress' })}
-                                  disabled={schedule.status === 'in_progress'}
-                                  title="開始"
-                                >
-                                  <Play className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-green-600 hover:text-green-700"
-                                  onClick={() => updateStatusMutation.mutate({ id: schedule.id, status: 'completed' })}
-                                  disabled={schedule.status === 'completed'}
-                                  title="完了"
-                                >
-                                  <CheckCircle className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-red-600 hover:text-red-700"
-                                  onClick={() => updateStatusMutation.mutate({ id: schedule.id, status: 'cancelled' })}
-                                  disabled={schedule.status === 'cancelled'}
-                                  title="キャンセル"
-                                >
-                                  <XCircle className="h-3 w-3" />
-                                </Button>
+                            {/* アクションボタン */}
+                            <div className="flex gap-1">
+                              <RecordActionButton schedule={schedule} variant="ghost" size="sm" />
+                              <Button size="sm" variant="ghost" onClick={() => setSelectedSchedule(schedule)}>
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteSchedule(schedule)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Desktop Layout */}
+                          <div className="hidden sm:block">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4" />
+                                  <span className="font-semibold">
+                                    {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
+                                  </span>
+                                  <span className="text-sm text-muted-foreground">({schedule.duration}分)</span>
+                                  {schedule.isRecurring && schedule.parentScheduleId && (
+                                    <Badge variant="outline" className="text-xs">
+                                      <Repeat className="h-3 w-3 mr-1" />
+                                      繰り返し
+                                    </Badge>
+                                  )}
+                                  {schedule.status === 'completed' && (
+                                    <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">完了</span>
+                                  )}
+                                  {schedule.status === 'in_progress' && (
+                                    <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">実施中</span>
+                                  )}
+                                  {schedule.status === 'scheduled' && (
+                                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">予定</span>
+                                  )}
+                                  {schedule.status === 'cancelled' && (
+                                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded">キャンセル</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4" />
+                                  <span>患者: {patient ? getFullName(patient) : '不明'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4" />
+                                  <span>担当: {nurse?.fullName || schedule.demoStaffName || '未割当'}</span>
+                                </div>
+                                <div className="text-sm text-muted-foreground">目的: {schedule.purpose}</div>
+                                {schedule.notes && (
+                                  <div className="text-sm text-muted-foreground">備考: {schedule.notes}</div>
+                                )}
                               </div>
-                              <div className="flex gap-1">
+                              <div className="flex gap-1 flex-shrink-0">
                                 <RecordActionButton schedule={schedule} showLabel />
-                              </div>
-                              <div className="flex gap-1">
+                                {schedule.isRecurring && schedule.parentScheduleId && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDeleteRecurringSeries(schedule.parentScheduleId!)}
+                                    title="シリーズ全体を削除"
+                                  >
+                                    <Repeat className="h-3 w-3 mr-1" />
+                                    シリーズ削除
+                                  </Button>
+                                )}
                                 <Button size="sm" variant="outline" onClick={() => setSelectedSchedule(schedule)}>
-                                  <Edit className="mr-1 h-3 w-3" />
+                                  <Edit className="h-3 w-3 mr-1" />
                                   編集
                                 </Button>
                                 <Button
@@ -968,7 +1037,7 @@ export function ScheduleManagement() {
                                   variant="outline"
                                   onClick={() => handleDeleteSchedule(schedule)}
                                 >
-                                  <Trash2 className="mr-1 h-3 w-3" />
+                                  <Trash2 className="h-3 w-3 mr-1" />
                                   削除
                                 </Button>
                               </div>
