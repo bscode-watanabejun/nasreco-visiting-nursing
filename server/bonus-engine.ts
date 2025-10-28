@@ -682,6 +682,8 @@ export function evaluateTimeBased(
 /**
  * 訪問時間長パターン
  * 例: 90分以上 5200点、90分未満 0点
+ *
+ * 新形式（conditions配列）と旧形式（duration_90キー）の両方に対応
  */
 export function evaluateDurationBased(
   pointsConfig: any,
@@ -694,7 +696,42 @@ export function evaluateDurationBased(
   const durationMs = context.visitEndTime.getTime() - context.visitStartTime.getTime();
   const durationMinutes = Math.floor(durationMs / 60000);
 
-  // 設定から閾値を取得
+  // 新形式: conditions配列を使用
+  if (pointsConfig.conditions && Array.isArray(pointsConfig.conditions)) {
+    // 条件を降順にソート（長い時間から評価）
+    const sortedConditions = [...pointsConfig.conditions].sort(
+      (a, b) => (b.durationMinutes || 0) - (a.durationMinutes || 0)
+    );
+
+    for (const condition of sortedConditions) {
+      const threshold = condition.durationMinutes || 0;
+      const operator = condition.operator || "greater_than_or_equal";
+
+      let matched = false;
+      if (operator === "greater_than") {
+        matched = durationMinutes > threshold;
+      } else if (operator === "greater_than_or_equal") {
+        matched = durationMinutes >= threshold;
+      }
+
+      if (matched) {
+        return {
+          points: condition.points,
+          matchedCondition: condition.description || `duration_${threshold}`,
+          metadata: { durationMinutes, threshold, operator },
+        };
+      }
+    }
+
+    // どの条件にもマッチしない場合はdefaultPointsを返す
+    return {
+      points: pointsConfig.defaultPoints || 0,
+      matchedCondition: "below_threshold",
+      metadata: { durationMinutes },
+    };
+  }
+
+  // 旧形式: duration_90のようなキーを使用
   const thresholds = Object.keys(pointsConfig)
     .filter(key => key.startsWith('duration_'))
     .map(key => ({
@@ -933,11 +970,12 @@ export async function calculateBonuses(
     context.insuranceType
   );
 
-  // 1.5. Phase2-1: 点数の高い順にソート（高い点数の加算を優先適用）
+  // 1.5. Phase2-1: display_orderの昇順にソート（小さい方が優先）
+  // display_orderで評価順序を制御する（固定点数ではなく）
   applicableBonuses.sort((a, b) => {
-    const pointsA = a.fixedPoints || 0;
-    const pointsB = b.fixedPoints || 0;
-    return pointsB - pointsA; // 降順
+    const orderA = a.displayOrder || 999;
+    const orderB = b.displayOrder || 999;
+    return orderA - orderB; // 昇順
   });
 
   // Phase 4: 2フェーズ評価方式
