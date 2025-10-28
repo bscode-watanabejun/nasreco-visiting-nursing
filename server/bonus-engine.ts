@@ -54,6 +54,7 @@ export interface BonusCalculationContext {
   lastDischargeDate?: Date | null; // 直近の退院日
   lastPlanCreatedDate?: Date | null; // 直近の訪問看護計画作成日
   deathDate?: Date | null; // 死亡日
+  specialManagementTypes?: string[] | null; // 特別管理項目（配列）
 
   // 追加コンテキスト（必要に応じて拡張）
   [key: string]: any;
@@ -170,6 +171,10 @@ export function evaluatePredefinedCondition(
 
     case "is_terminal_care":
       result = evaluateIsTerminalCare(context);
+      break;
+
+    case "patient_has_special_management":
+      result = evaluatePatientHasSpecialManagement(context);
       break;
 
     // Phase 2-A: 介護保険の時間帯・時間長条件
@@ -413,6 +418,50 @@ function evaluateIsTerminalCare(context: BonusCalculationContext): ConditionEval
   return {
     passed,
     reason: passed ? "ターミナルケア実施" : "ターミナルケア未実施",
+  };
+}
+
+/**
+ * Phase 4: 患者が特別管理の対象かチェック
+ */
+function evaluatePatientHasSpecialManagement(context: BonusCalculationContext): ConditionEvaluationResult {
+  const specialManagementTypes = context.specialManagementTypes || [];
+
+  if (specialManagementTypes.length > 0) {
+    return {
+      passed: true,
+      reason: `特別管理項目: ${specialManagementTypes.join(', ')}`,
+    };
+  }
+
+  return {
+    passed: false,
+    reason: "特別管理対象外",
+  };
+}
+
+/**
+ * Phase 4: 同じ訪問記録で退院時共同指導加算が算定されているかチェック
+ * 注: この評価関数は appliedBonusCodes を参照するため、calculateBonuses() 内で特別に処理される
+ */
+function evaluateHasDischargeJointGuidanceInSameRecord(
+  context: BonusCalculationContext,
+  appliedBonusCodes?: string[]
+): ConditionEvaluationResult {
+  if (!appliedBonusCodes) {
+    return {
+      passed: false,
+      reason: "加算コードリストが未提供",
+    };
+  }
+
+  const hasDischargeJointGuidance = appliedBonusCodes.includes('medical_discharge_joint_guidance');
+
+  return {
+    passed: hasDischargeJointGuidance,
+    reason: hasDischargeJointGuidance
+      ? "退院時共同指導加算が算定されている"
+      : "退院時共同指導加算が算定されていない",
   };
 }
 
@@ -891,8 +940,20 @@ export async function calculateBonuses(
     return pointsB - pointsA; // 降順
   });
 
-  // 2. 各加算を評価
-  for (const bonus of applicableBonuses) {
+  // Phase 4: 2フェーズ評価方式
+  // 第1フェーズ: 他の加算に依存しない加算を評価
+  // 第2フェーズ: 他の加算の算定結果に依存する加算を評価（例: 特別管理指導加算）
+
+  const phase1Bonuses = applicableBonuses.filter(
+    bonus => bonus.bonusCode !== 'discharge_special_management_guidance'
+  );
+
+  const phase2Bonuses = applicableBonuses.filter(
+    bonus => bonus.bonusCode === 'discharge_special_management_guidance'
+  );
+
+  // 2. Phase 1: 通常の加算を評価
+  for (const bonus of phase1Bonuses) {
     try {
       // 2.1 併算定チェック
       const combinationCheck = checkCombination(bonus.bonusCode, bonus, appliedBonusCodes);
@@ -971,6 +1032,97 @@ export async function calculateBonuses(
       }
     } catch (error) {
       console.error(`Error calculating bonus ${bonus.bonusCode}:`, error);
+    }
+  }
+
+  // 3. Phase 2: 他の加算に依存する加算を評価
+  for (const bonus of phase2Bonuses) {
+    try {
+      // 2.1 併算定チェック
+      const combinationCheck = checkCombination(bonus.bonusCode, bonus, appliedBonusCodes);
+      if (!combinationCheck.allowed) {
+        console.log(`Skipping ${bonus.bonusCode}: ${combinationCheck.reason}`);
+        continue;
+      }
+
+      // 2.2 事前定義条件のチェック (appliedBonusCodesを利用)
+      const conditionsPassed: string[] = [];
+      if (bonus.predefinedConditions) {
+        const conditions = Array.isArray(bonus.predefinedConditions)
+          ? bonus.predefinedConditions
+          : [bonus.predefinedConditions];
+
+        let allConditionsPassed = true;
+        for (const condition of conditions) {
+          let result: ConditionEvaluationResult;
+
+          // has_discharge_joint_guidance_in_same_record は特別処理
+          if (condition.pattern === 'has_discharge_joint_guidance_in_same_record') {
+            result = evaluateHasDischargeJointGuidanceInSameRecord(context, appliedBonusCodes);
+          } else {
+            result = evaluatePredefinedCondition(condition, context);
+          }
+
+          if (result.passed) {
+            conditionsPassed.push(result.reason || "condition passed");
+          } else {
+            allConditionsPassed = false;
+            break;
+          }
+        }
+
+        if (!allConditionsPassed) {
+          continue; // 条件を満たさない場合はスキップ
+        }
+      }
+
+      // 2.3 点数計算
+      let calculatedPoints = 0;
+      let matchedCondition = "";
+      let patternMetadata = {};
+
+      if (bonus.pointsType === "fixed") {
+        // 固定点数
+        calculatedPoints = bonus.fixedPoints || 0;
+        matchedCondition = "fixed_points";
+      } else if (bonus.pointsType === "conditional" && bonus.conditionalPattern && bonus.pointsConfig) {
+        // 条件分岐パターン
+        const patternResult = await evaluateConditionalPattern(
+          bonus.conditionalPattern,
+          bonus.pointsConfig,
+          context
+        );
+        calculatedPoints = patternResult.points;
+        matchedCondition = patternResult.matchedCondition;
+        patternMetadata = patternResult.metadata || {};
+      }
+
+      // 2.4 結果を記録
+      if (calculatedPoints > 0) {
+        results.push({
+          bonusCode: bonus.bonusCode,
+          bonusName: bonus.bonusName,
+          bonusMasterId: bonus.id,
+          calculatedPoints,
+          appliedVersion: bonus.version,
+          conditionsPassed,
+          calculationDetails: {
+            bonusCode: bonus.bonusCode,
+            bonusName: bonus.bonusName,
+            pointsType: bonus.pointsType,
+            conditionalPattern: bonus.conditionalPattern,
+            matchedCondition,
+            points: calculatedPoints,
+            conditionsPassed,
+            patternMetadata,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        appliedBonusCodes.push(bonus.bonusCode);
+      }
+    } catch (error) {
+      console.error(`[Phase 2] Error calculating bonus ${bonus.bonusCode}:`, error);
     }
   }
 
