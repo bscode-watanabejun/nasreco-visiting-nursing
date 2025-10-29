@@ -2764,7 +2764,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
 
-      res.json(record);
+      // Fetch schedule information if scheduleId exists
+      let schedule = null;
+      if (record.scheduleId) {
+        schedule = await storage.getScheduleById(record.scheduleId);
+      }
+
+      // Add schedule data to response
+      const recordWithScheduleData = {
+        ...record,
+        demoStaffName: schedule?.demoStaffName || null,
+        purpose: schedule?.purpose || null,
+      };
+
+      res.json(recordWithScheduleData);
     } catch (error) {
       console.error("Get nursing record error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
@@ -2939,11 +2952,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patient = await storage.getPatient(record.patientId);
       const nurse = await storage.getUser(record.nurseId);
 
+      // Fetch schedule information if scheduleId exists
+      let schedule = null;
+      if (record.scheduleId) {
+        schedule = await storage.getScheduleById(record.scheduleId);
+      }
+
       // Add patient and nurse names to the record
       const recordWithNames = {
         ...record,
         patientName: patient ? `${patient.lastName} ${patient.firstName}` : undefined,
         nurseName: nurse?.fullName || undefined,
+        demoStaffName: schedule?.demoStaffName || null,
+        purpose: schedule?.purpose || null,
       };
 
       res.status(201).json(recordWithNames);

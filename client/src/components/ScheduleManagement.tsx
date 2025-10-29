@@ -1270,17 +1270,15 @@ function ScheduleDialog({ open, onOpenChange, schedule, patients, users, onSave 
             </Select>
           </div>
 
-          {!formData.nurseId && (
-            <div className="grid gap-2">
-              <Label htmlFor="demoStaff">デモスタッフ名（非担当制の場合）</Label>
-              <Input
-                id="demoStaff"
-                value={formData.demoStaffName}
-                onChange={(e) => setFormData({ ...formData, demoStaffName: e.target.value })}
-                placeholder="例: スタッフA"
-              />
-            </div>
-          )}
+          <div className="grid gap-2">
+            <Label htmlFor="demoStaff">その他スタッフ名（非担当制の場合）</Label>
+            <Input
+              id="demoStaff"
+              value={formData.demoStaffName}
+              onChange={(e) => setFormData({ ...formData, demoStaffName: e.target.value })}
+              placeholder="例: スタッフA"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
@@ -1563,6 +1561,16 @@ function RecurringScheduleDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="recurringDemoStaff">その他スタッフ名（非担当制の場合）</Label>
+            <Input
+              id="recurringDemoStaff"
+              value={formData.demoStaffName}
+              onChange={(e) => setFormData({ ...formData, demoStaffName: e.target.value })}
+              placeholder="例: スタッフA"
+            />
           </div>
 
           {/* Time and Duration */}

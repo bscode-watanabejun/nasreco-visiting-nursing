@@ -91,6 +91,8 @@ type SpecialManagementDefinition = {
 interface NursingRecordDisplay extends NursingRecord {
   patientName?: string
   nurseName?: string
+  demoStaffName?: string | null
+  purpose?: string | null
 }
 
 interface FormData {
@@ -124,6 +126,9 @@ interface FormData {
   selectedScheduleId: string
   // Special management record data
   specialManagementData: Record<string, any>
+  // Schedule override fields (for non-scheduled records)
+  demoStaffNameOverride: string
+  purposeOverride: string
 }
 
 // Helper function to get full name
@@ -183,6 +188,10 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     ...(Object.keys(formData.specialManagementData).length > 0 && {
       specialManagementData: formData.specialManagementData
     }),
+
+    // スケジュール未連携時の手動入力フィールド
+    ...(formData.demoStaffNameOverride && { demoStaffNameOverride: formData.demoStaffNameOverride }),
+    ...(formData.purposeOverride && { purposeOverride: formData.purposeOverride }),
   }
 
   // スケジュールIDの紐付け - always include for proper tracking
@@ -292,7 +301,9 @@ const getInitialFormData = (): FormData => {
     hasCollaborationRecord: false,
     isTerminalCare: false,
     selectedScheduleId: '',
-    specialManagementData: {}
+    specialManagementData: {},
+    demoStaffNameOverride: '',
+    purposeOverride: ''
   }
 }
 
@@ -746,7 +757,9 @@ export function NursingRecords() {
       hasCollaborationRecord: record.hasCollaborationRecord || false,
       isTerminalCare: record.isTerminalCare || false,
       selectedScheduleId: record.scheduleId || '',
-      specialManagementData: (record.specialManagementData as Record<string, any>) || {}
+      specialManagementData: (record.specialManagementData as Record<string, any>) || {},
+      demoStaffNameOverride: record.demoStaffNameOverride || '',
+      purposeOverride: record.purposeOverride || ''
     })
 
   }
@@ -787,7 +800,9 @@ export function NursingRecords() {
       hasCollaborationRecord: record.hasCollaborationRecord || false,
       isTerminalCare: record.isTerminalCare || false,
       selectedScheduleId: record.scheduleId || '',
-      specialManagementData: (record.specialManagementData as Record<string, any>) || {}
+      specialManagementData: (record.specialManagementData as Record<string, any>) || {},
+      demoStaffNameOverride: record.demoStaffNameOverride || '',
+      purposeOverride: record.purposeOverride || ''
     })
   }
 
@@ -1231,6 +1246,44 @@ export function NursingRecords() {
                 </div>
               </div>
 
+              {/* その他スタッフ名 */}
+              <div className="space-y-2">
+                <Label htmlFor="demoStaffName">その他スタッフ名（非担当制の場合）</Label>
+                {scheduleFromUrl && formData.selectedScheduleId ? (
+                  // スケジュール連携時: 読み取り専用
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                    <span className="text-sm">{scheduleFromUrl.demoStaffName || '-'}</span>
+                  </div>
+                ) : (
+                  // スケジュール未連携時: 入力可能
+                  <Input
+                    id="demoStaffName"
+                    value={formData.demoStaffNameOverride}
+                    onChange={(e) => setFormData(prev => ({ ...prev, demoStaffNameOverride: e.target.value }))}
+                    placeholder="例: スタッフA"
+                  />
+                )}
+              </div>
+
+              {/* 訪問目的 */}
+              <div className="space-y-2">
+                <Label htmlFor="purpose">訪問目的</Label>
+                {scheduleFromUrl && formData.selectedScheduleId ? (
+                  // スケジュール連携時: 読み取り専用
+                  <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                    <span className="text-sm">{scheduleFromUrl.purpose || '-'}</span>
+                  </div>
+                ) : (
+                  // スケジュール未連携時: 入力可能
+                  <Input
+                    id="purpose"
+                    value={formData.purposeOverride}
+                    onChange={(e) => setFormData(prev => ({ ...prev, purposeOverride: e.target.value }))}
+                    placeholder="例: バイタル測定、処置"
+                  />
+                )}
+              </div>
+
               {/* 訪問日 */}
               <div className="space-y-2">
                 <Label htmlFor="visitDate">訪問日 <span className="text-red-500">*</span></Label>
@@ -1389,6 +1442,18 @@ export function NursingRecords() {
                     <p className="text-sm text-muted-foreground mb-1">担当看護師</p>
                     <p className="text-lg font-semibold">{selectedRecord.nurseName}</p>
                   </div>
+                  {(selectedRecord.demoStaffName || selectedRecord.demoStaffNameOverride) && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">その他スタッフ名</p>
+                      <p className="text-lg">{selectedRecord.demoStaffName || selectedRecord.demoStaffNameOverride}</p>
+                    </div>
+                  )}
+                  {(selectedRecord.purpose || selectedRecord.purposeOverride) && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">訪問目的</p>
+                      <p className="text-lg">{selectedRecord.purpose || selectedRecord.purposeOverride}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">訪問日</p>
                     <p className="text-2xl font-bold text-blue-600">

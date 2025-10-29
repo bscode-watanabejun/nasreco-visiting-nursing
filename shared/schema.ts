@@ -207,6 +207,8 @@ export const nursingRecords = pgTable("nursing_records", {
   nurseId: varchar("nurse_id").notNull().references(() => users.id),
   visitId: varchar("visit_id").references(() => visits.id),
   scheduleId: varchar("schedule_id").references(() => schedules.id), // Schedule reference for tracking
+  demoStaffNameOverride: text("demo_staff_name_override"), // スケジュール未連携時の手動入力
+  purposeOverride: text("purpose_override"), // スケジュール未連携時の手動入力
   recordType: recordTypeEnum("record_type").notNull(),
   recordDate: timestamp("record_date", { withTimezone: true }).notNull(),
   visitDate: date("visit_date").notNull().default(sql`CURRENT_DATE`), // 訪問日（実際の訪問が行われた日付）
