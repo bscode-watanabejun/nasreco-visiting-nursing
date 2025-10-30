@@ -74,6 +74,7 @@ export function PatientDetail() {
   const [carePlanDialogOpen, setCarePlanDialogOpen] = useState(false)
   const [editingCarePlan, setEditingCarePlan] = useState<CarePlan | null>(null)
   const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
+  const [isExportingRecordI, setIsExportingRecordI] = useState(false)
 
   // Fetch patient data
   const { data: patientData, isLoading: isPatientLoading } = useQuery<PatientWithRelations>({
@@ -261,6 +262,50 @@ export function PatientDetail() {
   // At this point, patientData is guaranteed to exist
   const patient = patientData
 
+  // Handler for exporting Nursing Record I Excel
+  const handleExportRecordI = async () => {
+    try {
+      setIsExportingRecordI(true)
+      const startTime = performance.now()
+
+      // Call server-side Excel generation endpoint
+      const response = await fetch(`/api/patients/${id}/nursing-record-i-excel`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Excel生成に失敗しました")
+      }
+
+      // Get Excel blob from response
+      const blob = await response.blob()
+      const totalTime = performance.now()
+      console.log('[Excel Export] Server-side generation time:', Math.round(totalTime - startTime), 'ms')
+
+      // Download
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `訪問看護記録書I_${patient.lastName}${patient.firstName}_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "成功",
+        description: "訪問看護記録書Iをダウンロードしました",
+      })
+    } catch (error) {
+      console.error("Excel export error:", error)
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "Excelのエクスポートに失敗しました",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExportingRecordI(false)
+    }
+  }
+
   return (
     <div className="space-y-4 px-2 py-3 md:space-y-6 md:p-6">
       {/* Header */}
@@ -290,6 +335,17 @@ export function PatientDetail() {
             </p>
           </div>
         </div>
+        {!isHeadquarters && (
+          <Button
+            size="sm"
+            onClick={handleExportRecordI}
+            disabled={isExportingRecordI}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            {isExportingRecordI ? "出力中..." : "記録書Ⅰ（Excel）出力"}
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}

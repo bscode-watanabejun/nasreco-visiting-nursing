@@ -1,10 +1,9 @@
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { registerPDFFont } from '@/lib/pdfFonts'
 
-// 日本語フォント設定（Noto Sans JPを使用）
-Font.register({
-  family: 'NotoSansJP',
-  src: '/fonts/NotoSansJP-Regular.ttf'
-})
+// フォントを事前登録（初回のみ実行される）
+registerPDFFont()
+
 
 const styles = StyleSheet.create({
   page: {

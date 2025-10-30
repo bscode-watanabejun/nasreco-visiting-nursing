@@ -7986,6 +7986,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== 訪問看護記録書Ⅰ PDF生成API（サーバーサイド・完全一致実装） ==========
+  app.get("/api/patients/:id/nursing-record-i-pdf", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { generateNursingRecordIPDF } = await import("./pdf-generators/nursing-record-i");
+      const patientId = req.params.id;
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "認証失敗" });
+
+      const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+      if (!user) return res.status(401).json({ error: "認証失敗" });
+
+      const patient = await db.query.patients.findFirst({
+        where: and(eq(patients.id, patientId), eq(patients.facilityId, user.facilityId)),
+        with: { medicalInstitution: true, careManager: true, building: true },
+      });
+      if (!patient) return res.status(404).json({ error: "患者が見つかりません" });
+
+      const initialRecord = await db.query.nursingRecords.findFirst({
+        where: and(eq(nursingRecords.patientId, patientId), eq(nursingRecords.facilityId, user.facilityId)),
+        with: { nurse: true },
+        orderBy: asc(nursingRecords.recordDate),
+      });
+
+      const latestRecord = await db.query.nursingRecords.findFirst({
+        where: and(eq(nursingRecords.patientId, patientId), eq(nursingRecords.facilityId, user.facilityId)),
+        with: { nurse: true },
+        orderBy: desc(nursingRecords.recordDate),
+      });
+
+      const insuranceCard = await db.query.insuranceCards.findFirst({
+        where: and(
+          eq(insuranceCards.patientId, patientId),
+          or(sql`${insuranceCards.validUntil} IS NULL`, gte(insuranceCards.validUntil, new Date().toISOString().split('T')[0]))
+        ),
+        orderBy: desc(insuranceCards.validFrom),
+      });
+
+      const facility = await db.query.facilities.findFirst({ where: eq(facilities.id, user.facilityId) });
+
+      const filename = `訪問看護記録書Ⅰ_${patient.lastName}${patient.firstName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+
+      const pdfData = {
+        patient: {
+          lastName: patient.lastName, firstName: patient.firstName, dateOfBirth: patient.dateOfBirth,
+          gender: patient.gender, address: patient.address, phone: patient.phone,
+          emergencyContact: patient.emergencyContact, emergencyPhone: patient.emergencyPhone,
+          medicalHistory: patient.medicalHistory, careLevel: patient.careLevel,
+        },
+        initialRecord: initialRecord ? {
+          recordDate: initialRecord.recordDate, actualStartTime: initialRecord.actualStartTime,
+          actualEndTime: initialRecord.actualEndTime, nurse: initialRecord.nurse,
+        } : null,
+        latestRecord: latestRecord ? { observations: latestRecord.observations } : null,
+        medicalInstitution: patient.medicalInstitution,
+        careManager: patient.careManager,
+        insuranceCard,
+        facility,
+      };
+
+      await generateNursingRecordIPDF(pdfData, res, path.join(process.cwd(), 'server', 'fonts', 'NotoSansCJKjp-Regular.otf'));
+    } catch (error) {
+      console.error("記録書Ⅰ PDF生成エラー:", error);
+      if (!res.headersSent) res.status(500).json({ error: "PDF生成中にエラーが発生しました" });
+    }
+  });
+
+  // 訪問看護記録書I Excel出力
+  app.get("/api/patients/:id/nursing-record-i-excel", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { generateNursingRecordIExcel } = await import("./excel-generators/nursing-record-i");
+      const patientId = req.params.id;
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "認証失敗" });
+
+      const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+      if (!user) return res.status(401).json({ error: "認証失敗" });
+
+      const patient = await db.query.patients.findFirst({
+        where: and(eq(patients.id, patientId), eq(patients.facilityId, user.facilityId)),
+        with: { medicalInstitution: true, careManager: true },
+      });
+      if (!patient) return res.status(404).json({ error: "患者が見つかりません" });
+
+      const doctorOrder = await db.query.doctorOrders.findFirst({
+        where: and(
+          eq(doctorOrders.patientId, patientId),
+          eq(doctorOrders.facilityId, user.facilityId)
+        ),
+        orderBy: desc(doctorOrders.orderDate),
+      });
+
+      const initialNursingRecord = await db.query.nursingRecords.findFirst({
+        where: and(
+          eq(nursingRecords.patientId, patientId),
+          eq(nursingRecords.facilityId, user.facilityId),
+          eq(nursingRecords.isFirstVisitOfPlan, true)
+        ),
+        with: { nurse: true, schedule: true },
+        orderBy: asc(nursingRecords.visitDate),
+      });
+
+      const facility = await db.query.facilities.findFirst({ where: eq(facilities.id, user.facilityId) });
+      if (!facility) return res.status(404).json({ error: "施設情報が見つかりません" });
+
+      const excelData = {
+        patient: {
+          lastName: patient.lastName,
+          firstName: patient.firstName,
+          dateOfBirth: patient.dateOfBirth,
+          address: patient.address,
+          phone: patient.phone,
+          emergencyContact: patient.emergencyContact,
+          emergencyPhone: patient.emergencyPhone,
+          medicalHistory: patient.medicalHistory,
+          careLevel: patient.careLevel,
+        },
+        doctorOrder: doctorOrder ? {
+          diagnosis: doctorOrder.diagnosis,
+          orderContent: doctorOrder.orderContent,
+        } : null,
+        medicalInstitution: patient.medicalInstitution,
+        careManager: patient.careManager,
+        initialVisit: initialNursingRecord ? {
+          visitDate: initialNursingRecord.visitDate,
+          actualStartTime: initialNursingRecord.actualStartTime ? initialNursingRecord.actualStartTime.toISOString().split('T')[1].substring(0, 5) : null,
+          actualEndTime: initialNursingRecord.actualEndTime ? initialNursingRecord.actualEndTime.toISOString().split('T')[1].substring(0, 5) : null,
+          content: initialNursingRecord.content,
+          nurseName: initialNursingRecord.nurse?.fullName || '',
+          visitType: initialNursingRecord.schedule?.visitType || '',
+        } : null,
+        facility: {
+          name: facility.name,
+        },
+      };
+
+      const buffer = await generateNursingRecordIExcel(excelData);
+
+      const filename = `訪問看護記録書I_${patient.lastName}${patient.firstName}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+      res.send(buffer);
+    } catch (error) {
+      console.error("記録書I Excel生成エラー:", error);
+      if (!res.headersSent) res.status(500).json({ error: "Excel生成中にエラーが発生しました" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

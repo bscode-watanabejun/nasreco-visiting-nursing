@@ -27,7 +27,17 @@
       "Bash(git branch:*)",
       "Bash(git push:*)",
       "Bash(git pull:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(xargs kill:*)",
+      "Bash(pkill:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsx:*)",
+      "Read(//usr/lib/**)",
+      "Bash(apt search:*)",
+      "Bash(npm info:*)",
+      "Bash(nix-env:*)",
+      "Bash(libreoffice:*)"
     ],
     "deny": [],
     "ask": []
