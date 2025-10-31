@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,6 +64,7 @@ interface DisplayUser {
   username: string
   fullName: string
   isActive: boolean
+  specialistCertifications?: string[] | null
 }
 
 // Convert API user to display format
@@ -79,7 +81,8 @@ function mapApiUserToDisplay(user: any): DisplayUser {
     lastLogin: user.updatedAt ? new Date(user.updatedAt).toLocaleString('ja-JP') : '',
     username: user.username,
     fullName: user.fullName,
-    isActive: user.isActive
+    isActive: user.isActive,
+    specialistCertifications: user.specialistCertifications || null
   }
 }
 
@@ -180,7 +183,8 @@ export function UserManagement() {
       fullName: '',
       role: isHeadquarters ? 'corporate_admin' : 'nurse',
       phone: '',
-      isActive: true
+      isActive: true,
+      specialistCertifications: []
     })
   }
 
@@ -193,7 +197,8 @@ export function UserManagement() {
       fullName: user.fullName,
       role: user.role,
       phone: user.phone,
-      isActive: user.isActive
+      isActive: user.isActive,
+      specialistCertifications: user.specialistCertifications || []
     })
   }
 
@@ -456,6 +461,51 @@ export function UserManagement() {
                   </div>
                 </div>
               </div>
+
+              {/* Specialist Certifications (Nurse only) */}
+              {(formData.role === 'nurse' || (!isCreating && selectedUser?.role === 'nurse')) && (
+                <div className="space-y-4">
+                  <h3 className="text-base md:text-lg font-semibold">専門資格</h3>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      専門管理加算の算定に必要な専門資格を選択してください
+                    </p>
+                    <div className="space-y-2">
+                      {[
+                        { value: '緩和ケア', label: '緩和ケア' },
+                        { value: '褥瘡ケア', label: '褥瘡ケア' },
+                        { value: '人工肛門・人工膀胱ケア', label: '人工肛門・人工膀胱ケア' },
+                        { value: '特定行為研修', label: '特定行為研修' }
+                      ].map((cert) => {
+                        const currentCerts = formData.specialistCertifications || [];
+                        const isChecked = currentCerts.includes(cert.value);
+
+                        return (
+                          <div key={cert.value} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={cert.value}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  updateFormData('specialistCertifications', [...currentCerts, cert.value]);
+                                } else {
+                                  updateFormData('specialistCertifications', currentCerts.filter((c: string) => c !== cert.value));
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={cert.value}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {cert.label}
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row justify-end gap-2 mt-6 pt-6 border-t">

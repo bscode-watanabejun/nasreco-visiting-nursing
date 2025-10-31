@@ -1450,7 +1450,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } else {
         // Regular users cannot update other users
-        return res.status(403).json({ error: "権限がありません" });
+        return res.status(403).json({ error: "他のユーザーの情報を変更する権限がありません。自分自身の情報のみ変更できます。" });
       }
       
       // Hash password if provided

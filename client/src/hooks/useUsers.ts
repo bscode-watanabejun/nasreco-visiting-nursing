@@ -57,6 +57,10 @@ export function useUpdateUserMutation() {
       // Invalidate and refetch users list
       queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
 
+      // Invalidate current user cache if updating self
+      // This ensures specialist certifications and other profile changes are immediately reflected
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+
       toast({
         title: 'ユーザー情報更新完了',
         description: `${updatedUser.fullName}さんの情報が更新されました`,

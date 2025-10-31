@@ -11,6 +11,7 @@ interface CurrentUser {
   phone: string | null;
   isActive: boolean;
   facilityId: string;
+  specialistCertifications?: string[] | null;
   facility?: {
     id: string;
     name: string;

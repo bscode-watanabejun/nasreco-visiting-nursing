@@ -91,6 +91,10 @@ export const users = pgTable("users", {
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
   mustChangePassword: boolean("must_change_password").notNull().default(false),
+
+  // Week 3: 専門管理加算用フィールド
+  specialistCertifications: json("specialist_certifications"), // 専門資格配列（例: ["緩和ケア", "褥瘡ケア", "特定行為研修"]）
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -259,6 +263,9 @@ export const nursingRecords = pgTable("nursing_records", {
   hasCollaborationRecord: boolean("has_collaboration_record").default(false), // 多職種連携記録あり
   isTerminalCare: boolean("is_terminal_care").default(false), // ターミナルケア実施
   terminalCareDeathDate: date("terminal_care_death_date"), // ターミナルケア対象患者の死亡日
+
+  // Week 3: 専門管理加算用フィールド
+  specialistCareType: text("specialist_care_type"), // 専門的ケアの種類（palliative_care, pressure_ulcer, stoma_care, specific_procedures）
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -914,6 +921,7 @@ export const updateUserSelfSchema = insertUserSchema.pick({
   fullName: true,
   phone: true,
   licenseNumber: true,
+  specialistCertifications: true,
 }).partial().extend({
   password: z.string().min(8, "パスワードは8文字以上で入力してください").optional(),
 });

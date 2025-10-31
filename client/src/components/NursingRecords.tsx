@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +49,7 @@ import {
   ExternalLink,
   CheckCircle,
   Filter,
+  Info,
   Sliders,
   RotateCcw,
   CalendarDays
@@ -2273,6 +2275,54 @@ export function NursingRecords() {
                       <p className="text-xs text-muted-foreground">
                         専門管理加算の対象となるケアを実施した場合に選択してください（月1回まで算定可能）
                       </p>
+
+                      {/* Week 3: 専門資格警告・推奨 */}
+                      {(() => {
+                        const userCerts = currentUser?.specialistCertifications || [];
+                        const hasSpecialistCert = userCerts.length > 0;
+                        const hasCareType = formData.specialistCareType && formData.specialistCareType !== 'none' && formData.specialistCareType !== '';
+
+                        // 専門的ケアの種類に対応する資格名のマッピング
+                        const careTypeToSpecialty: Record<string, string> = {
+                          'palliative_care': '緩和ケア',
+                          'pressure_ulcer': '褥瘡ケア',
+                          'stoma_care': '人工肛門・人工膀胱ケア',
+                          'specific_procedures': '特定行為研修',
+                        };
+
+                        // 選択されたケアに対応する資格を持っているかチェック
+                        const selectedCareSpecialty = formData.specialistCareType ? careTypeToSpecialty[formData.specialistCareType] : null;
+                        const hasMatchingCert = selectedCareSpecialty ? userCerts.includes(selectedCareSpecialty) : false;
+
+                        // 警告1: 専門的ケアを選択しているが、対応する資格がない
+                        if (hasCareType && !hasMatchingCert) {
+                          return (
+                            <Alert variant="destructive" className="mt-3">
+                              <AlertCircle className="h-4 w-4" />
+                              <AlertTitle>専門資格未保有</AlertTitle>
+                              <AlertDescription>
+                                {selectedCareSpecialty ? `「${selectedCareSpecialty}」の専門資格が登録されていません。` : '選択された専門的ケアに対応する資格が登録されていません。'}
+                                専門管理加算は適用されません。
+                              </AlertDescription>
+                            </Alert>
+                          );
+                        }
+
+                        // 推奨: 専門資格ありで専門的ケア未選択
+                        if (!hasCareType && hasSpecialistCert) {
+                          return (
+                            <Alert className="mt-3 bg-blue-50 border-blue-200">
+                              <Info className="h-4 w-4 text-blue-600" />
+                              <AlertTitle className="text-blue-900">専門的ケアの記録</AlertTitle>
+                              <AlertDescription className="text-blue-800">
+                                あなたは専門資格（{userCerts.join('、')}）を保有しています。専門的ケアを実施した場合は選択してください。
+                              </AlertDescription>
+                            </Alert>
+                          );
+                        }
+
+                        return null;
+                      })()}
                     </div>
                   </div>
                 </div>

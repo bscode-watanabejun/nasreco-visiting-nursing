@@ -19,6 +19,7 @@ export interface CreateUserRequest {
   licenseNumber?: string;
   phone?: string;
   isActive?: boolean;
+  specialistCertifications?: string[];
 }
 
 export interface UpdateUserRequest {
@@ -30,6 +31,7 @@ export interface UpdateUserRequest {
   licenseNumber?: string;
   phone?: string;
   isActive?: boolean;
+  specialistCertifications?: string[];
 }
 
 export interface CreateCompanyRequest {
