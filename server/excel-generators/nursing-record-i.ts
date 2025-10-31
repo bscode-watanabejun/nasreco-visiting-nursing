@@ -188,11 +188,11 @@ export async function generateNursingRecordIExcel(data: NursingRecordIData): Pro
       sheet1.getCell('F7').value = data.doctorOrder.diagnosis || '';
     }
 
-    // 現病歴
-    sheet1.getCell('F8').value = data.patient.medicalHistory || '';
+    // 現病歴（未対応）
+    sheet1.getCell('F8').value = '';
 
-    // 既往歴（データ未保持）
-    sheet1.getCell('F9').value = '';
+    // 既往歴（患者情報: 既往歴・医療歴）
+    sheet1.getCell('F9').value = data.patient.medicalHistory || '';
 
     // 療養状況（初回記録の内容）
     if (data.initialVisit) {
@@ -214,10 +214,10 @@ export async function generateNursingRecordIExcel(data: NursingRecordIData): Pro
     // Row 14-20: 家族情報テーブル（未実装）
 
     // 主な介護者
-    sheet1.getCell('F21').value = data.patient.emergencyContact || '';
+    sheet1.getCell('F19').value = data.patient.emergencyContact || '';
 
     // 住環境（データ未保持）
-    sheet1.getCell('F22').value = '';
+    sheet1.getCell('F20').value = '';
   }
 
   // --- No.2シート ---
