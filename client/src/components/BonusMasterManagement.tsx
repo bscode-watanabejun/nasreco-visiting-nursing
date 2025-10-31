@@ -141,6 +141,20 @@ function PredefinedConditionsDisplay({ conditions }: { conditions: unknown }) {
         withoutCheck: '施設管理の「緊急時訪問看護加算（II）」が無効',
       },
 
+      // Week 3: 専門管理加算条件
+      requires_specialized_nurse: {
+        withCheck: '看護師が専門資格を保有している',
+        withoutCheck: '看護師が専門資格を保有していない',
+      },
+      specialties_match: {
+        withCheck: '専門的ケアの種類と看護師の専門資格が一致',
+        withoutCheck: '専門的ケアの種類と看護師の専門資格が不一致',
+      },
+      monthly_visit_limit: {
+        withCheck: '月次算定制限内（月1回まで）',
+        withoutCheck: '月次算定制限超過',
+      },
+
       // Phase 1: 基本的な条件
       field_not_empty: {
         withCheck: `訪問記録の「${condition.field || '指定フィールド'}」に入力あり`,
@@ -155,6 +169,14 @@ function PredefinedConditionsDisplay({ conditions }: { conditions: unknown }) {
         withoutCheck: '患者に建物（施設）が設定されていない',
       },
     };
+
+    // Week 3: 専門管理加算の特殊な条件処理
+    if (pattern === 'specialties_match' && Array.isArray(value)) {
+      return `専門的ケアの種類と看護師の専門資格が一致（対象: ${value.join('、')}）`;
+    }
+    if (pattern === 'monthly_visit_limit' && typeof value === 'number') {
+      return `月次算定制限内（月${value}回まで）`;
+    }
 
     // パターンが定義されている場合
     if (pattern && patternDescriptions[pattern]) {

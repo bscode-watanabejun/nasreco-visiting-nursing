@@ -40,7 +40,10 @@
       "Bash(libreoffice:*)",
       "Bash(git restore:*)",
       "Bash(node analyze_excel.mjs:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(node test-specialist-management-bonus.mjs:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
