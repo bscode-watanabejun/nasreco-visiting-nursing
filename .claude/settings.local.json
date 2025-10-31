@@ -39,7 +39,8 @@
       "Bash(nix-env:*)",
       "Bash(libreoffice:*)",
       "Bash(git restore:*)",
-      "Bash(node analyze_excel.mjs:*)"
+      "Bash(node analyze_excel.mjs:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
