@@ -113,6 +113,33 @@ function formatCareLevel(careLevel: string | null): string {
 }
 
 /**
+ * 訪問ステータスを日本語に変換
+ */
+function translateVisitStatus(status: string): string {
+  const statusMap: { [key: string]: string } = {
+    'pending': '未実施',
+    'completed': '完了',
+    'no_show': '不在',
+    'refused': '拒否',
+    'cancelled': 'キャンセル',
+    'rescheduled': '日程変更',
+  };
+
+  return statusMap[status] || status;
+}
+
+/**
+ * テキスト内の訪問ステータスを日本語に変換
+ * 例: "訪問ステータス: pending" → "訪問ステータス: 未実施"
+ */
+function translateContentStatus(content: string): string {
+  // "訪問ステータス: pending" のようなパターンを検出して変換
+  return content.replace(/訪問ステータス:\s*(pending|completed|no_show|refused|cancelled|rescheduled)/g, (match, status) => {
+    return `訪問ステータス: ${translateVisitStatus(status)}`;
+  });
+}
+
+/**
  * 訪問看護記録書Iを生成
  */
 export async function generateNursingRecordIExcel(data: NursingRecordIData): Promise<Buffer> {
@@ -164,7 +191,9 @@ export async function generateNursingRecordIExcel(data: NursingRecordIData): Pro
 
     // 療養状況（初回記録の内容）
     if (data.initialVisit) {
-      sheet1.getCell('F10').value = data.initialVisit.content || '';
+      const content = data.initialVisit.content || '';
+      // 訪問ステータスを日本語に変換
+      sheet1.getCell('F10').value = content ? translateContentStatus(content) : '';
     }
 
     // 介護状況（介護者氏名・連絡先）
