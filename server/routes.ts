@@ -2839,6 +2839,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const dailyVisitCount = sameDayVisits.length + 1; // +1 for current visit
 
+    // Week 3: Get assigned nurse information for specialist management bonus
+    const assignedNurse = recordData.nurseId ? await db.query.users.findFirst({
+      where: eq(users.id, recordData.nurseId),
+      columns: {
+        id: true,
+        fullName: true,
+        specialistCertifications: true,
+      }
+    }) : undefined;
+
     // Build bonus calculation context
     const context = {
       nursingRecordId: nursingRecordId || "",
@@ -2873,6 +2883,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       deathDate: patient.deathDate ? new Date(patient.deathDate) : null,
       // Phase 4: 特別管理情報
       specialManagementTypes: patient.specialManagementTypes || [],
+      // Week 3: 専門管理加算用フィールド
+      specialistCareType: recordData.specialistCareType || null,
+      assignedNurse: assignedNurse ? {
+        id: assignedNurse.id,
+        fullName: assignedNurse.fullName,
+        specialistCertifications: assignedNurse.specialistCertifications as string[] | null,
+      } : undefined,
     };
 
     // Calculate bonuses using the new rule engine
@@ -2930,8 +2947,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Add nurseId to recordData for bonus calculation
+      const recordDataWithNurseId = { ...recordData, nurseId: req.user.id };
+
       // Calculate bonuses and points (first pass without record ID)
-      const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(recordData, req.user.facilityId);
+      const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(recordDataWithNurseId, req.user.facilityId);
       recordData.calculatedPoints = calculatedPoints;
       recordData.appliedBonuses = appliedBonuses;
 
@@ -2946,7 +2966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - record saved (id):', record.id);
 
       // Recalculate and save bonus history with record ID (Phase 4)
-      await calculateBonusesAndPoints(recordData, req.user.facilityId, record.id);
+      await calculateBonusesAndPoints(recordDataWithNurseId, req.user.facilityId, record.id);
 
       // Fetch patient and nurse information for the response
       const patient = await storage.getPatient(record.patientId);

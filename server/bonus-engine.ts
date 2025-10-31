@@ -56,6 +56,14 @@ export interface BonusCalculationContext {
   deathDate?: Date | null; // 死亡日
   specialManagementTypes?: string[] | null; // 特別管理項目（配列）
 
+  // Week 3: 専門管理加算用コンテキスト
+  specialistCareType?: string | null; // 専門的ケアの種類
+  assignedNurse?: {
+    id: string;
+    fullName: string;
+    specialistCertifications?: string[] | null; // 専門資格配列
+  };
+
   // 追加コンテキスト（必要に応じて拡張）
   [key: string]: any;
 }
@@ -175,6 +183,27 @@ export function evaluatePredefinedCondition(
 
     case "patient_has_special_management":
       result = evaluatePatientHasSpecialManagement(context);
+      break;
+
+    // Week 3: 専門管理加算条件
+    case "requires_specialized_nurse":
+      result = evaluateRequiresSpecializedNurse(context);
+      break;
+
+    case "specialties_match":
+      if (!condition.value || !Array.isArray(condition.value)) {
+        result = { passed: false, reason: "専門分野リストが未設定" };
+      } else {
+        result = evaluateSpecialtiesMatch(condition.value, context);
+      }
+      // specialties_matchは独自の評価を持つので、後続のoperatorチェックをスキップ
+      return result;
+
+    case "monthly_visit_limit":
+      // monthly_visit_limitは非同期関数なので、ここでは呼び出さない
+      // calculateBonuses内で専用の処理を実装する必要がある
+      // 暫定的にtrueを返す（後でcalculateBonuses内で再チェック）
+      result = { passed: true, reason: "月次訪問制限チェックは後続処理で実施" };
       break;
 
     // Phase 2-A: 介護保険の時間帯・時間長条件
@@ -463,6 +492,146 @@ function evaluateHasDischargeJointGuidanceInSameRecord(
       ? "退院時共同指導加算が算定されている"
       : "退院時共同指導加算が算定されていない",
   };
+}
+
+/**
+ * Week 3: 専門研修を受けた看護師が訪問しているかチェック
+ */
+function evaluateRequiresSpecializedNurse(context: BonusCalculationContext): ConditionEvaluationResult {
+  const nurse = context.assignedNurse;
+  if (!nurse) {
+    return {
+      passed: false,
+      reason: "看護師情報が未設定",
+    };
+  }
+
+  const certifications = nurse.specialistCertifications || [];
+  if (certifications.length > 0) {
+    return {
+      passed: true,
+      reason: `専門資格保有: ${certifications.join(', ')}`,
+    };
+  }
+
+  return {
+    passed: false,
+    reason: "専門研修未受講",
+  };
+}
+
+/**
+ * Week 3: 専門分野のケアが実施されているかチェック
+ */
+function evaluateSpecialtiesMatch(
+  specialties: string[],
+  context: BonusCalculationContext
+): ConditionEvaluationResult {
+  const careType = context.specialistCareType;
+  if (!careType) {
+    return {
+      passed: false,
+      reason: "専門的ケアの記録がない",
+    };
+  }
+
+  const nurse = context.assignedNurse;
+  if (!nurse) {
+    return {
+      passed: false,
+      reason: "看護師情報が未設定",
+    };
+  }
+
+  const nurseSpecialties = nurse.specialistCertifications || [];
+  if (nurseSpecialties.length === 0) {
+    return {
+      passed: false,
+      reason: "看護師に専門資格がない",
+    };
+  }
+
+  // 専門分野名とcareTypeのマッピング
+  const specialtyMapping: Record<string, string> = {
+    '緩和ケア': 'palliative_care',
+    '褥瘡ケア': 'pressure_ulcer',
+    '人工肛門ケア': 'stoma_care',
+    '人工膀胱ケア': 'stoma_care', // 人工肛門・膀胱ケアは同じcareType
+    '特定行為研修': 'specific_procedures',
+  };
+
+  // 看護師の資格と実施したケアが一致するかチェック
+  for (const specialty of specialties) {
+    const mappedCareType = specialtyMapping[specialty];
+    if (mappedCareType === careType && nurseSpecialties.includes(specialty)) {
+      return {
+        passed: true,
+        reason: `専門分野一致: ${specialty}`,
+      };
+    }
+  }
+
+  return {
+    passed: false,
+    reason: `専門分野不一致（ケア: ${careType}, 資格: ${nurseSpecialties.join(', ')}）`,
+  };
+}
+
+/**
+ * Week 3: 月次訪問回数制限のチェック
+ * 注: この評価関数は非同期処理が必要なため、calculateBonuses() 内で特別に処理される
+ */
+async function evaluateMonthlyVisitLimit(
+  bonusCode: string,
+  monthlyLimit: number,
+  context: BonusCalculationContext
+): Promise<ConditionEvaluationResult> {
+  try {
+    const visitDate = new Date(context.visitDate);
+    const thisMonthStart = new Date(visitDate.getFullYear(), visitDate.getMonth(), 1);
+    const thisMonthEnd = new Date(visitDate.getFullYear(), visitDate.getMonth() + 1, 0, 23, 59, 59);
+
+    // 今月のこの加算の算定回数を取得（bonusCalculationHistoryとnursingRecordsをJOIN）
+    const existingRecords = await db
+      .select({
+        id: bonusCalculationHistory.id,
+        bonusMasterId: bonusCalculationHistory.bonusMasterId,
+        calculationDetails: bonusCalculationHistory.calculationDetails,
+      })
+      .from(bonusCalculationHistory)
+      .innerJoin(nursingRecords, eq(bonusCalculationHistory.nursingRecordId, nursingRecords.id))
+      .innerJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+      .where(
+        and(
+          eq(nursingRecords.patientId, context.patientId),
+          eq(bonusMaster.bonusCode, bonusCode),
+          gte(nursingRecords.visitDate, thisMonthStart.toISOString().split('T')[0]),
+          lte(nursingRecords.visitDate, thisMonthEnd.toISOString().split('T')[0]),
+          // 現在の訪問記録は除外
+          ne(bonusCalculationHistory.nursingRecordId, context.nursingRecordId)
+        )
+      );
+
+    const currentCount = existingRecords.length;
+
+    if (currentCount >= monthlyLimit) {
+      return {
+        passed: false,
+        reason: `月${monthlyLimit}回まで（既に${currentCount}回算定済み）`,
+      };
+    }
+
+    return {
+      passed: true,
+      reason: `月${monthlyLimit}回以内（${currentCount}/${monthlyLimit}回）`,
+    };
+  } catch (error) {
+    console.error('[evaluateMonthlyVisitLimit] エラー:', error);
+    return {
+      passed: false,
+      reason: "月次制限の確認中にエラーが発生",
+    };
+  }
 }
 
 /**
@@ -970,6 +1139,10 @@ export async function calculateBonuses(
     context.insuranceType
   );
 
+  console.log('[calculateBonuses] Applicable bonuses count:', applicableBonuses.length);
+  console.log('[calculateBonuses] Bonus codes:', applicableBonuses.map(b => b.bonusCode));
+  console.log('[calculateBonuses] Insurance type:', context.insuranceType);
+
   // 1.5. Phase2-1: display_orderの昇順にソート（小さい方が優先）
   // display_orderで評価順序を制御する（固定点数ではなく）
   applicableBonuses.sort((a, b) => {
@@ -993,6 +1166,8 @@ export async function calculateBonuses(
   // 2. Phase 1: 通常の加算を評価
   for (const bonus of phase1Bonuses) {
     try {
+      console.log(`[calculateBonuses] Evaluating bonus: ${bonus.bonusCode}`);
+
       // 2.1 併算定チェック
       const combinationCheck = checkCombination(bonus.bonusCode, bonus, appliedBonusCodes);
       if (!combinationCheck.allowed) {
@@ -1003,23 +1178,46 @@ export async function calculateBonuses(
       // 2.2 事前定義条件のチェック
       const conditionsPassed: string[] = [];
       if (bonus.predefinedConditions) {
+        console.log(`[calculateBonuses] ${bonus.bonusCode} has predefined conditions, evaluating...`);
         const conditions = Array.isArray(bonus.predefinedConditions)
           ? bonus.predefinedConditions
           : [bonus.predefinedConditions];
 
         let allConditionsPassed = true;
         for (const condition of conditions) {
+          console.log(`[calculateBonuses] Evaluating condition pattern: ${condition.pattern}`);
           const result = evaluatePredefinedCondition(condition, context);
+          console.log(`[calculateBonuses] Condition result:`, { pattern: condition.pattern, passed: result.passed, reason: result.reason });
           if (result.passed) {
             conditionsPassed.push(result.reason || "condition passed");
           } else {
             allConditionsPassed = false;
+            console.log(`[calculateBonuses] Condition failed, skipping ${bonus.bonusCode}`);
             break;
           }
         }
 
         if (!allConditionsPassed) {
           continue; // 条件を満たさない場合はスキップ
+        }
+
+        // Week 3: 月次制限チェック（専門管理加算用）
+        const monthlyLimitCondition = conditions.find(
+          (c: any) => c.pattern === "monthly_visit_limit"
+        );
+
+        if (monthlyLimitCondition && monthlyLimitCondition.value) {
+          const limitCheckResult = await evaluateMonthlyVisitLimit(
+            bonus.bonusCode,
+            monthlyLimitCondition.value,
+            context
+          );
+
+          if (!limitCheckResult.passed) {
+            console.log(`Skipping ${bonus.bonusCode}: ${limitCheckResult.reason}`);
+            continue; // 月次制限超過の場合はスキップ
+          }
+          conditionsPassed.push(limitCheckResult.reason || "月次制限内");
         }
       }
 

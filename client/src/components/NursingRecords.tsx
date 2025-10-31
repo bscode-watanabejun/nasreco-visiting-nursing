@@ -122,6 +122,8 @@ interface FormData {
   isFirstVisitOfPlan: boolean
   hasCollaborationRecord: boolean
   isTerminalCare: boolean
+  // Week 3: 専門管理加算用フィールド
+  specialistCareType: string
   // Selected schedule ID (for multiple schedules)
   selectedScheduleId: string
   // Special management record data
@@ -183,6 +185,11 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     isFirstVisitOfPlan: formData.isFirstVisitOfPlan,
     hasCollaborationRecord: formData.hasCollaborationRecord,
     isTerminalCare: formData.isTerminalCare,
+
+    // Week 3: 専門管理加算用フィールド
+    ...(formData.specialistCareType && formData.specialistCareType !== '' && {
+      specialistCareType: formData.specialistCareType
+    }),
 
     // 特別管理記録データ
     ...(Object.keys(formData.specialManagementData).length > 0 && {
@@ -300,6 +307,7 @@ const getInitialFormData = (): FormData => {
     isFirstVisitOfPlan: false,
     hasCollaborationRecord: false,
     isTerminalCare: false,
+    specialistCareType: '',
     selectedScheduleId: '',
     specialManagementData: {},
     demoStaffNameOverride: '',
@@ -756,6 +764,7 @@ export function NursingRecords() {
       isFirstVisitOfPlan: record.isFirstVisitOfPlan || false,
       hasCollaborationRecord: record.hasCollaborationRecord || false,
       isTerminalCare: record.isTerminalCare || false,
+      specialistCareType: (record as any).specialistCareType || '',
       selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {},
       demoStaffNameOverride: record.demoStaffNameOverride || '',
@@ -799,6 +808,7 @@ export function NursingRecords() {
       isFirstVisitOfPlan: record.isFirstVisitOfPlan || false,
       hasCollaborationRecord: record.hasCollaborationRecord || false,
       isTerminalCare: record.isTerminalCare || false,
+      specialistCareType: (record as any).specialistCareType || '',
       selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {},
       demoStaffNameOverride: record.demoStaffNameOverride || '',
@@ -1697,6 +1707,20 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+                  {selectedRecord.specialistCareType && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">専門的ケアの種類</p>
+                      <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
+                        <p className="text-sm">
+                          {selectedRecord.specialistCareType === 'palliative_care' && '緩和ケア'}
+                          {selectedRecord.specialistCareType === 'pressure_ulcer' && '褥瘡ケア'}
+                          {selectedRecord.specialistCareType === 'stoma_care' && '人工肛門・人工膀胱ケア'}
+                          {selectedRecord.specialistCareType === 'specific_procedures' && '特定行為'}
+                          {!['palliative_care', 'pressure_ulcer', 'stoma_care', 'specific_procedures'].includes(selectedRecord.specialistCareType) && selectedRecord.specialistCareType}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {selectedRecord.hasAdditionalPaymentAlert && (
                     <div className="bg-amber-50 border border-amber-300 rounded-md p-3 flex items-start gap-2">
                       <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -2226,6 +2250,29 @@ export function NursingRecords() {
                           ターミナルケア実施
                         </Label>
                       </div>
+                    </div>
+
+                    {/* Week 3: 専門管理加算用フィールド */}
+                    <div className="space-y-2 mt-4">
+                      <Label htmlFor="specialist-care-type">専門的ケアの実施</Label>
+                      <Select
+                        value={formData.specialistCareType}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, specialistCareType: value }))}
+                      >
+                        <SelectTrigger id="specialist-care-type">
+                          <SelectValue placeholder="専門的ケアを選択（該当する場合）" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">なし</SelectItem>
+                          <SelectItem value="palliative_care">緩和ケア</SelectItem>
+                          <SelectItem value="pressure_ulcer">褥瘡ケア</SelectItem>
+                          <SelectItem value="stoma_care">人工肛門・人工膀胱ケア</SelectItem>
+                          <SelectItem value="specific_procedures">特定行為</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        専門管理加算の対象となるケアを実施した場合に選択してください（月1回まで算定可能）
+                      </p>
                     </div>
                   </div>
                 </div>
