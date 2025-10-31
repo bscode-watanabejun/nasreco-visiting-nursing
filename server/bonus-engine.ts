@@ -555,8 +555,7 @@ function evaluateSpecialtiesMatch(
   const specialtyMapping: Record<string, string> = {
     '緩和ケア': 'palliative_care',
     '褥瘡ケア': 'pressure_ulcer',
-    '人工肛門ケア': 'stoma_care',
-    '人工膀胱ケア': 'stoma_care', // 人工肛門・膀胱ケアは同じcareType
+    '人工肛門・人工膀胱ケア': 'stoma_care',
     '特定行為研修': 'specific_procedures',
   };
 
