@@ -37,7 +37,9 @@
       "Bash(apt search:*)",
       "Bash(npm info:*)",
       "Bash(nix-env:*)",
-      "Bash(libreoffice:*)"
+      "Bash(libreoffice:*)",
+      "Bash(git restore:*)",
+      "Bash(node analyze_excel.mjs:*)"
     ],
     "deny": [],
     "ask": []
