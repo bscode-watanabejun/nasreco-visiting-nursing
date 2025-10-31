@@ -143,7 +143,12 @@ function translateContentStatus(content: string): string {
  * 訪問看護記録書Iを生成
  */
 export async function generateNursingRecordIExcel(data: NursingRecordIData): Promise<Buffer> {
-  const templatePath = path.join(__dirname, '../templates/訪問看護記録書Iフォーマット.xlsx');
+  // 開発環境と本番環境でパスを切り替え
+  // 本番環境: dist/index.js から dist/templates/
+  // 開発環境: server/excel-generators/nursing-record-i.ts から server/templates/
+  const templatePath = process.env.NODE_ENV === 'production'
+    ? path.join(__dirname, 'templates/訪問看護記録書Iフォーマット.xlsx')
+    : path.join(__dirname, '../templates/訪問看護記録書Iフォーマット.xlsx');
 
   // テンプレートを読み込み
   const workbook = new ExcelJS.Workbook();
