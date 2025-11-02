@@ -565,6 +565,12 @@ export function PatientDetail() {
                           : '未登録'}
                       </p>
                     </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">死亡場所</p>
+                      <p className="font-medium">
+                        {patient.deathLocation === 'home' ? '在宅' : patient.deathLocation === 'facility' ? '特別養護老人ホーム等' : '未登録'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -1111,9 +1117,7 @@ export function PatientDetail() {
                       <div
                         key={record.id}
                         onClick={() => {
-                          const currentPath = window.location.pathname
-                          const encodedReturnTo = encodeURIComponent(currentPath)
-                          setLocation(`${basePath}/records?recordId=${record.id}&returnTo=${encodedReturnTo}`)
+                          setLocation(`${basePath}/records?recordId=${record.id}`)
                         }}
                         className="border rounded-lg p-4 hover:bg-accent transition-colors cursor-pointer"
                       >

@@ -54,6 +54,7 @@ export interface BonusCalculationContext {
   lastDischargeDate?: Date | null; // 直近の退院日
   lastPlanCreatedDate?: Date | null; // 直近の訪問看護計画作成日
   deathDate?: Date | null; // 死亡日
+  deathLocation?: string | null; // 死亡場所: 'home'(在宅), 'facility'(特養等)
   specialManagementTypes?: string[] | null; // 特別管理項目（配列）
 
   // Week 3: 専門管理加算用コンテキスト
@@ -180,6 +181,12 @@ export function evaluatePredefinedCondition(
     case "is_terminal_care":
       result = evaluateIsTerminalCare(context);
       break;
+
+    case "terminal_care_requirement":
+      // ターミナルケア要件は非同期評価が必要なので、ここでは評価しない
+      // evaluateCondition関数の呼び出し元で個別に処理
+      result = { passed: false, reason: "terminal_care_requirementは非同期評価が必要" };
+      return result;
 
     case "patient_has_special_management":
       result = evaluatePatientHasSpecialManagement(context);
@@ -447,6 +454,106 @@ function evaluateIsTerminalCare(context: BonusCalculationContext): ConditionEval
   return {
     passed,
     reason: passed ? "ターミナルケア実施" : "ターミナルケア未実施",
+  };
+}
+
+/**
+ * ターミナルケア要件の評価（非同期）
+ *
+ * 死亡日及び死亡日前14日以内にターミナルケア訪問が規定回数以上あるかチェック
+ *
+ * @param context - 計算コンテキスト
+ * @param bonusCode - 加算コード（medical or care で判定回数が異なる）
+ * @returns 評価結果
+ */
+async function evaluateTerminalCareRequirement(
+  context: BonusCalculationContext,
+  bonusCode: string
+): Promise<ConditionEvaluationResult> {
+  // 1. 患者の死亡日チェック
+  if (!context.deathDate) {
+    return {
+      passed: false,
+      reason: "患者の死亡日が設定されていない",
+    };
+  }
+
+  // 2. 現在の訪問が死亡日かチェック
+  const visitDate = new Date(context.visitDate);
+  const deathDate = new Date(context.deathDate);
+
+  if (visitDate.toDateString() !== deathDate.toDateString()) {
+    return {
+      passed: false,
+      reason: "ターミナルケア加算は死亡日の訪問にのみ算定可能",
+    };
+  }
+
+  // 3. 死亡場所の確認（加算種別による）
+  const deathLocation = context.deathLocation;
+
+  if (bonusCode === 'terminal_care_1') {
+    // 医療保険1: 在宅または特養等
+    if (!deathLocation || !['home', 'facility'].includes(deathLocation)) {
+      return {
+        passed: false,
+        reason: "death_locationが未設定または不正な値",
+      };
+    }
+  } else if (bonusCode === 'terminal_care_2') {
+    // 医療保険2: 特養等のみ
+    if (deathLocation !== 'facility') {
+      return {
+        passed: false,
+        reason: "特養等での死亡が必要（death_location='facility'）",
+      };
+    }
+  } else if (bonusCode === 'care_terminal_care') {
+    // 介護保険: 在宅のみ
+    if (deathLocation !== 'home') {
+      return {
+        passed: false,
+        reason: "在宅での死亡が必要（death_location='home'）",
+      };
+    }
+  }
+
+  // 4. 死亡日前14日間の開始日を計算
+  const startDate = new Date(deathDate);
+  startDate.setDate(startDate.getDate() - 14);
+
+  // 5. 該当期間内のターミナルケア訪問記録を取得
+  const terminalCareVisits = await db
+    .select()
+    .from(nursingRecords)
+    .where(
+      and(
+        eq(nursingRecords.patientId, context.patientId),
+        eq(nursingRecords.isTerminalCare, true),
+        gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+        lte(nursingRecords.visitDate, deathDate.toISOString().split('T')[0])
+      )
+    );
+
+  // 6. 訪問回数のチェック
+  const visitCount = terminalCareVisits.length;
+  const requiredVisits = context.insuranceType === 'care' ? 2 : 2; // 介護保険: 2日以上、医療保険: 2回以上
+
+  if (visitCount < requiredVisits) {
+    return {
+      passed: false,
+      reason: `死亡日前14日以内のターミナルケア訪問が不足（${visitCount}回/${requiredVisits}回必要）`,
+    };
+  }
+
+  return {
+    passed: true,
+    reason: `ターミナルケア要件を満たす（${visitCount}回のターミナルケア訪問）`,
+    metadata: {
+      visitCount,
+      requiredVisits,
+      period: `${startDate.toISOString().split('T')[0]} 〜 ${deathDate.toISOString().split('T')[0]}`,
+    },
   };
 }
 
@@ -1185,7 +1292,15 @@ export async function calculateBonuses(
         let allConditionsPassed = true;
         for (const condition of conditions) {
           console.log(`[calculateBonuses] Evaluating condition pattern: ${condition.pattern}`);
-          const result = evaluatePredefinedCondition(condition, context);
+
+          // terminal_care_requirement パターンは非同期評価
+          let result: ConditionEvaluationResult;
+          if (condition.pattern === "terminal_care_requirement") {
+            result = await evaluateTerminalCareRequirement(context, bonus.bonusCode);
+          } else {
+            result = evaluatePredefinedCondition(condition, context);
+          }
+
           console.log(`[calculateBonuses] Condition result:`, { pattern: condition.pattern, passed: result.passed, reason: result.reason });
           if (result.passed) {
             conditionsPassed.push(result.reason || "condition passed");
@@ -1291,8 +1406,12 @@ export async function calculateBonuses(
         for (const condition of conditions) {
           let result: ConditionEvaluationResult;
 
+          // terminal_care_requirement パターンは非同期評価
+          if (condition.pattern === "terminal_care_requirement") {
+            result = await evaluateTerminalCareRequirement(context, bonus.bonusCode);
+          }
           // has_discharge_joint_guidance_in_same_record は特別処理
-          if (condition.pattern === 'has_discharge_joint_guidance_in_same_record') {
+          else if (condition.pattern === 'has_discharge_joint_guidance_in_same_record') {
             result = evaluateHasDischargeJointGuidanceInSameRecord(context, appliedBonusCodes);
           } else {
             result = evaluatePredefinedCondition(condition, context);

@@ -141,6 +141,7 @@ export const patients = pgTable("patients", {
   lastDischargeDate: date("last_discharge_date"), // 直近の退院日
   lastPlanCreatedDate: date("last_plan_created_date"), // 直近の訪問看護計画作成日
   deathDate: date("death_date"), // 死亡日
+  deathLocation: varchar("death_location", { length: 50 }), // 死亡場所: 'home'(在宅), 'facility'(特養等)
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

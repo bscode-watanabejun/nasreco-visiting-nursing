@@ -43,7 +43,18 @@
       "Bash(npm run build:*)",
       "Bash(npm run db:push:*)",
       "Bash(node test-specialist-management-bonus.mjs:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(/tmp/bonus_conditions.txt)",
+      "Bash(__NEW_LINE__ cat /tmp/bonus_conditions.txt)",
+      "Bash(/tmp/all_bonus_conditions.txt)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node test-terminal-care-bonus.mjs:*)",
+      "Bash(node test-terminal-care-calculation.mjs:*)",
+      "Bash(node test-terminal-bonus-api.mjs:*)",
+      "Bash(node recalculate-terminal-bonuses.mjs:*)",
+      "Bash(node test-all-terminal-care.mjs:*)",
+      "Bash(node recalculate-all-terminal.mjs:*)"
     ],
     "deny": [],
     "ask": []

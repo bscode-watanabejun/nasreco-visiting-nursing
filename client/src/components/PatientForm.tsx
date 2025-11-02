@@ -85,6 +85,7 @@ const patientFormSchema = z.object({
   lastDischargeDate: z.date().nullish(),
   lastPlanCreatedDate: z.date().nullish(),
   deathDate: z.date().nullish(),
+  deathLocation: z.enum(["home", "facility"]).nullish(),
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -169,6 +170,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       lastDischargeDate: undefined,
       lastPlanCreatedDate: undefined,
       deathDate: undefined,
+      deathLocation: undefined,
     },
   })
 
@@ -224,6 +226,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate + 'T00:00:00') : undefined,
           lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate + 'T00:00:00') : undefined,
           deathDate: patient.deathDate ? new Date(patient.deathDate + 'T00:00:00') : undefined,
+          deathLocation: (patient.deathLocation === "home" || patient.deathLocation === "facility") ? patient.deathLocation : undefined,
         })
       } else if (mode === 'create') {
         setLoadedPatientId(null)
@@ -262,6 +265,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           lastDischargeDate: undefined,
           lastPlanCreatedDate: undefined,
           deathDate: undefined,
+          deathLocation: undefined,
         })
       }
     }
@@ -288,6 +292,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
         lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
         lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
         deathDate: data.deathDate ? formatDateForAPI(data.deathDate) : null,
+        deathLocation: data.deathLocation || null,
         facilityId: "", // Will be set by the backend
       }
 
@@ -339,6 +344,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
         lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
         lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
         deathDate: data.deathDate ? formatDateForAPI(data.deathDate) : null,
+        deathLocation: data.deathLocation || null,
       }
 
       const response = await fetch(`/api/patients/${patient.id}`, {
@@ -492,7 +498,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           <FormControl>
                             <Button
                               variant="outline"
-                              className="w-full pl-3 text-left font-normal"
+                              className="w-full pl-3 text-left font-normal bg-background hover:bg-background"
                             >
                               {field.value ? (
                                 format(field.value, "yyyy年MM月dd日", { locale: ja })
@@ -961,7 +967,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                                 <FormControl>
                                   <Button
                                     variant="outline"
-                                    className={`w-full justify-start text-left font-normal ${!currentValue && "text-muted-foreground"}`}
+                                    className={`w-full justify-start text-left font-normal bg-background hover:bg-background ${!currentValue && "text-muted-foreground"}`}
                                   >
                                     <CalendarIcon className="mr-2 h-4 w-4" />
                                     {currentValue ? format(currentValue, "yyyy年MM月dd日", { locale: ja }) : <span>退院日を選択</span>}
@@ -1005,7 +1011,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                                 <FormControl>
                                   <Button
                                     variant="outline"
-                                    className={`w-full justify-start text-left font-normal ${!currentValue && "text-muted-foreground"}`}
+                                    className={`w-full justify-start text-left font-normal bg-background hover:bg-background ${!currentValue && "text-muted-foreground"}`}
                                   >
                                     <CalendarIcon className="mr-2 h-4 w-4" />
                                     {currentValue ? format(currentValue, "yyyy年MM月dd日", { locale: ja }) : <span>計画作成日を選択</span>}
@@ -1044,7 +1050,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                                 <FormControl>
                                   <Button
                                     variant="outline"
-                                    className={`w-full justify-start text-left font-normal ${!currentValue && "text-muted-foreground"}`}
+                                    className={`w-full justify-start text-left font-normal bg-background hover:bg-background ${!currentValue && "text-muted-foreground"}`}
                                   >
                                     <CalendarIcon className="mr-2 h-4 w-4" />
                                     {currentValue ? format(currentValue, "yyyy年MM月dd日", { locale: ja }) : <span>死亡日を選択</span>}
@@ -1067,6 +1073,31 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           </FormItem>
                         )
                       }}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="deathLocation"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>死亡場所</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value || ""}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="死亡場所を選択" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="home">在宅</SelectItem>
+                              <SelectItem value="facility">特別養護老人ホーム等</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                   </div>
                 </div>
@@ -1151,7 +1182,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                             <FormControl>
                               <Button
                                 variant="outline"
-                                className="w-full pl-3 text-left font-normal"
+                                className="w-full pl-3 text-left font-normal bg-background hover:bg-background"
                               >
                                 {field.value ? (
                                   format(field.value, "yyyy年MM月dd日", { locale: ja })
@@ -1194,7 +1225,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                             <FormControl>
                               <Button
                                 variant="outline"
-                                className="w-full pl-3 text-left font-normal"
+                                className="w-full pl-3 text-left font-normal bg-background hover:bg-background"
                               >
                                 {field.value ? (
                                   format(field.value, "yyyy年MM月dd日", { locale: ja })

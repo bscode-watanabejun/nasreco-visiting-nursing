@@ -2881,6 +2881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate) : null,
       lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate) : null,
       deathDate: patient.deathDate ? new Date(patient.deathDate) : null,
+      deathLocation: patient.deathLocation || null,
       // Phase 4: 特別管理情報
       specialManagementTypes: patient.specialManagementTypes || [],
       // Week 3: 専門管理加算用フィールド
