@@ -54,7 +54,12 @@
       "Bash(node test-terminal-bonus-api.mjs:*)",
       "Bash(node recalculate-terminal-bonuses.mjs:*)",
       "Bash(node test-all-terminal-care.mjs:*)",
-      "Bash(node recalculate-all-terminal.mjs:*)"
+      "Bash(node recalculate-all-terminal.mjs:*)",
+      "Bash(/tmp/dev_schema.txt)",
+      "Bash(/tmp/prod_schema.txt)",
+      "Bash(npx drizzle-kit push:*)",
+      "Bash(bash -c \"exit 1 && echo ''This will not print''\")",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []
