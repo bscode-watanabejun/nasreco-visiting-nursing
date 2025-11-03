@@ -41,6 +41,7 @@ export default function ContractManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<ContractWithRelations | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
+  const [selectedContractType, setSelectedContractType] = useState<string>("all");
   const [selectedPatientIdForForm, setSelectedPatientIdForForm] = useState<string>("");
   const [selectedWitnessId, setSelectedWitnessId] = useState<string>("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -318,21 +319,40 @@ export default function ContractManagement() {
           <CardTitle>絞り込み</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="w-64">
-            <Label>利用者</Label>
-            <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
-              <SelectTrigger>
-                <SelectValue placeholder="全ての利用者" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全ての利用者</SelectItem>
-                {patients?.map((patient) => (
-                  <SelectItem key={patient.id} value={patient.id}>
-                    {patient.lastName} {patient.firstName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="w-full sm:w-64">
+              <Label>利用者</Label>
+              <Select value={selectedPatientId} onValueChange={setSelectedPatientId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="全ての利用者" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全ての利用者</SelectItem>
+                  {patients?.map((patient) => (
+                    <SelectItem key={patient.id} value={patient.id}>
+                      {patient.lastName} {patient.firstName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-full sm:w-64">
+              <Label>契約種別</Label>
+              <Select value={selectedContractType} onValueChange={setSelectedContractType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="全ての契約種別" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全ての契約種別</SelectItem>
+                  <SelectItem value="service_agreement">サービス利用契約書</SelectItem>
+                  <SelectItem value="important_matters">重要事項説明書</SelectItem>
+                  <SelectItem value="personal_info_consent">個人情報利用同意書</SelectItem>
+                  <SelectItem value="medical_consent">医療行為同意書</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -365,7 +385,9 @@ export default function ContractManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contractsList.map((contract) => (
+                {contractsList
+                  .filter(contract => selectedContractType === "all" || contract.contractType === selectedContractType)
+                  .map((contract) => (
                   <>
                     <TableRow
                       key={contract.id}
