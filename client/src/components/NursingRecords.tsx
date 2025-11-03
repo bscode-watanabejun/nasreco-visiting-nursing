@@ -340,6 +340,7 @@ export function NursingRecords() {
   const [recordToDelete, setRecordToDelete] = useState<NursingRecordDisplay | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [cameFromUrl, setCameFromUrl] = useState(false)
+  const processedRecordIdRef = useRef<string | null>(null)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -668,7 +669,10 @@ export function NursingRecords() {
 
   // Handle recordId from URL to open record detail view
   useEffect(() => {
-    if (recordIdFromUrl && recordFromUrl && !isCreating && !selectedRecord) {
+    if (recordIdFromUrl && recordFromUrl && !isCreating && processedRecordIdRef.current !== recordIdFromUrl) {
+      // Mark this recordId as processed to prevent re-processing
+      processedRecordIdRef.current = recordIdFromUrl
+
       // Use the fetched record from URL
       const targetRecord = recordFromUrl
 
@@ -689,13 +693,14 @@ export function NursingRecords() {
       // Open the record detail view
       handleViewRecord(recordToView)
 
-      // Clear URL parameters (preserve tenant path and returnTo)
-      const newUrl = returnTo
-        ? `${basePath}/records?returnTo=${encodeURIComponent(returnTo)}`
-        : `${basePath}/records`
-      window.history.replaceState({}, '', newUrl)
+      // Clear recordId from URL only if there's no returnTo parameter
+      // When returnTo exists, we keep the full URL intact to allow page refresh
+      if (!returnTo) {
+        const newUrl = `${basePath}/records`
+        window.history.replaceState({}, '', newUrl)
+      }
     }
-  }, [recordIdFromUrl, recordFromUrl, patients, users, isCreating, selectedRecord, returnTo, basePath])
+  }, [recordIdFromUrl, recordFromUrl, patients, users, isCreating, returnTo, basePath])
 
   // Transform records to include patient and nurse names
   const records: NursingRecordDisplay[] = rawRecords.map(record => {

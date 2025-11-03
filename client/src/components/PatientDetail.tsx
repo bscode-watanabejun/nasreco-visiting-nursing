@@ -309,63 +309,68 @@ export function PatientDetail() {
   return (
     <div className="space-y-4 px-2 py-3 md:space-y-6 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="space-y-3">
+        {/* Back button and Export button row */}
+        <div className="flex items-center justify-between gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setLocation(`${basePath}/patients`)}
+            className="flex-shrink-0"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            一覧に戻る
+            <ArrowLeft className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">一覧に戻る</span>
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight">
-                {patient.lastName} {patient.firstName}
-              </h1>
-              {patient.isCritical && (
-                <Badge className="bg-red-100 text-red-800 border-red-200">
-                  重要
-                </Badge>
-              )}
-            </div>
-            <p className="text-muted-foreground">
-              {calculateAge(patient.dateOfBirth)}歳 / 患者番号: {patient.patientNumber}
-            </p>
-          </div>
+          {!isHeadquarters && (
+            <Button
+              size="sm"
+              onClick={handleExportRecordI}
+              disabled={isExportingRecordI}
+              className="gap-1 md:gap-2 flex-shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">{isExportingRecordI ? "出力中..." : "記録書Ⅰ（Excel）出力"}</span>
+              <span className="sm:hidden">{isExportingRecordI ? "出力中..." : "Excel出力"}</span>
+            </Button>
+          )}
         </div>
-        {!isHeadquarters && (
-          <Button
-            size="sm"
-            onClick={handleExportRecordI}
-            disabled={isExportingRecordI}
-            className="gap-2"
-          >
-            <Download className="h-4 w-4" />
-            {isExportingRecordI ? "出力中..." : "記録書Ⅰ（Excel）出力"}
-          </Button>
-        )}
+
+        {/* Patient name and info */}
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl md:text-3xl font-bold tracking-tight">
+              {patient.lastName} {patient.firstName}
+            </h1>
+            {patient.isCritical && (
+              <Badge className="bg-red-100 text-red-800 border-red-200">
+                重要
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">
+            {calculateAge(patient.dateOfBirth)}歳 / 患者番号: {patient.patientNumber}
+          </p>
+        </div>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="basic">
-            <User className="mr-2 h-4 w-4" />
-            基本情報
+          <TabsTrigger value="basic" className="text-xs sm:text-sm">
+            <User className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">基本情報</span>
           </TabsTrigger>
-          <TabsTrigger value="history">
-            <ClipboardList className="mr-2 h-4 w-4" />
-            訪問履歴
+          <TabsTrigger value="history" className="text-xs sm:text-sm">
+            <ClipboardList className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">訪問履歴</span>
           </TabsTrigger>
-          <TabsTrigger value="vitals">
-            <Activity className="mr-2 h-4 w-4" />
-            バイタル推移
+          <TabsTrigger value="vitals" className="text-xs sm:text-sm">
+            <Activity className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">バイタル推移</span>
           </TabsTrigger>
-          <TabsTrigger value="care">
-            <FileText className="mr-2 h-4 w-4" />
-            計画書
+          <TabsTrigger value="care" className="text-xs sm:text-sm">
+            <FileText className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">計画書</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1112,12 +1117,17 @@ export function PatientDetail() {
               ) : (
                 <div className="space-y-4">
                   {records
-                    .sort((a, b) => new Date(b.recordDate).getTime() - new Date(a.recordDate).getTime())
+                    .sort((a, b) => {
+                      const aDate = new Date((a as any).visitDate || a.actualStartTime || a.recordDate)
+                      const bDate = new Date((b as any).visitDate || b.actualStartTime || b.recordDate)
+                      return bDate.getTime() - aDate.getTime()
+                    })
                     .map((record) => (
                       <div
                         key={record.id}
                         onClick={() => {
-                          setLocation(`${basePath}/records?recordId=${record.id}`)
+                          const currentPath = `${basePath}/patients/${id}`
+                          setLocation(`${basePath}/records?recordId=${record.id}&returnTo=${encodeURIComponent(currentPath)}`)
                         }}
                         className="border rounded-lg p-4 hover:bg-accent transition-colors cursor-pointer"
                       >
@@ -1126,7 +1136,7 @@ export function PatientDetail() {
                             <div className="flex items-center gap-2">
                               <Calendar className="h-4 w-4 text-muted-foreground" />
                               <p className="font-medium">
-                                {new Date(record.recordDate).toLocaleDateString('ja-JP', {
+                                {new Date((record as any).visitDate || record.actualStartTime || record.recordDate).toLocaleDateString('ja-JP', {
                                   year: 'numeric',
                                   month: 'long',
                                   day: 'numeric',
