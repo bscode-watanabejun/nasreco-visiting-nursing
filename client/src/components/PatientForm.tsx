@@ -1081,20 +1081,34 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>死亡場所</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="死亡場所を選択" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="home">在宅</SelectItem>
-                              <SelectItem value="facility">特別養護老人ホーム等</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <div className="flex gap-2">
+                            <Select
+                              key={field.value ?? 'empty'}
+                              onValueChange={field.onChange}
+                              value={field.value ?? undefined}
+                            >
+                              <FormControl>
+                                <SelectTrigger className="flex-1">
+                                  <SelectValue placeholder="死亡場所を選択" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="home">在宅</SelectItem>
+                                <SelectItem value="facility">特別養護老人ホーム等</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {field.value && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => field.onChange(null)}
+                                title="選択をクリア"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
