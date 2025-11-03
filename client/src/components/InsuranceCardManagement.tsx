@@ -32,6 +32,7 @@ export default function InsuranceCardManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("all");
+  const [selectedInsuranceType, setSelectedInsuranceType] = useState<string>("all");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -174,24 +175,43 @@ export default function InsuranceCardManagement() {
           <CardTitle>絞り込み</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="w-64">
-            <Label>利用者</Label>
-            <Select
-              value={selectedPatientId}
-              onValueChange={(value) => setSelectedPatientId(value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="全ての利用者" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全ての利用者</SelectItem>
-                {patients.map((patient) => (
-                  <SelectItem key={patient.id} value={patient.id}>
-                    {patient.lastName} {patient.firstName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="w-full sm:w-64">
+              <Label>利用者</Label>
+              <Select
+                value={selectedPatientId}
+                onValueChange={(value) => setSelectedPatientId(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="全ての利用者" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全ての利用者</SelectItem>
+                  {patients.map((patient) => (
+                    <SelectItem key={patient.id} value={patient.id}>
+                      {patient.lastName} {patient.firstName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-full sm:w-64">
+              <Label>保険種別</Label>
+              <Select
+                value={selectedInsuranceType}
+                onValueChange={(value) => setSelectedInsuranceType(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="全ての保険種別" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全ての保険種別</SelectItem>
+                  <SelectItem value="medical">医療保険</SelectItem>
+                  <SelectItem value="long_term_care">介護保険</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -224,7 +244,9 @@ export default function InsuranceCardManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cards.map((card) => (
+                {cards
+                  .filter(card => selectedInsuranceType === "all" || card.cardType === selectedInsuranceType)
+                  .map((card) => (
                   <>
                     <TableRow
                       key={card.id}
