@@ -30,10 +30,28 @@ import {
 import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, ServiceCarePlan, CarePlan, Building, MedicalInstitution, CareManager } from "@shared/schema"
 import { DoctorOrderDialog } from "./DoctorOrderDialog"
 import { InsuranceCardDialog } from "./InsuranceCardDialog"
+import { PublicExpenseCardDialog } from "./PublicExpenseCardDialog"
 import { ServiceCarePlanDialog } from "./ServiceCarePlanDialog"
 import { CarePlanDialog } from "./CarePlanDialog"
 import { PatientForm } from "./PatientForm"
 import { useToast } from "@/hooks/use-toast"
+
+// Phase 3: 公費負担医療情報の型定義
+interface PublicExpenseCard {
+  id: string
+  patientId: string
+  facilityId: string
+  beneficiaryNumber: string
+  recipientNumber: string | null
+  legalCategoryNumber: string
+  priority: number
+  validFrom: string
+  validUntil: string | null
+  notes: string | null
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
 
 type PatientWithRelations = Patient & {
   building?: Building | null;
@@ -69,6 +87,8 @@ export function PatientDetail() {
   const [editingOrder, setEditingOrder] = useState<DoctorOrder | null>(null)
   const [cardDialogOpen, setCardDialogOpen] = useState(false)
   const [editingCard, setEditingCard] = useState<InsuranceCard | null>(null)
+  const [publicExpenseDialogOpen, setPublicExpenseDialogOpen] = useState(false)
+  const [editingPublicExpense, setEditingPublicExpense] = useState<PublicExpenseCard | null>(null)
   const [serviceCarePlanDialogOpen, setServiceCarePlanDialogOpen] = useState(false)
   const [editingServiceCarePlan, setEditingServiceCarePlan] = useState<ServiceCarePlan | null>(null)
   const [carePlanDialogOpen, setCarePlanDialogOpen] = useState(false)
@@ -122,6 +142,19 @@ export function PatientDetail() {
       const response = await fetch(`/api/insurance-cards?patientId=${id}`)
       if (!response.ok) {
         throw new Error("保険証の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!id,
+  })
+
+  // Phase 3: Fetch public expense cards for this patient
+  const { data: publicExpenseCards = [], isLoading: isPublicExpenseLoading } = useQuery<PublicExpenseCard[]>({
+    queryKey: ["public-expense-cards", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/public-expense-cards?patientId=${id}`)
+      if (!response.ok) {
+        throw new Error("公費情報の取得に失敗しました")
       }
       return response.json()
     },
@@ -1095,6 +1128,145 @@ export function PatientDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Phase 3: 公費負担医療情報セクション */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    公費負担医療情報
+                  </CardTitle>
+                  <CardDescription>生活保護・難病医療費助成などの公費情報（最大4件）</CardDescription>
+                </div>
+                {!isHeadquarters && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingPublicExpense(null)
+                      setPublicExpenseDialogOpen(true)
+                    }}
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    新規登録
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isPublicExpenseLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">公費情報を読み込んでいます...</p>
+                </div>
+              ) : publicExpenseCards.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">公費負担医療が登録されていません</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {publicExpenseCards.map((card) => {
+                    const isValid = !card.validUntil || new Date(card.validUntil) >= new Date();
+                    const priorityLabel = ['第一公費', '第二公費', '第三公費', '第四公費'][card.priority - 1];
+
+                    return (
+                      <div
+                        key={card.id}
+                        className={`border rounded-lg p-4 ${
+                          isValid ? 'bg-background' : 'bg-muted/50 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="space-y-3 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="default">
+                                {priorityLabel}（優先順位{card.priority}）
+                              </Badge>
+                              <Badge variant="secondary">
+                                法別{card.legalCategoryNumber}
+                              </Badge>
+                              {!isValid && (
+                                <Badge variant="destructive">期限切れ</Badge>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-sm text-muted-foreground">負担者番号</p>
+                                <p className="font-medium">{card.beneficiaryNumber}</p>
+                              </div>
+                              {card.recipientNumber && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">受給者番号</p>
+                                  <p className="font-medium">{card.recipientNumber}</p>
+                                </div>
+                              )}
+                              <div>
+                                <p className="text-sm text-muted-foreground">有効期間</p>
+                                <p className="font-medium">
+                                  {new Date(card.validFrom).toLocaleDateString('ja-JP')}
+                                  {' 〜 '}
+                                  {card.validUntil ? new Date(card.validUntil).toLocaleDateString('ja-JP') : '無期限'}
+                                </p>
+                              </div>
+                              {card.notes && (
+                                <div className="md:col-span-2">
+                                  <p className="text-sm text-muted-foreground">備考</p>
+                                  <p className="text-sm">{card.notes}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {!isHeadquarters && (
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingPublicExpense(card)
+                                  setPublicExpenseDialogOpen(true)
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={async () => {
+                                  if (!confirm('この公費情報を削除してもよろしいですか？')) return
+                                  try {
+                                    const response = await fetch(`/api/public-expense-cards/${card.id}`, {
+                                      method: 'DELETE',
+                                    })
+                                    if (!response.ok) throw new Error('削除に失敗しました')
+                                    toast({
+                                      title: "削除完了",
+                                      description: "公費情報を削除しました",
+                                    })
+                                    queryClient.invalidateQueries({ queryKey: ["public-expense-cards", id] })
+                                  } catch (error) {
+                                    toast({
+                                      title: "エラー",
+                                      description: "削除中にエラーが発生しました",
+                                      variant: "destructive",
+                                    })
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Visit History Tab */}
@@ -1699,6 +1871,16 @@ export function PatientDetail() {
         onOpenChange={setCardDialogOpen}
         patientId={id!}
         card={editingCard}
+      />
+
+      {/* Phase 3: Public Expense Card Dialog */}
+      <PublicExpenseCardDialog
+        open={publicExpenseDialogOpen}
+        onOpenChange={setPublicExpenseDialogOpen}
+        patientId={id!}
+        facilityId={patientData?.facilityId || ''}
+        editingCard={editingPublicExpense}
+        existingCards={publicExpenseCards}
       />
 
       {/* Service Care Plan Dialog */}

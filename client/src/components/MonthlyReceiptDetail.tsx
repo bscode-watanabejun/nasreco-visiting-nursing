@@ -1039,6 +1039,9 @@ export default function MonthlyReceiptDetail() {
             validUntil: receipt.insuranceCard.validUntil || null,
             certificationDate: '',
             notes: '',
+            relationshipType: null, // Phase 3: 本人家族区分
+            ageCategory: null, // Phase 3: 年齢区分
+            elderlyRecipientCategory: null, // Phase 3: 高齢受給者区分
             isActive: true,
             filePath: null,
             originalFileName: null,
@@ -1078,6 +1081,7 @@ export default function MonthlyReceiptDetail() {
             filePath: null,
             originalFileName: null,
             icd10Code: null,
+            instructionType: 'regular', // Phase 3: 指示区分（デフォルト: 訪問看護指示）
             createdAt: new Date(),
             updatedAt: new Date(),
           }}

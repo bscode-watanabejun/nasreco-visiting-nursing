@@ -33,6 +33,7 @@ interface FormData {
   weeklyVisitLimit: string
   notes: string
   file?: File | null
+  instructionType: 'regular' | 'special' | 'psychiatric' | 'psychiatric_special' | 'medical_observation' | 'medical_observation_special' | ''
 }
 
 const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
@@ -45,6 +46,7 @@ const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
   orderContent: order?.orderContent || '',
   weeklyVisitLimit: order?.weeklyVisitLimit?.toString() || '',
   notes: order?.notes || '',
+  instructionType: order?.instructionType || 'regular',
 })
 
 export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: DoctorOrderDialogProps) {
@@ -134,6 +136,9 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
         if (formData.notes) {
           multipartData.append('notes', formData.notes)
         }
+        if (formData.instructionType) {
+          multipartData.append('instructionType', formData.instructionType)
+        }
         multipartData.append('file', formData.file)
 
         response = await fetch(url, {
@@ -153,6 +158,7 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
           orderContent: formData.orderContent,
           ...(formData.weeklyVisitLimit && { weeklyVisitLimit: parseInt(formData.weeklyVisitLimit) }),
           ...(formData.notes && { notes: formData.notes }),
+          ...(formData.instructionType && { instructionType: formData.instructionType }),
         }
 
         response = await fetch(url, {
@@ -284,6 +290,32 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
             />
             <p className="text-xs text-muted-foreground">
               レセプトCSV出力に必要です（任意）
+            </p>
+          </div>
+
+          {/* Instruction Type */}
+          <div className="space-y-2">
+            <Label htmlFor="instructionType">指示区分</Label>
+            <Select
+              value={formData.instructionType}
+              onValueChange={(value: 'regular' | 'special' | 'psychiatric' | 'psychiatric_special' | 'medical_observation' | 'medical_observation_special') =>
+                setFormData(prev => ({ ...prev, instructionType: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="指示区分を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">訪問看護指示（通常）</SelectItem>
+                <SelectItem value="special">特別訪問看護指示</SelectItem>
+                <SelectItem value="psychiatric">精神科訪問看護指示</SelectItem>
+                <SelectItem value="psychiatric_special">精神科特別訪問看護指示</SelectItem>
+                <SelectItem value="medical_observation">医療観察精神科訪問看護指示</SelectItem>
+                <SelectItem value="medical_observation_special">医療観察精神科特別訪問看護指示</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力時の指示区分コードの判定に使用されます
             </p>
           </div>
 

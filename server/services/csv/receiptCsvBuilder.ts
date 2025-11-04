@@ -17,6 +17,7 @@ import {
   RecordType,
 } from './csvUtils';
 import type { ReceiptCsvData } from './types';
+import { determineReceiptTypeCode, determineBurdenClassificationCode, determineInstructionTypeCode } from './receiptClassification';
 
 /**
  * レセプトCSVを生成
@@ -65,11 +66,42 @@ export class ReceiptCsvBuilder {
    * 1. レセプト共通レコード (RE)
    */
   private addRERecord(data: ReceiptCsvData): void {
+    // Phase 3: レセプト種別コードと負担区分を動的判定
+    const receiptTypeCode = determineReceiptTypeCode(
+      data.patient,
+      data.insuranceCard,
+      data.publicExpenses
+    );
+
+    const burdenClassificationCode = determineBurdenClassificationCode(
+      data.patient,
+      data.insuranceCard,
+      data.publicExpenses
+    );
+
+    // レセプト種別: 保険種別(1桁) + 本人家族(1桁) + レセプト種別(2桁)
+    // 例: 1111 = 医保(1) + 本人(1) + 単独(11)
+    const fullReceiptType = `${data.receipt.insuranceType === 'medical' ? '1' : '2'}${burdenClassificationCode}${receiptTypeCode}`;
+
+    // 一部負担金の計算（負担区分により異なる）
+    // TODO: 正確な負担割合は別途マスタ管理が必要
+    let burdenAmount = 0;
+    if (burdenClassificationCode === '0') {
+      // 本人: 3割負担（一般的なケース）
+      burdenAmount = Math.floor(data.receipt.totalAmount * 0.3);
+    } else if (burdenClassificationCode === '2') {
+      // 家族: 3割負担
+      burdenAmount = Math.floor(data.receipt.totalAmount * 0.3);
+    } else {
+      // 公費あり: 負担軽減あり（簡易計算）
+      burdenAmount = Math.floor(data.receipt.totalAmount * 0.1);
+    }
+
     const fields = [
       RecordType.RE,                                            // レコード識別
       formatNumber(this.sequenceGen.next(), 5),                 // レコード番号
       padRight(data.patient.insuranceNumber, 8),                // 保険者番号（8桁）
-      padLeft('1111', 4),                                       // レセプト種別（仮: 1111=医科入院外）
+      padLeft(fullReceiptType, 4),                              // レセプト種別（4桁）- Phase 3: 動的判定
       padRight(normalizeKana(data.patient.kanaName), 25),      // 患者カナ氏名（全角25文字）
       padRight(`${data.patient.lastName} ${data.patient.firstName}`, 40), // 患者氏名（全角40文字）
       formatJapaneseDate(data.patient.dateOfBirth),             // 生年月日（和暦 gYYMMDD）
@@ -77,7 +109,7 @@ export class ReceiptCsvBuilder {
       formatNumber(data.receipt.targetYear, 4),                 // 診療年
       formatNumber(data.receipt.targetMonth, 2),                // 診療月
       formatNumber(data.receipt.totalPoints, 8),                // 合計点数
-      formatNumber(Math.floor(data.receipt.totalAmount * 0.3), 7), // 一部負担金（3割負担と仮定）
+      formatNumber(burdenAmount, 7),                            // 一部負担金 - Phase 3: 負担区分により計算
     ];
 
     this.lines.push(buildCsvLine(fields));

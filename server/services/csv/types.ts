@@ -36,6 +36,7 @@ export interface ReceiptCsvData {
     dateOfBirth: Date | string;
     gender: 'male' | 'female' | 'other';
     insuranceNumber: string;
+    insuranceType: string | null; // Phase 3: 保険種別（動的判定用）
   };
 
   // 医療機関情報（訪問看護指示書発行元）
@@ -46,6 +47,22 @@ export interface ReceiptCsvData {
     doctorName: string;
   };
 
+  // 保険証情報（Phase 3: 動的判定用）
+  insuranceCard: {
+    cardType: 'medical' | 'long_term_care';
+    relationshipType: 'self' | 'preschool' | 'family' | 'elderly_general' | 'elderly_70' | null;
+    ageCategory: 'preschool' | 'general' | 'elderly' | null;
+    elderlyRecipientCategory: 'general_low' | 'seventy' | null;
+  };
+
+  // 公費負担医療情報（Phase 3: 動的判定用）
+  publicExpenses: Array<{
+    legalCategoryNumber: string;
+    beneficiaryNumber: string;
+    recipientNumber: string | null;
+    priority: number;
+  }>;
+
   // 訪問看護指示書
   doctorOrder: {
     id: string;
@@ -53,6 +70,7 @@ export interface ReceiptCsvData {
     endDate: Date | string;
     diagnosis: string;
     icd10Code: string; // 7桁以内
+    instructionType: 'regular' | 'special' | 'psychiatric' | 'psychiatric_special' | 'medical_observation' | 'medical_observation_special'; // Phase 3: 指示区分
   };
 
   // 訪問記録一覧

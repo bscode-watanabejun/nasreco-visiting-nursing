@@ -58,6 +58,7 @@ import {
   careManagers,
   doctorOrders,
   insuranceCards,
+  publicExpenseCards,
   carePlans,
   serviceCarePlans,
   careReports,
@@ -4745,6 +4746,183 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Public Expense Cards API (公費負担医療情報) ==========
+
+  // Get all public expense cards for a patient
+  app.get("/api/public-expense-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { patientId } = req.query;
+
+      if (!patientId || typeof patientId !== 'string') {
+        return res.status(400).json({ error: "患者IDが必要です" });
+      }
+
+      const cards = await db.query.publicExpenseCards.findMany({
+        where: and(
+          eq(publicExpenseCards.patientId, patientId),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ),
+        orderBy: asc(publicExpenseCards.priority),
+      });
+
+      res.json(cards);
+    } catch (error) {
+      console.error("Get public expense cards error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get a single public expense card by ID
+  app.get("/api/public-expense-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { id } = req.params;
+
+      const card = await db.query.publicExpenseCards.findFirst({
+        where: and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ),
+      });
+
+      if (!card) {
+        return res.status(404).json({ error: "公費情報が見つかりません" });
+      }
+
+      res.json(card);
+    } catch (error) {
+      console.error("Get public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create a new public expense card
+  app.post("/api/public-expense-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const data = req.body;
+
+      // Validate facility access
+      if (data.facilityId && data.facilityId !== facilityId) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      // Check for duplicate priority
+      if (data.priority) {
+        const existingCard = await db.query.publicExpenseCards.findFirst({
+          where: and(
+            eq(publicExpenseCards.patientId, data.patientId),
+            eq(publicExpenseCards.facilityId, facilityId),
+            eq(publicExpenseCards.priority, data.priority),
+            eq(publicExpenseCards.isActive, true)
+          ),
+        });
+
+        if (existingCard) {
+          return res.status(400).json({
+            error: `優先順位${data.priority}は既に使用されています。別の優先順位を選択してください。`
+          });
+        }
+      }
+
+      const [newCard] = await db.insert(publicExpenseCards)
+        .values({
+          ...data,
+          facilityId,
+          id: crypto.randomUUID(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      res.status(201).json(newCard);
+    } catch (error) {
+      console.error("Create public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update a public expense card
+  app.patch("/api/public-expense-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { id } = req.params;
+      const data = req.body;
+
+      // Get the current card
+      const currentCard = await db.query.publicExpenseCards.findFirst({
+        where: and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ),
+      });
+
+      if (!currentCard) {
+        return res.status(404).json({ error: "公費情報が見つかりません" });
+      }
+
+      // Check for duplicate priority (only if priority is being changed)
+      if (data.priority && data.priority !== currentCard.priority) {
+        const existingCard = await db.query.publicExpenseCards.findFirst({
+          where: and(
+            eq(publicExpenseCards.patientId, currentCard.patientId),
+            eq(publicExpenseCards.facilityId, facilityId),
+            eq(publicExpenseCards.priority, data.priority),
+            eq(publicExpenseCards.isActive, true),
+            ne(publicExpenseCards.id, id) // Exclude current card
+          ),
+        });
+
+        if (existingCard) {
+          return res.status(400).json({
+            error: `優先順位${data.priority}は既に使用されています。別の優先順位を選択してください。`
+          });
+        }
+      }
+
+      const [updatedCard] = await db.update(publicExpenseCards)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ))
+        .returning();
+
+      res.json(updatedCard);
+    } catch (error) {
+      console.error("Update public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete a public expense card
+  app.delete("/api/public-expense-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { id } = req.params;
+
+      const [deletedCard] = await db.delete(publicExpenseCards)
+        .where(and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ))
+        .returning();
+
+      if (!deletedCard) {
+        return res.status(404).json({ error: "公費情報が見つかりません" });
+      }
+
+      res.json({ message: "公費情報を削除しました" });
+    } catch (error) {
+      console.error("Delete public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Monthly Statistics API (月次実績集計) ==========
 
   // Get monthly visit statistics for billing
@@ -8698,8 +8876,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // 関連データを取得してCSVデータを構築
-      const [facility, patient, nursingRecordsData, doctorOrdersData] = await Promise.all([
+      // 関連データを取得してCSVデータを構築（Phase 3: 保険証・公費情報も取得）
+      const [facility, patient, nursingRecordsData, doctorOrdersData, insuranceCardsData, publicExpensesData] = await Promise.all([
         db.query.facilities.findFirst({
           where: eq(facilities.id, receipt.facilityId),
         }),
@@ -8718,6 +8896,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(doctorOrders.facilityId, receipt.facilityId),
             eq(doctorOrders.isActive, true)
           ),
+        }),
+        db.query.insuranceCards.findMany({
+          where: and(
+            eq(insuranceCards.patientId, receipt.patientId),
+            eq(insuranceCards.isActive, true)
+          ),
+        }),
+        db.query.publicExpenseCards.findMany({
+          where: and(
+            eq(publicExpenseCards.patientId, receipt.patientId),
+            eq(publicExpenseCards.isActive, true)
+          ),
+          orderBy: asc(publicExpenseCards.priority),
         }),
       ]);
 
@@ -8780,7 +8971,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           dateOfBirth: patient.dateOfBirth,
           gender: patient.gender,
           insuranceNumber: patient.insuranceNumber || '',
+          insuranceType: patient.insuranceType, // Phase 3: 保険種別
         },
+        // Phase 3: 保険証情報（有効な保険証の中から最初のものを使用）
+        insuranceCard: {
+          cardType: insuranceCardsData[0]?.cardType || 'medical',
+          relationshipType: insuranceCardsData[0]?.relationshipType || null,
+          ageCategory: insuranceCardsData[0]?.ageCategory || null,
+          elderlyRecipientCategory: insuranceCardsData[0]?.elderlyRecipientCategory || null,
+        },
+        // Phase 3: 公費負担医療情報（優先順位順）
+        publicExpenses: publicExpensesData.map(pe => ({
+          legalCategoryNumber: pe.legalCategoryNumber,
+          beneficiaryNumber: pe.beneficiaryNumber,
+          recipientNumber: pe.recipientNumber,
+          priority: pe.priority,
+        })),
         medicalInstitution: {
           institutionCode: medicalInstitution.institutionCode || '0000000',
           prefectureCode: medicalInstitution.prefectureCode || '00',
@@ -8793,6 +8999,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           endDate: validOrder.endDate,
           diagnosis: validOrder.diagnosis,
           icd10Code: validOrder.icd10Code || '',
+          instructionType: validOrder.instructionType, // Phase 3: 指示区分
         },
         nursingRecords: targetRecords.map(record => ({
           id: record.id,

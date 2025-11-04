@@ -19,6 +19,35 @@ export const scheduleStatusEnum = pgEnum("schedule_status", ["scheduled", "in_pr
 export const insuranceCardTypeEnum = pgEnum("insurance_card_type", ["medical", "long_term_care"]);
 export const copaymentRateEnum = pgEnum("copayment_rate", ["10", "20", "30"]);
 
+// Phase 3: レセプト動的判定用のENUM定義
+export const relationshipTypeEnum = pgEnum("relationship_type", [
+  "self",            // 本人/世帯主
+  "preschool",       // 未就学者
+  "family",          // 家族/その他
+  "elderly_general", // 高齢受給者一般・低所得者
+  "elderly_70",      // 高齢受給者7割
+]);
+
+export const ageCategoryEnum = pgEnum("age_category", [
+  "preschool",       // 未就学者（6歳未満）
+  "general",         // 一般
+  "elderly",         // 高齢者（75歳以上）
+]);
+
+export const elderlyRecipientCategoryEnum = pgEnum("elderly_recipient_category", [
+  "general_low",     // 一般・低所得者
+  "seventy",         // 7割負担
+]);
+
+export const instructionTypeEnum = pgEnum("instruction_type", [
+  "regular",                    // 01: 訪問看護指示
+  "special",                    // 02: 特別訪問看護指示
+  "psychiatric",                // 03: 精神科訪問看護指示
+  "psychiatric_special",        // 04: 精神科特別訪問看護指示
+  "medical_observation",        // 05: 医療観察精神科訪問看護指示
+  "medical_observation_special", // 06: 医療観察精神科特別訪問看護指示
+]);
+
 // ========== Session Table (express-session store) ==========
 // Note: This table is managed by connect-pg-simple, but we define it here to prevent drizzle-kit from deleting it
 // Match the exact structure created by connect-pg-simple to avoid migration warnings
@@ -371,6 +400,10 @@ export const doctorOrders = pgTable("doctor_orders", {
   filePath: text("file_path"), // PDF/画像ファイルパス
   originalFileName: text("original_file_name"), // 元のファイル名
   notes: text("notes"), // 備考
+
+  // Phase 3: レセプト指示区分判定用のフィールド
+  instructionType: instructionTypeEnum("instruction_type").notNull().default("regular"), // 指示区分
+
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -392,6 +425,40 @@ export const insuranceCards = pgTable("insurance_cards", {
   certificationDate: date("certification_date"), // 認定日（介護保険のみ）
   filePath: text("file_path"), // PDF/画像ファイルパス
   originalFileName: text("original_file_name"), // 元のファイル名
+  notes: text("notes"), // 備考
+
+  // Phase 3: レセプト種別判定用の追加フィールド
+  relationshipType: relationshipTypeEnum("relationship_type"), // 本人家族区分
+  ageCategory: ageCategoryEnum("age_category"), // 年齢区分
+  elderlyRecipientCategory: elderlyRecipientCategoryEnum("elderly_recipient_category"), // 高齢受給者区分
+
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Public Expense Cards Table (公費負担医療情報) ==========
+// Phase 3: レセプト種別判定に必要な公費情報を管理
+export const publicExpenseCards = pgTable("public_expense_cards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+
+  // 公費情報
+  beneficiaryNumber: text("beneficiary_number").notNull(), // 負担者番号（8桁）
+  recipientNumber: text("recipient_number"), // 受給者番号（7桁）※医療観察法（法別30）は不要
+
+  // 法別番号（公費の種類を識別）例: "10"=生活保護, "51"=特定疾患, "54"=難病
+  legalCategoryNumber: text("legal_category_number").notNull(),
+
+  // 優先順位（複数公費併用時の順序: 1=第一公費, 2=第二公費, 3=第三公費, 4=第四公費）
+  priority: integer("priority").notNull(),
+
+  // 有効期間
+  validFrom: date("valid_from").notNull(),
+  validUntil: date("valid_until"),
+
+  // その他
   notes: text("notes"), // 備考
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
