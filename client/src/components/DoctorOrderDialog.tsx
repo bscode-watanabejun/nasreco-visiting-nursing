@@ -28,6 +28,7 @@ interface FormData {
   startDate: string
   endDate: string
   diagnosis: string
+  icd10Code: string // ICD-10コード（レセプトCSV出力用）
   orderContent: string
   weeklyVisitLimit: string
   notes: string
@@ -40,6 +41,7 @@ const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
   startDate: order?.startDate || new Date().toISOString().split('T')[0],
   endDate: order?.endDate || '',
   diagnosis: order?.diagnosis || '',
+  icd10Code: order?.icd10Code || '',
   orderContent: order?.orderContent || '',
   weeklyVisitLimit: order?.weeklyVisitLimit?.toString() || '',
   notes: order?.notes || '',
@@ -122,6 +124,9 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
         multipartData.append('startDate', formData.startDate)
         multipartData.append('endDate', formData.endDate)
         multipartData.append('diagnosis', formData.diagnosis)
+        if (formData.icd10Code) {
+          multipartData.append('icd10Code', formData.icd10Code)
+        }
         multipartData.append('orderContent', formData.orderContent)
         if (formData.weeklyVisitLimit) {
           multipartData.append('weeklyVisitLimit', formData.weeklyVisitLimit)
@@ -144,6 +149,7 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
           startDate: formData.startDate,
           endDate: formData.endDate,
           diagnosis: formData.diagnosis,
+          ...(formData.icd10Code && { icd10Code: formData.icd10Code }),
           orderContent: formData.orderContent,
           ...(formData.weeklyVisitLimit && { weeklyVisitLimit: parseInt(formData.weeklyVisitLimit) }),
           ...(formData.notes && { notes: formData.notes }),
@@ -264,6 +270,21 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
               placeholder="例: 脳梗塞後遺症、糖尿病"
               required
             />
+          </div>
+
+          {/* ICD-10 Code */}
+          <div className="space-y-2">
+            <Label htmlFor="icd10Code">ICD-10コード</Label>
+            <Input
+              id="icd10Code"
+              value={formData.icd10Code}
+              onChange={(e) => setFormData(prev => ({ ...prev, icd10Code: e.target.value }))}
+              placeholder="例: I639 (7桁以内)"
+              maxLength={7}
+            />
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力に必要です（任意）
+            </p>
           </div>
 
           {/* Order Content */}
