@@ -8167,7 +8167,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/master/prefecture-codes", async (req, res) => {
     try {
       const codes = await db.query.prefectureCodes.findMany({
-        where: eq(prefectureCodes.isActive, true),
         orderBy: [asc(prefectureCodes.displayOrder)],
       });
       res.json(codes);
@@ -8205,7 +8204,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/master/staff-qualification-codes", async (req, res) => {
     try {
       const codes = await db.query.staffQualificationCodes.findMany({
-        where: eq(staffQualificationCodes.isActive, true),
         orderBy: [asc(staffQualificationCodes.displayOrder)],
       });
       res.json(codes);
@@ -8219,7 +8217,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/master/visit-location-codes", async (req, res) => {
     try {
       const codes = await db.query.visitLocationCodes.findMany({
-        where: eq(visitLocationCodes.isActive, true),
         orderBy: [asc(visitLocationCodes.displayOrder)],
       });
       res.json(codes);
@@ -8234,19 +8231,318 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { insuranceType } = req.query;
 
-      let whereConditions = [eq(receiptTypeCodes.isActive, true)];
+      let whereConditions = [];
       if (insuranceType && (insuranceType === 'medical' || insuranceType === 'care')) {
         whereConditions.push(eq(receiptTypeCodes.insuranceType, insuranceType));
       }
 
       const codes = await db.query.receiptTypeCodes.findMany({
-        where: and(...whereConditions),
+        where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
         orderBy: [asc(receiptTypeCodes.displayOrder)],
       });
       res.json(codes);
     } catch (error) {
       console.error("Error fetching receipt type codes:", error);
       res.status(500).json({ error: "レセプト種別コードの取得に失敗しました" });
+    }
+  });
+
+  // ========== マスターデータCRUD API ==========
+
+  // 都道府県コード - 作成
+  app.post("/api/master/prefecture-codes", async (req, res) => {
+    try {
+      const { prefectureCode, prefectureName, displayOrder } = req.body;
+
+      if (!prefectureCode || !prefectureName) {
+        return res.status(400).json({ error: "都道府県コードと名称は必須です" });
+      }
+
+      const [newCode] = await db.insert(prefectureCodes).values({
+        id: crypto.randomUUID(),
+        prefectureCode,
+        prefectureName,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating prefecture code:", error);
+      res.status(500).json({ error: "都道府県コードの作成に失敗しました" });
+    }
+  });
+
+  // 都道府県コード - 更新
+  app.put("/api/master/prefecture-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { prefectureCode, prefectureName, displayOrder, isActive } = req.body;
+
+      const [updated] = await db.update(prefectureCodes)
+        .set({
+          prefectureCode,
+          prefectureName,
+          displayOrder,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(prefectureCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "都道府県コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating prefecture code:", error);
+      res.status(500).json({ error: "都道府県コードの更新に失敗しました" });
+    }
+  });
+
+  // 訪問看護サービスコード - 作成
+  app.post("/api/master/nursing-service-codes", async (req, res) => {
+    try {
+      const { serviceCode, serviceName, insuranceType, points, description } = req.body;
+
+      if (!serviceCode || !serviceName || !insuranceType || !points) {
+        return res.status(400).json({ error: "サービスコード、名称、保険種別、点数は必須です" });
+      }
+
+      if (insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+
+      const [newCode] = await db.insert(nursingServiceCodes).values({
+        id: crypto.randomUUID(),
+        serviceCode,
+        serviceName,
+        insuranceType,
+        points: parseInt(points),
+        validFrom: today,
+        description: description || null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating nursing service code:", error);
+      res.status(500).json({ error: "サービスコードの作成に失敗しました" });
+    }
+  });
+
+  // 訪問看護サービスコード - 更新
+  app.put("/api/master/nursing-service-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { serviceCode, serviceName, insuranceType, points, description, isActive } = req.body;
+
+      if (insuranceType && insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const [updated] = await db.update(nursingServiceCodes)
+        .set({
+          serviceCode,
+          serviceName,
+          insuranceType,
+          points: points ? parseInt(points) : undefined,
+          description,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(nursingServiceCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "サービスコードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating nursing service code:", error);
+      res.status(500).json({ error: "サービスコードの更新に失敗しました" });
+    }
+  });
+
+  // 職員資格コード - 作成
+  app.post("/api/master/staff-qualification-codes", async (req, res) => {
+    try {
+      const { qualificationCode, qualificationName, displayOrder } = req.body;
+
+      if (!qualificationCode || !qualificationName) {
+        return res.status(400).json({ error: "資格コードと名称は必須です" });
+      }
+
+      const [newCode] = await db.insert(staffQualificationCodes).values({
+        id: crypto.randomUUID(),
+        qualificationCode,
+        qualificationName,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating staff qualification code:", error);
+      res.status(500).json({ error: "職員資格コードの作成に失敗しました" });
+    }
+  });
+
+  // 職員資格コード - 更新
+  app.put("/api/master/staff-qualification-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { qualificationCode, qualificationName, displayOrder, isActive } = req.body;
+
+      const [updated] = await db.update(staffQualificationCodes)
+        .set({
+          qualificationCode,
+          qualificationName,
+          displayOrder,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(staffQualificationCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "職員資格コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating staff qualification code:", error);
+      res.status(500).json({ error: "職員資格コードの更新に失敗しました" });
+    }
+  });
+
+  // 訪問場所コード - 作成
+  app.post("/api/master/visit-location-codes", async (req, res) => {
+    try {
+      const { locationCode, locationName, displayOrder } = req.body;
+
+      if (!locationCode || !locationName) {
+        return res.status(400).json({ error: "場所コードと名称は必須です" });
+      }
+
+      const [newCode] = await db.insert(visitLocationCodes).values({
+        id: crypto.randomUUID(),
+        locationCode,
+        locationName,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating visit location code:", error);
+      res.status(500).json({ error: "訪問場所コードの作成に失敗しました" });
+    }
+  });
+
+  // 訪問場所コード - 更新
+  app.put("/api/master/visit-location-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { locationCode, locationName, displayOrder, isActive } = req.body;
+
+      const [updated] = await db.update(visitLocationCodes)
+        .set({
+          locationCode,
+          locationName,
+          displayOrder,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(visitLocationCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "訪問場所コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating visit location code:", error);
+      res.status(500).json({ error: "訪問場所コードの更新に失敗しました" });
+    }
+  });
+
+  // レセプト種別コード - 作成
+  app.post("/api/master/receipt-type-codes", async (req, res) => {
+    try {
+      const { receiptTypeCode, receiptTypeName, insuranceType, displayOrder, description } = req.body;
+
+      if (!receiptTypeCode || !receiptTypeName || !insuranceType) {
+        return res.status(400).json({ error: "種別コード、名称、保険種別は必須です" });
+      }
+
+      if (insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const [newCode] = await db.insert(receiptTypeCodes).values({
+        id: crypto.randomUUID(),
+        receiptTypeCode,
+        receiptTypeName,
+        insuranceType,
+        displayOrder: displayOrder || 0,
+        description: description || null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating receipt type code:", error);
+      res.status(500).json({ error: "レセプト種別コードの作成に失敗しました" });
+    }
+  });
+
+  // レセプト種別コード - 更新
+  app.put("/api/master/receipt-type-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { receiptTypeCode, receiptTypeName, insuranceType, displayOrder, description, isActive } = req.body;
+
+      if (insuranceType && insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const [updated] = await db.update(receiptTypeCodes)
+        .set({
+          receiptTypeCode,
+          receiptTypeName,
+          insuranceType,
+          displayOrder,
+          description,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(receiptTypeCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "レセプト種別コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating receipt type code:", error);
+      res.status(500).json({ error: "レセプト種別コードの更新に失敗しました" });
     }
   });
 

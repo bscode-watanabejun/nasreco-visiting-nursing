@@ -35,6 +35,7 @@ import SpecialManagementSettings from "@/components/SpecialManagementSettings";
 import BonusMasterManagement from "@/components/BonusMasterManagement";
 import MonthlyReceiptsManagement from "@/components/MonthlyReceiptsManagement";
 import MonthlyReceiptDetail from "@/components/MonthlyReceiptDetail";
+import { MasterDataManagement } from "@/components/MasterDataManagement";
 import SchedulesWithoutRecords from "@/pages/schedules-without-records";
 import NotFound from "@/pages/not-found";
 import ComingSoon from "@/components/ComingSoon";
@@ -433,6 +434,7 @@ function MainLayout() {
               <Route path="/:companySlug/:facilitySlug/bonus-masters" component={BonusMasterManagement} />
               <Route path="/:companySlug/:facilitySlug/monthly-receipts/:id" component={MonthlyReceiptDetail} />
               <Route path="/:companySlug/:facilitySlug/monthly-receipts" component={MonthlyReceiptsManagement} />
+              <Route path="/:companySlug/:facilitySlug/master-data" component={MasterDataManagement} />
               <Route path="/:companySlug/:facilitySlug/schedules-without-records" component={SchedulesWithoutRecords} />
               <Route path="/:companySlug/:facilitySlug/reports">
                 {() => <ComingSoon featureName={shouldShowHeadquartersFeatures ? "統合レポート機能" : "レポート機能"} />}
@@ -473,6 +475,7 @@ function MainLayout() {
                   <Route path="/bonus-masters" component={BonusMasterManagement} />
                   <Route path="/monthly-receipts" component={MonthlyReceiptsManagement} />
                   <Route path="/monthly-receipts/:id" component={MonthlyReceiptDetail} />
+                  <Route path="/master-data" component={MasterDataManagement} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                   <Route path="/reports">
                     {() => <ComingSoon featureName="統合レポート機能" />}
@@ -503,6 +506,7 @@ function MainLayout() {
                   <Route path="/bonus-masters" component={BonusMasterManagement} />
                   <Route path="/monthly-receipts" component={MonthlyReceiptsManagement} />
                   <Route path="/monthly-receipts/:id" component={MonthlyReceiptDetail} />
+                  <Route path="/master-data" component={MasterDataManagement} />
                   <Route path="/schedules-without-records" component={SchedulesWithoutRecords} />
                   <Route path="/reports">
                     {() => <ComingSoon featureName="レポート機能" />}
