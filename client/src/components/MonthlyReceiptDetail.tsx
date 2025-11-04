@@ -18,6 +18,18 @@ import { useToast } from "@/hooks/use-toast"
 import { InsuranceCardDialog } from "@/components/InsuranceCardDialog"
 import { DoctorOrderDialog } from "@/components/DoctorOrderDialog"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert"
+import {
   ArrowLeft,
   AlertTriangle,
   CheckCircle,
@@ -33,6 +45,7 @@ import {
   Edit,
   Download,
   Printer,
+  FileSpreadsheet,
 } from "lucide-react"
 import { pdf } from "@react-pdf/renderer"
 import { ReceiptPDF } from "@/components/ReceiptPDF"
@@ -157,6 +170,9 @@ export default function MonthlyReceiptDetail() {
   // Dialog states
   const [insuranceCardDialogOpen, setInsuranceCardDialogOpen] = useState(false)
   const [doctorOrderDialogOpen, setDoctorOrderDialogOpen] = useState(false)
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<Array<{ recordType: string; message: string }>>([])
+  const [validationWarnings, setValidationWarnings] = useState<Array<{ recordType: string; message: string }>>([])
 
   const { data: receipt, isLoading, error } = useQuery<MonthlyReceiptDetail>({
     queryKey: [`/api/monthly-receipts/${receiptId}`],
@@ -282,6 +298,63 @@ export default function MonthlyReceiptDetail() {
       })
     },
   })
+
+  // CSV出力関数
+  const handleDownloadCSV = async () => {
+    try {
+      toast({
+        title: "CSV生成中",
+        description: "医療保険レセプトCSVを生成しています...",
+      })
+
+      const response = await fetch(`/api/receipts/${receiptId}/export-csv`)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'CSVの生成に失敗しました' }))
+
+        // バリデーション詳細がある場合はダイアログで表示
+        if (errorData.validation) {
+          const { errors, warnings } = errorData.validation
+
+          setValidationErrors(errors || [])
+          setValidationWarnings(warnings || [])
+          setValidationDialogOpen(true)
+
+          toast({
+            title: "CSV出力エラー",
+            description: "CSV出力に必要なデータが不足しています。詳細を確認してください。",
+            variant: "destructive",
+          })
+          return
+        }
+
+        throw new Error(errorData.error || 'CSVの生成に失敗しました')
+      }
+
+      // CSVファイルとしてダウンロード
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `receipt_${receipt!.targetYear}${String(receipt!.targetMonth).padStart(2, '0')}_${receipt!.patient.patientNumber}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "CSV生成完了",
+        description: "医療保険レセプトCSVのダウンロードが完了しました",
+      })
+    } catch (error) {
+      console.error("CSV generation error:", error)
+      toast({
+        title: "CSV生成エラー",
+        description: error instanceof Error ? error.message : "CSVの生成に失敗しました",
+        variant: "destructive",
+      })
+    }
+  }
 
   // PDF生成関数
   const handleDownloadPDF = async () => {
@@ -485,6 +558,15 @@ export default function MonthlyReceiptDetail() {
           >
             <Download className="w-4 h-4" />
             PDF出力
+          </Button>
+          <Button
+            variant="outline"
+            size="default"
+            onClick={handleDownloadCSV}
+            className="gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            医療保険CSV出力
           </Button>
           <Button
             variant="outline"
@@ -1001,6 +1083,117 @@ export default function MonthlyReceiptDetail() {
           }}
         />
       )}
+
+      {/* バリデーションエラーダイアログ */}
+      <Dialog open={validationDialogOpen} onOpenChange={setValidationDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              CSV出力に必要なデータが不足しています
+            </DialogTitle>
+            <DialogDescription>
+              以下のデータを入力・修正してから、再度CSV出力を行ってください。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-6 mt-4">
+            {/* エラー項目 */}
+            {validationErrors.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge variant="destructive" className="text-sm">
+                    エラー {validationErrors.length}件
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">修正必須</span>
+                </div>
+                <Card>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[180px]">カテゴリ</TableHead>
+                        <TableHead>内容</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {validationErrors.map((err, index) => {
+                        const recordTypeLabels: Record<string, string> = {
+                          facility: '施設情報',
+                          patient: '患者情報',
+                          medicalInstitution: '医療機関情報',
+                          doctorOrder: '医師指示書',
+                          nursingRecord: '訪問記録'
+                        }
+                        const recordTypeLabel = recordTypeLabels[err.recordType] || err.recordType
+                        return (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                {recordTypeLabel}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{err.message}</TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </Card>
+              </div>
+            )}
+
+            {/* 警告項目 */}
+            {validationWarnings.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge variant="secondary" className="text-sm bg-yellow-100 text-yellow-800 border-yellow-300">
+                    警告 {validationWarnings.length}件
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">推奨</span>
+                </div>
+                <Card>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[180px]">カテゴリ</TableHead>
+                        <TableHead>内容</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {validationWarnings.map((warn, index) => {
+                        const recordTypeLabels: Record<string, string> = {
+                          facility: '施設情報',
+                          patient: '患者情報',
+                          medicalInstitution: '医療機関情報',
+                          doctorOrder: '医師指示書',
+                          nursingRecord: '訪問記録'
+                        }
+                        const recordTypeLabel = recordTypeLabels[warn.recordType] || warn.recordType
+                        return (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">
+                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                {recordTypeLabel}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{warn.message}</TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </Card>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 flex justify-end border-t pt-4">
+            <Button onClick={() => setValidationDialogOpen(false)}>
+              閉じる
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
