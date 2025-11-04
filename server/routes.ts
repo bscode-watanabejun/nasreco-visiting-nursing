@@ -6997,6 +6997,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(desc(doctorOrders.orderDate))
         .limit(1);
 
+      // Get public expense cards information
+      const publicExpenseCardsData = await db.select()
+        .from(publicExpenseCards)
+        .where(and(
+          eq(publicExpenseCards.patientId, patientId),
+          eq(publicExpenseCards.facilityId, facilityId),
+          eq(publicExpenseCards.isActive, true)
+        ))
+        .orderBy(asc(publicExpenseCards.priority));
+
       res.json({
         ...receiptData[0].receipt,
         patient: receiptData[0].patient,
@@ -7006,6 +7016,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           order: doctorOrderData[0].order,
           medicalInstitution: doctorOrderData[0].medicalInstitution,
         } : null,
+        publicExpenseCards: publicExpenseCardsData,
         relatedRecords: relatedRecords.map(r => ({
           ...r.record,
           nurse: r.nurse,

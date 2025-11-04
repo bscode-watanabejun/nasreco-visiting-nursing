@@ -115,6 +115,16 @@ interface MonthlyReceiptDetail {
       phone: string
     }
   } | null
+  publicExpenseCards: Array<{
+    id: string
+    legalCategoryNumber: string
+    beneficiaryNumber: string
+    recipientNumber: string
+    priority: number
+    validFrom: string
+    validUntil: string | null
+    notes: string | null
+  }>
   relatedRecords: Array<{
     id: string
     visitDate: string
@@ -730,6 +740,37 @@ export default function MonthlyReceiptDetail() {
                     : '-'}
                 </div>
               </div>
+              {(receipt.insuranceCard as any).relationshipType && (
+                <div>
+                  <div className="text-sm text-muted-foreground">本人家族区分</div>
+                  <div className="font-medium">
+                    {(receipt.insuranceCard as any).relationshipType === 'self' ? '本人' :
+                     (receipt.insuranceCard as any).relationshipType === 'preschool' ? '未就学者' :
+                     (receipt.insuranceCard as any).relationshipType === 'family' ? '家族' :
+                     (receipt.insuranceCard as any).relationshipType === 'elderly_general' ? '高齢受給者一般・低所得者' :
+                     (receipt.insuranceCard as any).relationshipType === 'elderly_70' ? '高齢受給者7割' : '-'}
+                  </div>
+                </div>
+              )}
+              {(receipt.insuranceCard as any).ageCategory && (
+                <div>
+                  <div className="text-sm text-muted-foreground">年齢区分</div>
+                  <div className="font-medium">
+                    {(receipt.insuranceCard as any).ageCategory === 'preschool' ? '未就学者（6歳未満）' :
+                     (receipt.insuranceCard as any).ageCategory === 'general' ? '一般' :
+                     (receipt.insuranceCard as any).ageCategory === 'elderly' ? '高齢者（75歳以上）' : '-'}
+                  </div>
+                </div>
+              )}
+              {(receipt.insuranceCard as any).elderlyRecipientCategory && (
+                <div>
+                  <div className="text-sm text-muted-foreground">高齢受給者区分</div>
+                  <div className="font-medium">
+                    {(receipt.insuranceCard as any).elderlyRecipientCategory === 'general_low' ? '一般・低所得者（2割負担）' :
+                     (receipt.insuranceCard as any).elderlyRecipientCategory === 'seventy' ? '7割負担（現役並み所得者）' : '-'}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="text-sm text-muted-foreground">有効期間</div>
                 <div className="font-medium">
@@ -781,14 +822,117 @@ export default function MonthlyReceiptDetail() {
                   {receipt.doctorOrder.order.startDate} 〜 {receipt.doctorOrder.order.endDate}
                 </div>
               </div>
+              {(receipt.doctorOrder.order as any).insuranceType && (
+                <div>
+                  <div className="text-sm text-muted-foreground">保険種別</div>
+                  <div className="font-medium">
+                    {(receipt.doctorOrder.order as any).insuranceType === 'medical' ? '医療保険' :
+                     (receipt.doctorOrder.order as any).insuranceType === 'care' ? '介護保険' : '-'}
+                  </div>
+                </div>
+              )}
+              {(receipt.doctorOrder.order as any).instructionType && (
+                <div>
+                  <div className="text-sm text-muted-foreground">指示区分</div>
+                  <div className="font-medium">
+                    {(receipt.doctorOrder.order as any).instructionType === 'regular' ? '訪問看護指示書' :
+                     (receipt.doctorOrder.order as any).instructionType === 'special' ? '特別訪問看護指示書' :
+                     (receipt.doctorOrder.order as any).instructionType === 'psychiatric' ? '精神科訪問看護指示書' :
+                     (receipt.doctorOrder.order as any).instructionType === 'psychiatric_special' ? '精神科特別訪問看護指示書' :
+                     (receipt.doctorOrder.order as any).instructionType === 'medical_observation' ? '医療観察精神科訪問看護指示' :
+                     (receipt.doctorOrder.order as any).instructionType === 'medical_observation_special' ? '医療観察精神科特別訪問看護指示' : '-'}
+                  </div>
+                </div>
+              )}
               <div className="md:col-span-2">
                 <div className="text-sm text-muted-foreground">病名</div>
                 <div className="font-medium">{receipt.doctorOrder.order.diagnosis}</div>
               </div>
+              {(receipt.doctorOrder.order as any).icd10Code && (
+                <div>
+                  <div className="text-sm text-muted-foreground">ICD-10コード</div>
+                  <div className="font-medium">{(receipt.doctorOrder.order as any).icd10Code}</div>
+                </div>
+              )}
+              {(receipt.doctorOrder.order as any).hasInfusionInstruction !== undefined && (
+                <div>
+                  <div className="text-sm text-muted-foreground">点滴注射指示</div>
+                  <div className="font-medium">
+                    {(receipt.doctorOrder.order as any).hasInfusionInstruction ? 'はい' : 'いいえ'}
+                  </div>
+                </div>
+              )}
+              {(receipt.doctorOrder.order as any).hasPressureUlcerTreatment !== undefined && (
+                <div>
+                  <div className="text-sm text-muted-foreground">床ずれ処置</div>
+                  <div className="font-medium">
+                    {(receipt.doctorOrder.order as any).hasPressureUlcerTreatment ? 'はい' : 'いいえ'}
+                  </div>
+                </div>
+              )}
+              {(receipt.doctorOrder.order as any).hasHomeInfusionManagement !== undefined && (
+                <div>
+                  <div className="text-sm text-muted-foreground">在宅患者訪問点滴注射管理指導料</div>
+                  <div className="font-medium">
+                    {(receipt.doctorOrder.order as any).hasHomeInfusionManagement ? 'はい' : 'いいえ'}
+                  </div>
+                </div>
+              )}
               <div className="md:col-span-2">
                 <div className="text-sm text-muted-foreground">指示内容</div>
                 <div className="font-medium whitespace-pre-wrap">{receipt.doctorOrder.order.orderContent}</div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Public Expense Cards Information */}
+      {receipt.publicExpenseCards && receipt.publicExpenseCards.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5" />
+              公費負担医療情報
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {receipt.publicExpenseCards.map((card, index) => (
+                <div key={card.id}>
+                  {index > 0 && <Separator className="my-4" />}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">優先順位</div>
+                      <div className="font-medium">{card.priority}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">法別番号</div>
+                      <div className="font-medium">{card.legalCategoryNumber}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">負担者番号</div>
+                      <div className="font-medium">{card.beneficiaryNumber}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">受給者番号</div>
+                      <div className="font-medium">{card.recipientNumber}</div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-sm text-muted-foreground">有効期間</div>
+                      <div className="font-medium">
+                        {card.validFrom} 〜 {card.validUntil || '期限なし'}
+                      </div>
+                    </div>
+                    {card.notes && (
+                      <div className="md:col-span-2">
+                        <div className="text-sm text-muted-foreground">備考</div>
+                        <div className="font-medium whitespace-pre-wrap">{card.notes}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -1016,13 +1160,10 @@ export default function MonthlyReceiptDetail() {
           open={insuranceCardDialogOpen}
           onOpenChange={(open) => {
             setInsuranceCardDialogOpen(open)
-            if (!open) {
-              // Refresh receipt data and re-validate after editing
-              queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
-              queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"] })
-              // Auto-validate after editing
-              validateMutation.mutate()
-            }
+            // Note: キャンセル時にも検証が実行されるのを防ぐため、
+            // ここでは明示的にクエリ無効化や検証を実行しない。
+            // 保存成功時は、InsuranceCardDialog内のqueryClient.invalidateQueries()により
+            // 自動的にデータが再取得される。
           }}
           patientId={receipt.patientId}
           card={{
@@ -1032,16 +1173,16 @@ export default function MonthlyReceiptDetail() {
             cardType: receipt.insuranceCard.cardType as 'medical' | 'long_term_care',
             insurerNumber: receipt.insuranceCard.insurerNumber,
             insuredNumber: receipt.insuranceCard.insuredNumber,
-            insuredSymbol: '',
-            insuredCardNumber: '',
+            insuredSymbol: (receipt.insuranceCard as any).insuredSymbol || '',
+            insuredCardNumber: (receipt.insuranceCard as any).insuredCardNumber || '',
             copaymentRate: (receipt.insuranceCard.copaymentRate as '10' | '20' | '30') || null,
             validFrom: receipt.insuranceCard.validFrom,
             validUntil: receipt.insuranceCard.validUntil || null,
-            certificationDate: '',
-            notes: '',
-            relationshipType: null, // Phase 3: 本人家族区分
-            ageCategory: null, // Phase 3: 年齢区分
-            elderlyRecipientCategory: null, // Phase 3: 高齢受給者区分
+            certificationDate: (receipt.insuranceCard as any).certificationDate || '',
+            notes: (receipt.insuranceCard as any).notes || '',
+            relationshipType: (receipt.insuranceCard as any).relationshipType || null, // Phase 3: 本人家族区分
+            ageCategory: (receipt.insuranceCard as any).ageCategory || null, // Phase 3: 年齢区分
+            elderlyRecipientCategory: (receipt.insuranceCard as any).elderlyRecipientCategory || null, // Phase 3: 高齢受給者区分
             isActive: true,
             filePath: null,
             originalFileName: null,
@@ -1056,13 +1197,10 @@ export default function MonthlyReceiptDetail() {
           open={doctorOrderDialogOpen}
           onOpenChange={(open) => {
             setDoctorOrderDialogOpen(open)
-            if (!open) {
-              // Refresh receipt data and re-validate after editing
-              queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
-              queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"] })
-              // Auto-validate after editing
-              validateMutation.mutate()
-            }
+            // Note: キャンセル時にも検証が実行されるのを防ぐため、
+            // ここでは明示的にクエリ無効化や検証を実行しない。
+            // 保存成功時は、DoctorOrderDialog内のqueryClient.invalidateQueries()により
+            // 自動的にデータが再取得される。
           }}
           patientId={receipt.patientId}
           order={{
@@ -1076,12 +1214,18 @@ export default function MonthlyReceiptDetail() {
             diagnosis: receipt.doctorOrder.order.diagnosis,
             orderContent: receipt.doctorOrder.order.orderContent,
             isActive: true,
-            notes: null,
-            weeklyVisitLimit: null,
+            notes: (receipt.doctorOrder.order as any).notes || null,
+            weeklyVisitLimit: (receipt.doctorOrder.order as any).weeklyVisitLimit || null,
             filePath: null,
             originalFileName: null,
-            icd10Code: null,
-            instructionType: 'regular', // Phase 3: 指示区分（デフォルト: 訪問看護指示）
+            icd10Code: (receipt.doctorOrder.order as any).icd10Code || null,
+            instructionType: (receipt.doctorOrder.order as any).instructionType || 'regular', // Phase 3: 指示区分
+            insuranceType: (receipt.doctorOrder.order as any).insuranceType || null,
+            nursingInstructionStartDate: (receipt.doctorOrder.order as any).nursingInstructionStartDate || null,
+            nursingInstructionEndDate: (receipt.doctorOrder.order as any).nursingInstructionEndDate || null,
+            hasInfusionInstruction: (receipt.doctorOrder.order as any).hasInfusionInstruction ?? null,
+            hasPressureUlcerTreatment: (receipt.doctorOrder.order as any).hasPressureUlcerTreatment ?? null,
+            hasHomeInfusionManagement: (receipt.doctorOrder.order as any).hasHomeInfusionManagement ?? null,
             createdAt: new Date(),
             updatedAt: new Date(),
           }}
