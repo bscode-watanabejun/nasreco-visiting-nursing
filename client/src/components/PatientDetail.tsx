@@ -1008,6 +1008,46 @@ export function PatientDetail() {
                                     <p className="font-medium">{card.insuredCardNumber}</p>
                                   </div>
                                 )}
+                                {(card as any).insuranceType && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">保険種別</p>
+                                    <p className="font-medium">
+                                      {(card as any).insuranceType === 'medical' ? '医療保険' :
+                                       (card as any).insuranceType === 'care' ? '介護保険' : '未設定'}
+                                    </p>
+                                  </div>
+                                )}
+                                {(card as any).relationshipType && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">本人家族区分</p>
+                                    <p className="font-medium">
+                                      {(card as any).relationshipType === 'self' ? '本人' :
+                                       (card as any).relationshipType === 'preschool' ? '未就学者' :
+                                       (card as any).relationshipType === 'family' ? '家族' :
+                                       (card as any).relationshipType === 'elderly_general' ? '高齢受給者一般・低所得者' :
+                                       (card as any).relationshipType === 'elderly_70' ? '高齢受給者7割' : '未設定'}
+                                    </p>
+                                  </div>
+                                )}
+                                {(card as any).ageCategory && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">年齢区分</p>
+                                    <p className="font-medium">
+                                      {(card as any).ageCategory === 'preschool' ? '未就学者（6歳未満）' :
+                                       (card as any).ageCategory === 'general' ? '一般' :
+                                       (card as any).ageCategory === 'elderly' ? '高齢者（75歳以上）' : '未設定'}
+                                    </p>
+                                  </div>
+                                )}
+                                {(card as any).elderlyRecipientCategory && (
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">高齢受給者区分</p>
+                                    <p className="font-medium">
+                                      {(card as any).elderlyRecipientCategory === 'general_low' ? '一般・低所得者（2割負担）' :
+                                       (card as any).elderlyRecipientCategory === 'seventy' ? '7割負担（現役並み所得者）' : '未設定'}
+                                    </p>
+                                  </div>
+                                )}
                                 {card.copaymentRate && (
                                   <div>
                                     <p className="text-sm text-muted-foreground">負担割合</p>
