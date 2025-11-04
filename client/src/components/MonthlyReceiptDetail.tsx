@@ -995,6 +995,7 @@ export default function MonthlyReceiptDetail() {
             weeklyVisitLimit: null,
             filePath: null,
             originalFileName: null,
+            icd10Code: null,
             createdAt: new Date(),
             updatedAt: new Date(),
           }}

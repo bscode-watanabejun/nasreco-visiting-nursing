@@ -70,6 +70,11 @@ import {
   buildings,
   specialManagementDefinitions,
   specialManagementFields,
+  prefectureCodes,
+  nursingServiceCodes,
+  staffQualificationCodes,
+  visitLocationCodes,
+  receiptTypeCodes,
   type NursingRecordAttachment,
   type MedicalInstitution,
   type CareManager,
@@ -8153,6 +8158,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("記録書I Excel生成エラー:", error);
       if (!res.headersSent) res.status(500).json({ error: "Excel生成中にエラーが発生しました" });
+    }
+  });
+
+  // ========== マスターデータ取得API ==========
+
+  // 都道府県コード一覧
+  app.get("/api/master/prefecture-codes", async (req, res) => {
+    try {
+      const codes = await db.query.prefectureCodes.findMany({
+        where: eq(prefectureCodes.isActive, true),
+        orderBy: [asc(prefectureCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching prefecture codes:", error);
+      res.status(500).json({ error: "都道府県コードの取得に失敗しました" });
+    }
+  });
+
+  // 訪問看護サービスコード一覧
+  app.get("/api/master/nursing-service-codes", async (req, res) => {
+    try {
+      const { isActive, insuranceType } = req.query;
+
+      let whereConditions = [];
+      if (isActive !== undefined) {
+        whereConditions.push(eq(nursingServiceCodes.isActive, isActive === 'true'));
+      }
+      if (insuranceType && (insuranceType === 'medical' || insuranceType === 'care')) {
+        whereConditions.push(eq(nursingServiceCodes.insuranceType, insuranceType));
+      }
+
+      const codes = await db.query.nursingServiceCodes.findMany({
+        where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
+        orderBy: [asc(nursingServiceCodes.serviceCode)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching nursing service codes:", error);
+      res.status(500).json({ error: "サービスコードの取得に失敗しました" });
+    }
+  });
+
+  // 職員資格コード一覧
+  app.get("/api/master/staff-qualification-codes", async (req, res) => {
+    try {
+      const codes = await db.query.staffQualificationCodes.findMany({
+        where: eq(staffQualificationCodes.isActive, true),
+        orderBy: [asc(staffQualificationCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching staff qualification codes:", error);
+      res.status(500).json({ error: "職員資格コードの取得に失敗しました" });
+    }
+  });
+
+  // 訪問場所コード一覧
+  app.get("/api/master/visit-location-codes", async (req, res) => {
+    try {
+      const codes = await db.query.visitLocationCodes.findMany({
+        where: eq(visitLocationCodes.isActive, true),
+        orderBy: [asc(visitLocationCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching visit location codes:", error);
+      res.status(500).json({ error: "訪問場所コードの取得に失敗しました" });
+    }
+  });
+
+  // レセプト種別コード一覧
+  app.get("/api/master/receipt-type-codes", async (req, res) => {
+    try {
+      const { insuranceType } = req.query;
+
+      let whereConditions = [eq(receiptTypeCodes.isActive, true)];
+      if (insuranceType && (insuranceType === 'medical' || insuranceType === 'care')) {
+        whereConditions.push(eq(receiptTypeCodes.insuranceType, insuranceType));
+      }
+
+      const codes = await db.query.receiptTypeCodes.findMany({
+        where: and(...whereConditions),
+        orderBy: [asc(receiptTypeCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching receipt type codes:", error);
+      res.status(500).json({ error: "レセプト種別コードの取得に失敗しました" });
     }
   });
 

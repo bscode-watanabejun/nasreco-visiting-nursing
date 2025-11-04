@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Building2 } from "lucide-react";
 import type { MedicalInstitution } from "@shared/schema";
+import { masterDataApi } from "@/lib/api";
 
 export default function MedicalInstitutionManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -41,6 +43,9 @@ export default function MedicalInstitutionManagement() {
     fax: "",
     email: "",
     notes: "",
+    // Phase3: レセプトCSV対応
+    institutionCode: "",
+    prefectureCode: "",
   });
 
   // Fetch medical institutions
@@ -53,6 +58,12 @@ export default function MedicalInstitutionManagement() {
       }
       return response.json()
     },
+  });
+
+  // Fetch prefecture codes
+  const { data: prefectureCodes = [] } = useQuery({
+    queryKey: ["prefecture-codes"],
+    queryFn: masterDataApi.getPrefectureCodes,
   });
 
   // Create mutation
@@ -131,6 +142,8 @@ export default function MedicalInstitutionManagement() {
         fax: institution.fax || "",
         email: institution.email || "",
         notes: institution.notes || "",
+        institutionCode: institution.institutionCode || "",
+        prefectureCode: institution.prefectureCode || "",
       });
     } else {
       setEditingInstitution(null);
@@ -144,6 +157,8 @@ export default function MedicalInstitutionManagement() {
         fax: "",
         email: "",
         notes: "",
+        institutionCode: "",
+        prefectureCode: "",
       });
     }
     setIsDialogOpen(true);
@@ -341,6 +356,44 @@ export default function MedicalInstitutionManagement() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
+                </div>
+              </div>
+
+              {/* Phase3: レセプトCSV対応フィールド */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="institutionCode">医療機関コード</Label>
+                  <Input
+                    id="institutionCode"
+                    placeholder="7桁 (例: 1234567)"
+                    maxLength={7}
+                    value={formData.institutionCode}
+                    onChange={(e) => setFormData({ ...formData, institutionCode: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    レセプトCSV出力に必要です（任意）
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="prefectureCode">都道府県</Label>
+                  <Select
+                    value={formData.prefectureCode}
+                    onValueChange={(value) => setFormData({ ...formData, prefectureCode: value })}
+                  >
+                    <SelectTrigger id="prefectureCode">
+                      <SelectValue placeholder="都道府県を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {prefectureCodes.map((pref) => (
+                        <SelectItem key={pref.prefectureCode} value={pref.prefectureCode}>
+                          {pref.prefectureName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    レセプトCSV出力に必要です（任意）
+                  </p>
                 </div>
               </div>
 

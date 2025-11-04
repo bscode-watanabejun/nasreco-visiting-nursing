@@ -52,6 +52,7 @@ const patientFormSchema = z.object({
   patientNumber: z.string().min(1, "患者番号は必須です"),
   lastName: z.string().min(1, "姓は必須です"),
   firstName: z.string().min(1, "名は必須です"),
+  kanaName: z.string().optional(), // カナ氏名（全角カタカナ、任意）
   dateOfBirth: z.date({
     required_error: "生年月日は必須です",
   }),
@@ -141,6 +142,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       patientNumber: "",
       lastName: "",
       firstName: "",
+      kanaName: "",
       dateOfBirth: undefined,
       gender: undefined,
       address: "",
@@ -197,6 +199,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           patientNumber: patient.patientNumber || "",
           lastName: patient.lastName || "",
           firstName: patient.firstName || "",
+          kanaName: patient.kanaName || "",
           dateOfBirth: patient.dateOfBirth ? new Date(patient.dateOfBirth + 'T00:00:00') : undefined,
           gender: patient.gender || undefined,
           address: patient.address || "",
@@ -236,6 +239,7 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           patientNumber: "",
           lastName: "",
           firstName: "",
+          kanaName: "",
           dateOfBirth: undefined,
           gender: undefined,
           address: "",
@@ -486,6 +490,23 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="kanaName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>カナ氏名</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: サトウタロウ（全角カタカナ）" {...field} />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        レセプトCSV出力に必要です（任意）
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
