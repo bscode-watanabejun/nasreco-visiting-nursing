@@ -403,6 +403,12 @@ export const doctorOrders = pgTable("doctor_orders", {
 
   // Phase 3: レセプト指示区分判定用のフィールド
   instructionType: instructionTypeEnum("instruction_type").notNull().default("regular"), // 指示区分
+  insuranceType: insuranceTypeEnum("insurance_type"), // 保険種別（医療保険・介護保険）
+  nursingInstructionStartDate: date("nursing_instruction_start_date"), // 訪問看護指示期間開始日
+  nursingInstructionEndDate: date("nursing_instruction_end_date"), // 訪問看護指示期間終了日
+  hasInfusionInstruction: boolean("has_infusion_instruction"), // 点滴注射指示の有無
+  hasPressureUlcerTreatment: boolean("has_pressure_ulcer_treatment"), // 床ずれ処置の有無
+  hasHomeInfusionManagement: boolean("has_home_infusion_management"), // 在宅患者訪問点滴注射管理指導料の有無
 
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
