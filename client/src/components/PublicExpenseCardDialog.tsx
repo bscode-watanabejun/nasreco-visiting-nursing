@@ -131,18 +131,22 @@ export function PublicExpenseCardDialog({
         })
       } else {
         // 新規登録モード: フォームをクリア
+        // 利用可能な最初の優先順位を設定（なければ空文字）
+        const defaultPriority = availablePriorities.length > 0
+          ? availablePriorities[0].toString()
+          : ""
         form.reset({
           beneficiaryNumber: "",
           recipientNumber: "",
           legalCategoryNumber: "",
-          priority: "1",
+          priority: defaultPriority,
           validFrom: "",
           validUntil: "",
           notes: "",
         })
       }
     }
-  }, [open, editingCard, form])
+  }, [open, editingCard, form, availablePriorities])
 
   const onSubmit = async (data: PublicExpenseCardFormData) => {
     try {
