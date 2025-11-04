@@ -331,12 +331,12 @@ export default function MonthlyReceiptDetail() {
         throw new Error(errorData.error || 'CSVの生成に失敗しました')
       }
 
-      // CSVファイルとしてダウンロード
+      // CSVファイルとしてダウンロード（訪問看護療養費オンライン請求仕様に準拠）
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `receipt_${receipt!.targetYear}${String(receipt!.targetMonth).padStart(2, '0')}_${receipt!.patient.patientNumber}.csv`
+      link.download = 'RECEIPTH.UKE'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

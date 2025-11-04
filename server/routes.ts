@@ -10,6 +10,9 @@ import { storage } from "./storage";
 import { uploadFile, downloadFile, deleteFile } from "./object-storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import { requireSystemAdmin } from "./middleware/system-admin";
+import { validateMonthlyReceiptData, validateMultipleReceipts } from "./services/csvValidationService";
+import { generateNursingReceiptCsv } from "./services/csv/nursingReceiptCsvBuilder";
+import type { ReceiptCsvData } from "./services/csv/types";
 import {
   insertUserSchema,
   insertPatientSchema,
@@ -7019,6 +7022,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const errorMessages = validationResult.errors.map(e => e.message);
         const warningMessages = validationResult.warnings.map(w => w.message);
 
+        // Run CSV export validation
+        const csvValidationResult = await validateMonthlyReceiptData(
+          facilityId,
+          patientId,
+          year,
+          month
+        );
+
+        // Merge CSV validation warnings/errors with existing ones
+        const allErrors = [
+          ...errorMessages,
+          ...csvValidationResult.errors.map(e => `[CSV出力] ${e.message}`)
+        ];
+        const allWarnings = [
+          ...warningMessages,
+          ...csvValidationResult.warnings.map(w => `[CSV出力] ${w.message}`)
+        ];
+
         // Check if receipt already exists
         const existingReceipt = await db.select()
           .from(monthlyReceipts)
@@ -7048,10 +7069,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bonusBreakdown,
               totalPoints,
               totalAmount,
-              hasErrors,
-              hasWarnings,
-              errorMessages,
-              warningMessages,
+              hasErrors: allErrors.length > 0,
+              hasWarnings: allWarnings.length > 0,
+              errorMessages: allErrors,
+              warningMessages: allWarnings,
               updatedAt: new Date(),
             })
             .where(eq(monthlyReceipts.id, existingReceipt[0].id))
@@ -7073,10 +7094,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bonusBreakdown,
               totalPoints,
               totalAmount,
-              hasErrors,
-              hasWarnings,
-              errorMessages,
-              warningMessages,
+              hasErrors: allErrors.length > 0,
+              hasWarnings: allWarnings.length > 0,
+              errorMessages: allErrors,
+              warningMessages: allWarnings,
             })
             .returning();
 
@@ -8543,6 +8564,268 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating receipt type code:", error);
       res.status(500).json({ error: "レセプト種別コードの更新に失敗しました" });
+    }
+  });
+
+  // ======================
+  // CSV出力データチェックAPI
+  // ======================
+
+  /**
+   * 単一月次レセプトのデータ検証
+   * GET /api/receipts/:id/validate
+   */
+  app.get("/api/receipts/:id/validate", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // レセプト情報を取得
+      const receipt = await db.query.monthlyReceipts.findFirst({
+        where: eq(monthlyReceipts.id, id),
+      });
+
+      if (!receipt) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      // バリデーション実行
+      const validationResult = await validateMonthlyReceiptData(
+        receipt.facilityId,
+        receipt.patientId,
+        receipt.targetYear,
+        receipt.targetMonth
+      );
+
+      res.json(validationResult);
+    } catch (error) {
+      console.error("Error validating receipt:", error);
+      res.status(500).json({ error: "レセプトの検証に失敗しました" });
+    }
+  });
+
+  /**
+   * 複数月次レセプトのバッチ検証
+   * POST /api/receipts/validate-batch
+   * Body: { receiptIds: string[] }
+   */
+  app.post("/api/receipts/validate-batch", requireAuth, async (req, res) => {
+    try {
+      const { receiptIds } = req.body;
+
+      if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
+        return res.status(400).json({ error: "レセプトIDの配列が必要です" });
+      }
+
+      // バッチ検証実行
+      const resultsMap = await validateMultipleReceipts(receiptIds);
+
+      // Map を オブジェクトに変換して返す
+      const results: Record<string, any> = {};
+      resultsMap.forEach((value, key) => {
+        results[key] = value;
+      });
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error batch validating receipts:", error);
+      res.status(500).json({ error: "レセプトのバッチ検証に失敗しました" });
+    }
+  });
+
+  /**
+   * 月次レセプト生成前の事前チェック
+   * POST /api/receipts/pre-check
+   * Body: { facilityId: string, patientId: string, targetYear: number, targetMonth: number }
+   */
+  app.post("/api/receipts/pre-check", requireAuth, async (req, res) => {
+    try {
+      const { facilityId, patientId, targetYear, targetMonth } = req.body;
+
+      if (!facilityId || !patientId || !targetYear || !targetMonth) {
+        return res.status(400).json({
+          error: "facilityId, patientId, targetYear, targetMonth は必須です"
+        });
+      }
+
+      // バリデーション実行
+      const validationResult = await validateMonthlyReceiptData(
+        facilityId,
+        patientId,
+        targetYear,
+        targetMonth
+      );
+
+      res.json(validationResult);
+    } catch (error) {
+      console.error("Error pre-checking receipt data:", error);
+      res.status(500).json({ error: "レセプトデータの事前チェックに失敗しました" });
+    }
+  });
+
+  // ======================
+  // 医療保険レセプトCSV出力API
+  // ======================
+
+  /**
+   * 単一月次レセプトのCSV出力
+   * GET /api/receipts/:id/export-csv
+   */
+  app.get("/api/receipts/:id/export-csv", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // レセプト情報を取得
+      const receipt = await db.query.monthlyReceipts.findFirst({
+        where: eq(monthlyReceipts.id, id),
+      });
+
+      if (!receipt) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      // 事前バリデーション
+      const validationResult = await validateMonthlyReceiptData(
+        receipt.facilityId,
+        receipt.patientId,
+        receipt.targetYear,
+        receipt.targetMonth
+      );
+
+      if (!validationResult.canExportCsv) {
+        return res.status(400).json({
+          error: "CSV出力に必要なデータが不足しています",
+          validation: validationResult
+        });
+      }
+
+      // 関連データを取得してCSVデータを構築
+      const [facility, patient, nursingRecordsData, doctorOrdersData] = await Promise.all([
+        db.query.facilities.findFirst({
+          where: eq(facilities.id, receipt.facilityId),
+        }),
+        db.query.patients.findFirst({
+          where: eq(patients.id, receipt.patientId),
+        }),
+        db.query.nursingRecords.findMany({
+          where: and(
+            eq(nursingRecords.patientId, receipt.patientId),
+            eq(nursingRecords.facilityId, receipt.facilityId)
+          ),
+        }),
+        db.query.doctorOrders.findMany({
+          where: and(
+            eq(doctorOrders.patientId, receipt.patientId),
+            eq(doctorOrders.facilityId, receipt.facilityId),
+            eq(doctorOrders.isActive, true)
+          ),
+        }),
+      ]);
+
+      if (!facility || !patient) {
+        return res.status(500).json({ error: "必要なデータが見つかりません" });
+      }
+
+      // 対象月の訪問記録をフィルタ
+      const startDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 1);
+      const endDate = new Date(receipt.targetYear, receipt.targetMonth, 0);
+      const targetRecords = nursingRecordsData.filter(record => {
+        const visitDate = new Date(record.visitDate);
+        return visitDate >= startDate && visitDate <= endDate;
+      });
+
+      // 有効な訪問看護指示書を取得
+      const validOrder = doctorOrdersData.find(order => {
+        const orderStart = new Date(order.startDate);
+        const orderEnd = new Date(order.endDate);
+        return orderStart <= startDate && orderEnd >= endDate;
+      });
+
+      if (!validOrder) {
+        return res.status(400).json({ error: "有効な訪問看護指示書がありません" });
+      }
+
+      // 医療機関情報を取得
+      const medicalInstitution = await db.query.medicalInstitutions.findFirst({
+        where: eq(medicalInstitutions.id, validOrder.medicalInstitutionId),
+      });
+
+      if (!medicalInstitution) {
+        return res.status(500).json({ error: "医療機関情報が見つかりません" });
+      }
+
+      // CSVデータを構築
+      const csvData: ReceiptCsvData = {
+        receipt: {
+          id: receipt.id,
+          targetYear: receipt.targetYear,
+          targetMonth: receipt.targetMonth,
+          insuranceType: receipt.insuranceType,
+          visitCount: receipt.visitCount,
+          totalPoints: receipt.totalPoints,
+          totalAmount: receipt.totalAmount,
+        },
+        facility: {
+          facilityCode: facility.facilityCode || '0000000',
+          prefectureCode: facility.prefectureCode || '00',
+          name: facility.name,
+          address: facility.address || '',
+          phone: facility.phone || '',
+        },
+        patient: {
+          id: patient.id,
+          patientNumber: patient.patientNumber,
+          lastName: patient.lastName,
+          firstName: patient.firstName,
+          kanaName: patient.kanaName || '',
+          dateOfBirth: patient.dateOfBirth,
+          gender: patient.gender,
+          insuranceNumber: patient.insuranceNumber || '',
+        },
+        medicalInstitution: {
+          institutionCode: medicalInstitution.institutionCode || '0000000',
+          prefectureCode: medicalInstitution.prefectureCode || '00',
+          name: medicalInstitution.name,
+          doctorName: medicalInstitution.doctorName,
+        },
+        doctorOrder: {
+          id: validOrder.id,
+          startDate: validOrder.startDate,
+          endDate: validOrder.endDate,
+          diagnosis: validOrder.diagnosis,
+          icd10Code: validOrder.icd10Code || '',
+        },
+        nursingRecords: targetRecords.map(record => ({
+          id: record.id,
+          visitDate: record.visitDate,
+          actualStartTime: record.actualStartTime instanceof Date
+            ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
+            : (record.actualStartTime || ''),
+          actualEndTime: record.actualEndTime instanceof Date
+            ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
+            : (record.actualEndTime || ''),
+          serviceCode: record.serviceCodeId || '000000000',
+          visitLocationCode: record.visitLocationCode || '00',
+          staffQualificationCode: record.staffQualificationCode || '00',
+          calculatedPoints: record.calculatedPoints || 0,
+          appliedBonuses: (record.appliedBonuses as any[]) || [],
+        })),
+        bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],
+      };
+
+      // 訪問看護療養費CSV生成
+      const csvBuffer = await generateNursingReceiptCsv(csvData);
+
+      // ファイル名を生成
+      const fileName = `receipt_${receipt.targetYear}${String(receipt.targetMonth).padStart(2, '0')}_${patient.patientNumber}.csv`;
+
+      // レスポンスヘッダー設定
+      res.setHeader('Content-Type', 'text/csv; charset=Shift_JIS');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(csvBuffer);
+
+    } catch (error) {
+      console.error("Error exporting receipt CSV:", error);
+      res.status(500).json({ error: "CSV出力に失敗しました" });
     }
   });
 
