@@ -133,9 +133,20 @@ export function determineReceiptTypeCode(
  * 負担区分コードを判定 (別表22: 26パターン)
  *
  * 判定要素:
- * 1. 保険種別
- * 2. 公費の組み合わせ
- * 3. 本人家族区分
+ * 1. 保険種別（医保・国保・後期高齢者）
+ * 2. 公費の組み合わせ（公費①②③④の位置）
+ *
+ * 別表22の構造:
+ * - 1者: 1, 5, 6, B, C （公費単独）
+ * - 2者: 2, 3, E, G, 7, H, I, J, K, L （医保+公費1枚、または公費2枚）
+ * - 3者: 4, M, N, O, P, Q, R, S, T, U （医保+公費2枚、または公費3枚）
+ * - 4者: V, W, X, Y, Z （医保+公費3枚、または公費4枚）
+ * - 5者: 9 （医保+公費4枚）
+ *
+ * 注意:
+ * - 別表22には医保のみ、後期高齢者のみのパターンは存在しない
+ * - 公費の優先順位（priority）により①②③④の位置が決まる前提
+ * - 後期高齢者は医保・国保と同じ扱いで暫定対応
  */
 export function determineBurdenClassificationCode(
   patient: PatientInfo,
@@ -143,52 +154,68 @@ export function determineBurdenClassificationCode(
   publicExpenses: PublicExpenseInfo[]
 ): string {
   const publicExpenseCount = publicExpenses.length;
-  const { cardType, relationshipType } = insuranceCard;
+  const { cardType } = insuranceCard;
   const insuranceType = patient.insuranceType;
 
   // 介護保険の場合
   if (cardType === 'long_term_care') {
-    return '9'; // 介護保険
+    return '9'; // 介護保険（5者併用と同じコードだが別扱い）
   }
 
-  // 公費のみの場合
-  if (!insuranceType || insuranceType === 'none') {
-    if (publicExpenseCount === 1) return '1'; // 単独公費
-    if (publicExpenseCount === 2) return '7'; // 二併公費
-    if (publicExpenseCount === 3) return '8'; // 三併公費
-    if (publicExpenseCount === 4) return '9'; // 四併公費（※実際は9が介護と重複するため要確認）
+  // 医保・国保の有無を判定
+  const hasInsurance = insuranceType &&
+                       insuranceType !== 'none' &&
+                       insuranceType !== 'medical_elderly';
+
+  // 公費のみの場合（医保・国保なし、後期高齢者でもない）
+  if (!hasInsurance && insuranceType !== 'medical_elderly') {
+    if (publicExpenseCount === 0) return '1'; // エラーケース: 最小コードで暫定対応
+    if (publicExpenseCount === 1) return '1'; // 公費①単独
+    if (publicExpenseCount === 2) return '7'; // 公費①②併用
+    if (publicExpenseCount === 3) return 'R'; // 公費①②③併用
+    if (publicExpenseCount === 4) return 'Z'; // 公費①②③④併用（'9'は介護保険と重複するため'Z'を使用）
     return '1';
   }
 
   // 後期高齢者医療の場合
+  // 注: 別表22には後期高齢者の明記がないため、医保・国保と同じ扱いで暫定対応
   if (insuranceType === 'medical_elderly') {
-    switch (publicExpenseCount) {
-      case 0: return '0'; // 後期高齢者のみ
-      case 1: return '1'; // 後期+単独公費
-      case 2: return '7'; // 後期+二併公費
-      case 3: return '8'; // 後期+三併公費
-      case 4: return '9'; // 後期+四併公費
-      default: return '0';
-    }
+    if (publicExpenseCount === 0) return '1'; // 後期のみ: 別表22に存在しないため最小コードで暫定対応
+    if (publicExpenseCount === 1) return '2'; // 後期+公費①: 医保+公費①と同じ扱い（2者併用）
+    if (publicExpenseCount === 2) return '4'; // 後期+公費①②: 医保+公費①②と同じ扱い（3者併用）
+    if (publicExpenseCount === 3) return 'V'; // 後期+公費①②③: 医保+公費①②③と同じ扱い（4者併用）
+    if (publicExpenseCount === 4) return '9'; // 後期+公費①②③④: 5者併用
+    return '1';
   }
 
   // 医保・国保の場合
-  // 未就学者も「本人」として扱う（負担区分: 本人=0）
-  const isSelf = relationshipType === 'self' || relationshipType === 'preschool' || relationshipType === null;
-
-  // 公費なし
   if (publicExpenseCount === 0) {
-    return isSelf ? '0' : '2'; // 本人 or 家族
+    // 医保・国保のみ: 別表22に存在しないため最小コードで暫定対応
+    return '1';
   }
 
-  // 公費あり
-  switch (publicExpenseCount) {
-    case 1: return '1'; // 医保・国保 + 単独公費
-    case 2: return '7'; // 医保・国保 + 二併公費
-    case 3: return '8'; // 医保・国保 + 三併公費
-    case 4: return '9'; // 医保・国保 + 四併公費
-    default: return '0';
+  if (publicExpenseCount === 1) {
+    // 医保・国保 + 公費①: コード'2'（2者併用）
+    return '2';
   }
+
+  if (publicExpenseCount === 2) {
+    // 医保・国保 + 公費①②: コード'4'（3者併用）
+    return '4';
+  }
+
+  if (publicExpenseCount === 3) {
+    // 医保・国保 + 公費①②③: コード'V'（4者併用）
+    return 'V';
+  }
+
+  if (publicExpenseCount === 4) {
+    // 医保・国保 + 公費①②③④: コード'9'（5者併用）
+    return '9';
+  }
+
+  // デフォルト（エラーケース）
+  return '1';
 }
 
 /**

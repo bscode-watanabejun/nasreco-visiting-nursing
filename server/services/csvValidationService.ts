@@ -14,13 +14,15 @@ import {
   doctorOrders,
   medicalInstitutions,
   monthlyReceipts,
+  insuranceCards,
+  publicExpenseCards,
 } from '@shared/schema';
 
 export interface ValidationWarning {
   field: string;
   message: string;
   severity: 'error' | 'warning';
-  recordType: 'facility' | 'patient' | 'nursingRecord' | 'doctorOrder' | 'medicalInstitution';
+  recordType: 'facility' | 'patient' | 'nursingRecord' | 'doctorOrder' | 'medicalInstitution' | 'insuranceCard' | 'publicExpenseCard';
   recordId?: string;
 }
 
@@ -126,6 +128,17 @@ async function validatePatient(patientId: string): Promise<ValidationWarning[]> 
     });
   }
 
+  // Phase 3: 保険種別のチェック
+  if (!patient.insuranceType) {
+    warnings.push({
+      field: 'insuranceType',
+      message: `患者「${patient.lastName} ${patient.firstName}」の保険種別が未設定です`,
+      severity: 'error',
+      recordType: 'patient',
+      recordId: patientId,
+    });
+  }
+
   return warnings;
 }
 
@@ -183,6 +196,127 @@ async function validateMedicalInstitution(institutionId: string): Promise<Valida
 }
 
 /**
+ * Phase 3: 保険証情報の検証
+ */
+async function validateInsuranceCard(patientId: string): Promise<ValidationWarning[]> {
+  const warnings: ValidationWarning[] = [];
+
+  const cards = await db.query.insuranceCards.findMany({
+    where: and(
+      eq(insuranceCards.patientId, patientId),
+      eq(insuranceCards.isActive, true)
+    ),
+  });
+
+  if (cards.length === 0) {
+    warnings.push({
+      field: 'insuranceCard',
+      message: '有効な保険証情報がありません',
+      severity: 'error',
+      recordType: 'insuranceCard',
+    });
+    return warnings;
+  }
+
+  const card = cards[0]; // 最初の有効な保険証を検証
+
+  // 医療保険の場合、本人家族区分が必須
+  if (card.cardType === 'medical' && !card.relationshipType) {
+    warnings.push({
+      field: 'relationshipType',
+      message: '保険証の本人家族区分が未設定です（医療保険の場合は必須）',
+      severity: 'error',
+      recordType: 'insuranceCard',
+      recordId: card.id,
+    });
+  }
+
+  // 年齢区分のチェック（自動計算されているはずだが、念のため）
+  if (!card.ageCategory) {
+    warnings.push({
+      field: 'ageCategory',
+      message: '保険証の年齢区分が未設定です',
+      severity: 'warning',
+      recordType: 'insuranceCard',
+      recordId: card.id,
+    });
+  }
+
+  return warnings;
+}
+
+/**
+ * Phase 3: 公費負担医療情報の検証
+ */
+async function validatePublicExpenseCards(patientId: string): Promise<ValidationWarning[]> {
+  const warnings: ValidationWarning[] = [];
+
+  const cards = await db.query.publicExpenseCards.findMany({
+    where: and(
+      eq(publicExpenseCards.patientId, patientId),
+      eq(publicExpenseCards.isActive, true)
+    ),
+  });
+
+  // 公費は任意なので、0枚でもOK
+  for (const card of cards) {
+    // 法別番号のチェック（2桁）
+    if (!card.legalCategoryNumber) {
+      warnings.push({
+        field: 'legalCategoryNumber',
+        message: `公費負担医療カード（優先順位${card.priority}）の法別番号が未設定です`,
+        severity: 'error',
+        recordType: 'publicExpenseCard',
+        recordId: card.id,
+      });
+    } else if (card.legalCategoryNumber.length !== 2 || !/^\d{2}$/.test(card.legalCategoryNumber)) {
+      warnings.push({
+        field: 'legalCategoryNumber',
+        message: `公費負担医療カード（優先順位${card.priority}）の法別番号は2桁の数字である必要があります`,
+        severity: 'error',
+        recordType: 'publicExpenseCard',
+        recordId: card.id,
+      });
+    }
+
+    // 負担者番号のチェック
+    if (!card.beneficiaryNumber) {
+      warnings.push({
+        field: 'beneficiaryNumber',
+        message: `公費負担医療カード（優先順位${card.priority}）の負担者番号が未設定です`,
+        severity: 'error',
+        recordType: 'publicExpenseCard',
+        recordId: card.id,
+      });
+    }
+
+    // 受給者番号のチェック
+    if (!card.recipientNumber) {
+      warnings.push({
+        field: 'recipientNumber',
+        message: `公費負担医療カード（優先順位${card.priority}）の受給者番号が未設定です`,
+        severity: 'error',
+        recordType: 'publicExpenseCard',
+        recordId: card.id,
+      });
+    }
+
+    // 優先順位のチェック
+    if (card.priority < 1 || card.priority > 4) {
+      warnings.push({
+        field: 'priority',
+        message: `公費負担医療カードの優先順位は1-4の範囲内である必要があります（現在: ${card.priority}）`,
+        severity: 'error',
+        recordType: 'publicExpenseCard',
+        recordId: card.id,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * 訪問看護指示書データの検証
  */
 async function validateDoctorOrder(patientId: string, targetMonth: Date): Promise<ValidationWarning[]> {
@@ -213,13 +347,44 @@ async function validateDoctorOrder(patientId: string, targetMonth: Date): Promis
     return warnings;
   }
 
-  // 指示書のICD-10コードチェック
+  // Phase 3: 指示書の必須フィールドチェック
   for (const order of validOrders) {
+    // ICD-10コードのチェック
     if (!order.icd10Code) {
       warnings.push({
         field: 'icd10Code',
         message: '訪問看護指示書にICD-10コードが未設定です',
         severity: 'warning',
+        recordType: 'doctorOrder',
+        recordId: order.id,
+      });
+    } else if (order.icd10Code.length > 7 || !/^[A-Z0-9]+$/.test(order.icd10Code)) {
+      warnings.push({
+        field: 'icd10Code',
+        message: `ICD-10コードの形式が正しくありません（7桁以内の英数字: ${order.icd10Code}）`,
+        severity: 'error',
+        recordType: 'doctorOrder',
+        recordId: order.id,
+      });
+    }
+
+    // 保険種別のチェック
+    if (!order.insuranceType) {
+      warnings.push({
+        field: 'insuranceType',
+        message: '訪問看護指示書の保険種別が未設定です',
+        severity: 'error',
+        recordType: 'doctorOrder',
+        recordId: order.id,
+      });
+    }
+
+    // 指示区分のチェック
+    if (!order.instructionType) {
+      warnings.push({
+        field: 'instructionType',
+        message: '訪問看護指示書の指示区分が未設定です',
+        severity: 'error',
         recordType: 'doctorOrder',
         recordId: order.id,
       });
@@ -307,15 +472,19 @@ export async function validateMonthlyReceiptData(
   const startDate = new Date(targetYear, targetMonth - 1, 1);
   const endDate = new Date(targetYear, targetMonth, 0);
 
-  // 各データの検証
+  // 各データの検証 (Phase 3: 保険証・公費情報の検証を追加)
   const [
     facilityWarnings,
     patientWarnings,
+    insuranceCardWarnings,
+    publicExpenseWarnings,
     doctorOrderWarnings,
     nursingRecordWarnings,
   ] = await Promise.all([
     validateFacility(facilityId),
     validatePatient(patientId),
+    validateInsuranceCard(patientId),
+    validatePublicExpenseCards(patientId),
     validateDoctorOrder(patientId, startDate),
     validateNursingRecords(patientId, startDate, endDate),
   ]);
@@ -323,6 +492,8 @@ export async function validateMonthlyReceiptData(
   warnings.push(
     ...facilityWarnings,
     ...patientWarnings,
+    ...insuranceCardWarnings,
+    ...publicExpenseWarnings,
     ...doctorOrderWarnings,
     ...nursingRecordWarnings
   );
