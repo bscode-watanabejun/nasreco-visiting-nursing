@@ -8983,6 +8983,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           gender: patient.gender,
           insuranceNumber: patient.insuranceNumber || '',
           insuranceType: patient.insuranceType, // Phase 3: 保険種別
+          deathDate: patient.deathDate || null, // RJレコード用：死亡年月日
         },
         // Phase 3: 保険証情報（有効な保険証の中から最初のものを使用）
         insuranceCard: {
@@ -8990,6 +8991,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           relationshipType: insuranceCardsData[0]?.relationshipType || null,
           ageCategory: insuranceCardsData[0]?.ageCategory || null,
           elderlyRecipientCategory: insuranceCardsData[0]?.elderlyRecipientCategory || null,
+          // HO/KOレコード出力用フィールド（schema.tsの既存フィールド名を使用）
+          insurerNumber: insuranceCardsData[0]?.insurerNumber || '',
+          certificateSymbol: insuranceCardsData[0]?.insuredSymbol || '',     // schema: insuredSymbol
+          certificateNumber: insuranceCardsData[0]?.insuredCardNumber || '', // schema: insuredCardNumber
         },
         // Phase 3: 公費負担医療情報（優先順位順）
         publicExpenses: publicExpensesData.map(pe => ({

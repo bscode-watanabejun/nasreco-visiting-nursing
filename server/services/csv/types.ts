@@ -37,6 +37,7 @@ export interface ReceiptCsvData {
     gender: 'male' | 'female' | 'other';
     insuranceNumber: string;
     insuranceType: string | null; // Phase 3: 保険種別（動的判定用）
+    deathDate?: Date | string | null; // 死亡日（RJレコード用）
   };
 
   // 医療機関情報（訪問看護指示書発行元）
@@ -53,6 +54,10 @@ export interface ReceiptCsvData {
     relationshipType: 'self' | 'preschool' | 'family' | 'elderly_general' | 'elderly_70' | null;
     ageCategory: 'preschool' | 'general' | 'elderly' | null;
     elderlyRecipientCategory: 'general_low' | 'seventy' | null;
+    // HO/KOレコード出力用フィールド（仕様書PDFページ10-11準拠）
+    insurerNumber: string;        // 保険者番号（8桁固定）
+    certificateSymbol: string;    // 被保険者証記号
+    certificateNumber: string;    // 被保険者証番号
   };
 
   // 公費負担医療情報（Phase 3: 動的判定用）
