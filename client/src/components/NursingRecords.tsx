@@ -1902,8 +1902,8 @@ export function NursingRecords() {
         {formData.patientId && (isCreating || isEditing) && (
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="doctor-orders">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
+              <AccordionTrigger className="pointer-events-none hover:no-underline">
+                <div className="flex items-center gap-2 pointer-events-auto cursor-pointer hover:underline w-fit">
                   <FileText className="h-4 w-4" />
                   <span>訪問看護指示書</span>
                   {activeDoctorOrders.length > 0 && (
@@ -2005,8 +2005,8 @@ export function NursingRecords() {
             </AccordionItem>
 
             <AccordionItem value="care-plan">
-              <AccordionTrigger>
-                <div className="flex items-center gap-2">
+              <AccordionTrigger className="pointer-events-none hover:no-underline">
+                <div className="flex items-center gap-2 pointer-events-auto cursor-pointer hover:underline w-fit">
                   <FileText className="h-4 w-4" />
                   <span>ケアプラン（居宅サービス計画書）</span>
                   {latestCarePlan && <Badge variant="secondary">1件</Badge>}
