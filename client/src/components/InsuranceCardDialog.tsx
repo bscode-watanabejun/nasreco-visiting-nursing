@@ -35,6 +35,9 @@ interface FormData {
   certificationDate: string
   notes: string
   file?: File | null
+  relationshipType: 'self' | 'preschool' | 'family' | 'elderly_general' | 'elderly_70' | ''
+  ageCategory: 'preschool' | 'general' | 'elderly' | ''
+  elderlyRecipientCategory: 'general_low' | 'seventy' | ''
 }
 
 const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: string): FormData => ({
@@ -49,7 +52,25 @@ const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: stri
   validUntil: card?.validUntil || '',
   certificationDate: card?.certificationDate || '',
   notes: card?.notes || '',
+  relationshipType: card?.relationshipType || '',
+  ageCategory: card?.ageCategory || '',
+  elderlyRecipientCategory: card?.elderlyRecipientCategory || '',
 })
+
+// 年齢区分を計算する関数
+const calculateAgeCategory = (birthDate: string | null): 'preschool' | 'general' | 'elderly' | '' => {
+  if (!birthDate) return ''
+  const today = new Date()
+  const birth = new Date(birthDate)
+  const age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+  const dayDiff = today.getDate() - birth.getDate()
+  const adjustedAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age
+
+  if (adjustedAge < 6) return 'preschool'
+  if (adjustedAge >= 75) return 'elderly'
+  return 'general'
+}
 
 export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: InsuranceCardDialogProps) {
   const queryClient = useQueryClient()
@@ -67,12 +88,45 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
     ? patientsData
     : ((patientsData as { data: Patient[] })?.data || [])
 
+  // 選択された患者の情報を取得
+  const selectedPatient = patients.find(p => p.id === formData.patientId)
+
+  // 患者の年齢を計算
+  const patientAge = selectedPatient?.dateOfBirth
+    ? (() => {
+        const today = new Date()
+        const birth = new Date(selectedPatient.dateOfBirth)
+        const age = today.getFullYear() - birth.getFullYear()
+        const monthDiff = today.getMonth() - birth.getMonth()
+        const dayDiff = today.getDate() - birth.getDate()
+        return monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age
+      })()
+    : null
+
   // Reset form when dialog opens or card changes
   useEffect(() => {
     if (open) {
-      setFormData(getInitialFormData(card, patientId))
+      const initialData = getInitialFormData(card, patientId)
+      setFormData(initialData)
+
+      // ダイアログを開いた時点で患者が選択されていれば年齢区分を再計算
+      if (initialData.patientId) {
+        const patient = patients.find(p => p.id === initialData.patientId)
+        if (patient?.dateOfBirth) {
+          const ageCategory = calculateAgeCategory(patient.dateOfBirth)
+          setFormData(prev => ({ ...prev, ageCategory }))
+        }
+      }
     }
-  }, [open, card, patientId])
+  }, [open, card, patientId, patients])
+
+  // 患者が変更されたら年齢区分を自動計算
+  useEffect(() => {
+    if (selectedPatient?.dateOfBirth) {
+      const ageCategory = calculateAgeCategory(selectedPatient.dateOfBirth)
+      setFormData(prev => ({ ...prev, ageCategory }))
+    }
+  }, [selectedPatient?.dateOfBirth])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -141,6 +195,9 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         if (formData.validUntil) multipartData.append('validUntil', formData.validUntil)
         if (formData.certificationDate) multipartData.append('certificationDate', formData.certificationDate)
         if (formData.notes) multipartData.append('notes', formData.notes)
+        if (formData.relationshipType) multipartData.append('relationshipType', formData.relationshipType)
+        if (formData.ageCategory) multipartData.append('ageCategory', formData.ageCategory)
+        if (formData.elderlyRecipientCategory) multipartData.append('elderlyRecipientCategory', formData.elderlyRecipientCategory)
         multipartData.append('file', formData.file)
 
         response = await fetch(url, {
@@ -161,6 +218,9 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
           ...(formData.validUntil && { validUntil: formData.validUntil }),
           ...(formData.certificationDate && { certificationDate: formData.certificationDate }),
           ...(formData.notes && { notes: formData.notes }),
+          ...(formData.relationshipType && { relationshipType: formData.relationshipType }),
+          ...(formData.ageCategory && { ageCategory: formData.ageCategory }),
+          ...(formData.elderlyRecipientCategory && { elderlyRecipientCategory: formData.elderlyRecipientCategory }),
         }
 
         response = await fetch(url, {
@@ -334,6 +394,82 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
               </SelectContent>
             </Select>
           </div>
+
+          {/* Relationship Type (医療保険のみ) */}
+          {formData.cardType === 'medical' && (
+            <div className="space-y-2">
+              <Label htmlFor="relationshipType">本人家族区分（医療保険のみ）</Label>
+              <Select
+                value={formData.relationshipType}
+                onValueChange={(value: 'self' | 'preschool' | 'family' | 'elderly_general' | 'elderly_70') =>
+                  setFormData(prev => ({ ...prev, relationshipType: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="本人家族区分を選択してください" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="self">本人</SelectItem>
+                  <SelectItem value="preschool">未就学者</SelectItem>
+                  <SelectItem value="family">家族</SelectItem>
+                  <SelectItem value="elderly_general">高齢受給者一般・低所得者</SelectItem>
+                  <SelectItem value="elderly_70">高齢受給者7割</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                レセプト種別コードの判定に使用されます
+              </p>
+            </div>
+          )}
+
+          {/* Age Category (自動計算、表示のみ) */}
+          {selectedPatient && (
+            <div className="space-y-2">
+              <Label htmlFor="ageCategory">年齢区分（自動計算）</Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 text-sm font-medium px-3 py-2 bg-muted rounded-md">
+                  {formData.ageCategory === 'preschool' && '未就学者（6歳未満）'}
+                  {formData.ageCategory === 'general' && '一般'}
+                  {formData.ageCategory === 'elderly' && '高齢者（75歳以上）'}
+                  {!formData.ageCategory && '未設定'}
+                </div>
+                {patientAge !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    （現在{patientAge}歳）
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                患者の生年月日から自動的に計算されます
+              </p>
+            </div>
+          )}
+
+          {/* Elderly Recipient Category (70-74歳の場合のみ、医療保険のみ) */}
+          {formData.cardType === 'medical' && patientAge !== null && patientAge >= 70 && patientAge < 75 && (
+            <div className="space-y-2">
+              <Label htmlFor="elderlyRecipientCategory">
+                高齢受給者区分（70-74歳の場合）<span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={formData.elderlyRecipientCategory}
+                onValueChange={(value: 'general_low' | 'seventy') =>
+                  setFormData(prev => ({ ...prev, elderlyRecipientCategory: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="高齢受給者区分を選択してください" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general_low">一般・低所得者（2割負担）</SelectItem>
+                  <SelectItem value="seventy">7割負担（現役並み所得者）</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                70-74歳の高齢受給者の負担区分を選択してください
+              </p>
+            </div>
+          )}
 
           {/* Valid Period */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

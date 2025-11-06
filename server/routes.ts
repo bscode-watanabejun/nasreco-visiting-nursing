@@ -10,6 +10,9 @@ import { storage } from "./storage";
 import { uploadFile, downloadFile, deleteFile } from "./object-storage";
 import { requireAuth, requireCorporateAdmin, checkSubdomainAccess } from "./middleware/access-control";
 import { requireSystemAdmin } from "./middleware/system-admin";
+import { validateMonthlyReceiptData, validateMultipleReceipts } from "./services/csvValidationService";
+import { generateNursingReceiptCsv } from "./services/csv/nursingReceiptCsvBuilder";
+import type { ReceiptCsvData } from "./services/csv/types";
 import {
   insertUserSchema,
   insertPatientSchema,
@@ -55,6 +58,7 @@ import {
   careManagers,
   doctorOrders,
   insuranceCards,
+  publicExpenseCards,
   carePlans,
   serviceCarePlans,
   careReports,
@@ -70,6 +74,11 @@ import {
   buildings,
   specialManagementDefinitions,
   specialManagementFields,
+  prefectureCodes,
+  nursingServiceCodes,
+  staffQualificationCodes,
+  visitLocationCodes,
+  receiptTypeCodes,
   type NursingRecordAttachment,
   type MedicalInstitution,
   type CareManager,
@@ -2439,14 +2448,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const createdSchedules = [];
       for (const scheduleDate of filteredDates) {
         // Combine date with time
+        // Note: Time is interpreted as JST, so we need to subtract 9 hours to store as UTC
         const [startHour, startMinute] = startTime.split(':').map(Number);
         const [endHour, endMinute] = endTime.split(':').map(Number);
 
         const scheduledStartTime = new Date(scheduleDate);
-        scheduledStartTime.setHours(startHour, startMinute, 0, 0);
+        scheduledStartTime.setUTCHours(startHour - 9, startMinute, 0, 0);
 
         const scheduledEndTime = new Date(scheduleDate);
-        scheduledEndTime.setHours(endHour, endMinute, 0, 0);
+        scheduledEndTime.setUTCHours(endHour - 9, endMinute, 0, 0);
 
         const scheduleData = {
           facilityId,
@@ -4737,6 +4747,183 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Public Expense Cards API (公費負担医療情報) ==========
+
+  // Get all public expense cards for a patient
+  app.get("/api/public-expense-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { patientId } = req.query;
+
+      if (!patientId || typeof patientId !== 'string') {
+        return res.status(400).json({ error: "患者IDが必要です" });
+      }
+
+      const cards = await db.query.publicExpenseCards.findMany({
+        where: and(
+          eq(publicExpenseCards.patientId, patientId),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ),
+        orderBy: asc(publicExpenseCards.priority),
+      });
+
+      res.json(cards);
+    } catch (error) {
+      console.error("Get public expense cards error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get a single public expense card by ID
+  app.get("/api/public-expense-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { id } = req.params;
+
+      const card = await db.query.publicExpenseCards.findFirst({
+        where: and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ),
+      });
+
+      if (!card) {
+        return res.status(404).json({ error: "公費情報が見つかりません" });
+      }
+
+      res.json(card);
+    } catch (error) {
+      console.error("Get public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Create a new public expense card
+  app.post("/api/public-expense-cards", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const data = req.body;
+
+      // Validate facility access
+      if (data.facilityId && data.facilityId !== facilityId) {
+        return res.status(403).json({ error: "アクセス権限がありません" });
+      }
+
+      // Check for duplicate priority
+      if (data.priority) {
+        const existingCard = await db.query.publicExpenseCards.findFirst({
+          where: and(
+            eq(publicExpenseCards.patientId, data.patientId),
+            eq(publicExpenseCards.facilityId, facilityId),
+            eq(publicExpenseCards.priority, data.priority),
+            eq(publicExpenseCards.isActive, true)
+          ),
+        });
+
+        if (existingCard) {
+          return res.status(400).json({
+            error: `優先順位${data.priority}は既に使用されています。別の優先順位を選択してください。`
+          });
+        }
+      }
+
+      const [newCard] = await db.insert(publicExpenseCards)
+        .values({
+          ...data,
+          facilityId,
+          id: crypto.randomUUID(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      res.status(201).json(newCard);
+    } catch (error) {
+      console.error("Create public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Update a public expense card
+  app.patch("/api/public-expense-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { id } = req.params;
+      const data = req.body;
+
+      // Get the current card
+      const currentCard = await db.query.publicExpenseCards.findFirst({
+        where: and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ),
+      });
+
+      if (!currentCard) {
+        return res.status(404).json({ error: "公費情報が見つかりません" });
+      }
+
+      // Check for duplicate priority (only if priority is being changed)
+      if (data.priority && data.priority !== currentCard.priority) {
+        const existingCard = await db.query.publicExpenseCards.findFirst({
+          where: and(
+            eq(publicExpenseCards.patientId, currentCard.patientId),
+            eq(publicExpenseCards.facilityId, facilityId),
+            eq(publicExpenseCards.priority, data.priority),
+            eq(publicExpenseCards.isActive, true),
+            ne(publicExpenseCards.id, id) // Exclude current card
+          ),
+        });
+
+        if (existingCard) {
+          return res.status(400).json({
+            error: `優先順位${data.priority}は既に使用されています。別の優先順位を選択してください。`
+          });
+        }
+      }
+
+      const [updatedCard] = await db.update(publicExpenseCards)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ))
+        .returning();
+
+      res.json(updatedCard);
+    } catch (error) {
+      console.error("Update public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Delete a public expense card
+  app.delete("/api/public-expense-cards/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { id } = req.params;
+
+      const [deletedCard] = await db.delete(publicExpenseCards)
+        .where(and(
+          eq(publicExpenseCards.id, id),
+          eq(publicExpenseCards.facilityId, facilityId)
+        ))
+        .returning();
+
+      if (!deletedCard) {
+        return res.status(404).json({ error: "公費情報が見つかりません" });
+      }
+
+      res.json({ message: "公費情報を削除しました" });
+    } catch (error) {
+      console.error("Delete public expense card error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Monthly Statistics API (月次実績集計) ==========
 
   // Get monthly visit statistics for billing
@@ -6811,6 +6998,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(desc(doctorOrders.orderDate))
         .limit(1);
 
+      // Get public expense cards information
+      const publicExpenseCardsData = await db.select()
+        .from(publicExpenseCards)
+        .where(and(
+          eq(publicExpenseCards.patientId, patientId),
+          eq(publicExpenseCards.facilityId, facilityId),
+          eq(publicExpenseCards.isActive, true)
+        ))
+        .orderBy(asc(publicExpenseCards.priority));
+
       res.json({
         ...receiptData[0].receipt,
         patient: receiptData[0].patient,
@@ -6820,6 +7017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           order: doctorOrderData[0].order,
           medicalInstitution: doctorOrderData[0].medicalInstitution,
         } : null,
+        publicExpenseCards: publicExpenseCardsData,
         relatedRecords: relatedRecords.map(r => ({
           ...r.record,
           nurse: r.nurse,
@@ -7014,6 +7212,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const errorMessages = validationResult.errors.map(e => e.message);
         const warningMessages = validationResult.warnings.map(w => w.message);
 
+        // Run CSV export validation
+        const csvValidationResult = await validateMonthlyReceiptData(
+          facilityId,
+          patientId,
+          year,
+          month
+        );
+
+        // Merge CSV validation warnings/errors with existing ones
+        const allErrors = [
+          ...errorMessages,
+          ...csvValidationResult.errors.map(e => `[CSV出力] ${e.message}`)
+        ];
+        const allWarnings = [
+          ...warningMessages,
+          ...csvValidationResult.warnings.map(w => `[CSV出力] ${w.message}`)
+        ];
+
         // Check if receipt already exists
         const existingReceipt = await db.select()
           .from(monthlyReceipts)
@@ -7043,10 +7259,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bonusBreakdown,
               totalPoints,
               totalAmount,
-              hasErrors,
-              hasWarnings,
-              errorMessages,
-              warningMessages,
+              hasErrors: allErrors.length > 0,
+              hasWarnings: allWarnings.length > 0,
+              errorMessages: allErrors,
+              warningMessages: allWarnings,
               updatedAt: new Date(),
             })
             .where(eq(monthlyReceipts.id, existingReceipt[0].id))
@@ -7068,10 +7284,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bonusBreakdown,
               totalPoints,
               totalAmount,
-              hasErrors,
-              hasWarnings,
-              errorMessages,
-              warningMessages,
+              hasErrors: allErrors.length > 0,
+              hasWarnings: allWarnings.length > 0,
+              errorMessages: allErrors,
+              warningMessages: allWarnings,
             })
             .returning();
 
@@ -8153,6 +8369,687 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("記録書I Excel生成エラー:", error);
       if (!res.headersSent) res.status(500).json({ error: "Excel生成中にエラーが発生しました" });
+    }
+  });
+
+  // ========== マスターデータ取得API ==========
+
+  // 都道府県コード一覧
+  app.get("/api/master/prefecture-codes", async (req, res) => {
+    try {
+      const codes = await db.query.prefectureCodes.findMany({
+        orderBy: [asc(prefectureCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching prefecture codes:", error);
+      res.status(500).json({ error: "都道府県コードの取得に失敗しました" });
+    }
+  });
+
+  // 訪問看護サービスコード一覧
+  app.get("/api/master/nursing-service-codes", async (req, res) => {
+    try {
+      const { isActive, insuranceType } = req.query;
+
+      let whereConditions = [];
+      if (isActive !== undefined) {
+        whereConditions.push(eq(nursingServiceCodes.isActive, isActive === 'true'));
+      }
+      if (insuranceType && (insuranceType === 'medical' || insuranceType === 'care')) {
+        whereConditions.push(eq(nursingServiceCodes.insuranceType, insuranceType));
+      }
+
+      const codes = await db.query.nursingServiceCodes.findMany({
+        where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
+        orderBy: [asc(nursingServiceCodes.serviceCode)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching nursing service codes:", error);
+      res.status(500).json({ error: "サービスコードの取得に失敗しました" });
+    }
+  });
+
+  // 職員資格コード一覧
+  app.get("/api/master/staff-qualification-codes", async (req, res) => {
+    try {
+      const codes = await db.query.staffQualificationCodes.findMany({
+        orderBy: [asc(staffQualificationCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching staff qualification codes:", error);
+      res.status(500).json({ error: "職員資格コードの取得に失敗しました" });
+    }
+  });
+
+  // 訪問場所コード一覧
+  app.get("/api/master/visit-location-codes", async (req, res) => {
+    try {
+      const codes = await db.query.visitLocationCodes.findMany({
+        orderBy: [asc(visitLocationCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching visit location codes:", error);
+      res.status(500).json({ error: "訪問場所コードの取得に失敗しました" });
+    }
+  });
+
+  // レセプト種別コード一覧
+  app.get("/api/master/receipt-type-codes", async (req, res) => {
+    try {
+      const { insuranceType } = req.query;
+
+      let whereConditions = [];
+      if (insuranceType && (insuranceType === 'medical' || insuranceType === 'care')) {
+        whereConditions.push(eq(receiptTypeCodes.insuranceType, insuranceType));
+      }
+
+      const codes = await db.query.receiptTypeCodes.findMany({
+        where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
+        orderBy: [asc(receiptTypeCodes.displayOrder)],
+      });
+      res.json(codes);
+    } catch (error) {
+      console.error("Error fetching receipt type codes:", error);
+      res.status(500).json({ error: "レセプト種別コードの取得に失敗しました" });
+    }
+  });
+
+  // ========== マスターデータCRUD API ==========
+
+  // 都道府県コード - 作成
+  app.post("/api/master/prefecture-codes", async (req, res) => {
+    try {
+      const { prefectureCode, prefectureName, displayOrder } = req.body;
+
+      if (!prefectureCode || !prefectureName) {
+        return res.status(400).json({ error: "都道府県コードと名称は必須です" });
+      }
+
+      const [newCode] = await db.insert(prefectureCodes).values({
+        id: crypto.randomUUID(),
+        prefectureCode,
+        prefectureName,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating prefecture code:", error);
+      res.status(500).json({ error: "都道府県コードの作成に失敗しました" });
+    }
+  });
+
+  // 都道府県コード - 更新
+  app.put("/api/master/prefecture-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { prefectureCode, prefectureName, displayOrder, isActive } = req.body;
+
+      const [updated] = await db.update(prefectureCodes)
+        .set({
+          prefectureCode,
+          prefectureName,
+          displayOrder,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(prefectureCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "都道府県コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating prefecture code:", error);
+      res.status(500).json({ error: "都道府県コードの更新に失敗しました" });
+    }
+  });
+
+  // 訪問看護サービスコード - 作成
+  app.post("/api/master/nursing-service-codes", async (req, res) => {
+    try {
+      const { serviceCode, serviceName, insuranceType, points, description } = req.body;
+
+      if (!serviceCode || !serviceName || !insuranceType || !points) {
+        return res.status(400).json({ error: "サービスコード、名称、保険種別、点数は必須です" });
+      }
+
+      if (insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+
+      const [newCode] = await db.insert(nursingServiceCodes).values({
+        id: crypto.randomUUID(),
+        serviceCode,
+        serviceName,
+        insuranceType,
+        points: parseInt(points),
+        validFrom: today,
+        description: description || null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating nursing service code:", error);
+      res.status(500).json({ error: "サービスコードの作成に失敗しました" });
+    }
+  });
+
+  // 訪問看護サービスコード - 更新
+  app.put("/api/master/nursing-service-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { serviceCode, serviceName, insuranceType, points, description, isActive } = req.body;
+
+      if (insuranceType && insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const [updated] = await db.update(nursingServiceCodes)
+        .set({
+          serviceCode,
+          serviceName,
+          insuranceType,
+          points: points ? parseInt(points) : undefined,
+          description,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(nursingServiceCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "サービスコードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating nursing service code:", error);
+      res.status(500).json({ error: "サービスコードの更新に失敗しました" });
+    }
+  });
+
+  // 職員資格コード - 作成
+  app.post("/api/master/staff-qualification-codes", async (req, res) => {
+    try {
+      const { qualificationCode, qualificationName, displayOrder } = req.body;
+
+      if (!qualificationCode || !qualificationName) {
+        return res.status(400).json({ error: "資格コードと名称は必須です" });
+      }
+
+      const [newCode] = await db.insert(staffQualificationCodes).values({
+        id: crypto.randomUUID(),
+        qualificationCode,
+        qualificationName,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating staff qualification code:", error);
+      res.status(500).json({ error: "職員資格コードの作成に失敗しました" });
+    }
+  });
+
+  // 職員資格コード - 更新
+  app.put("/api/master/staff-qualification-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { qualificationCode, qualificationName, displayOrder, isActive } = req.body;
+
+      const [updated] = await db.update(staffQualificationCodes)
+        .set({
+          qualificationCode,
+          qualificationName,
+          displayOrder,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(staffQualificationCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "職員資格コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating staff qualification code:", error);
+      res.status(500).json({ error: "職員資格コードの更新に失敗しました" });
+    }
+  });
+
+  // 訪問場所コード - 作成
+  app.post("/api/master/visit-location-codes", async (req, res) => {
+    try {
+      const { locationCode, locationName, displayOrder } = req.body;
+
+      if (!locationCode || !locationName) {
+        return res.status(400).json({ error: "場所コードと名称は必須です" });
+      }
+
+      const [newCode] = await db.insert(visitLocationCodes).values({
+        id: crypto.randomUUID(),
+        locationCode,
+        locationName,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating visit location code:", error);
+      res.status(500).json({ error: "訪問場所コードの作成に失敗しました" });
+    }
+  });
+
+  // 訪問場所コード - 更新
+  app.put("/api/master/visit-location-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { locationCode, locationName, displayOrder, isActive } = req.body;
+
+      const [updated] = await db.update(visitLocationCodes)
+        .set({
+          locationCode,
+          locationName,
+          displayOrder,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(visitLocationCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "訪問場所コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating visit location code:", error);
+      res.status(500).json({ error: "訪問場所コードの更新に失敗しました" });
+    }
+  });
+
+  // レセプト種別コード - 作成
+  app.post("/api/master/receipt-type-codes", async (req, res) => {
+    try {
+      const { receiptTypeCode, receiptTypeName, insuranceType, displayOrder, description } = req.body;
+
+      if (!receiptTypeCode || !receiptTypeName || !insuranceType) {
+        return res.status(400).json({ error: "種別コード、名称、保険種別は必須です" });
+      }
+
+      if (insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const [newCode] = await db.insert(receiptTypeCodes).values({
+        id: crypto.randomUUID(),
+        receiptTypeCode,
+        receiptTypeName,
+        insuranceType,
+        displayOrder: displayOrder || 0,
+        description: description || null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      res.json(newCode);
+    } catch (error) {
+      console.error("Error creating receipt type code:", error);
+      res.status(500).json({ error: "レセプト種別コードの作成に失敗しました" });
+    }
+  });
+
+  // レセプト種別コード - 更新
+  app.put("/api/master/receipt-type-codes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { receiptTypeCode, receiptTypeName, insuranceType, displayOrder, description, isActive } = req.body;
+
+      if (insuranceType && insuranceType !== 'medical' && insuranceType !== 'care') {
+        return res.status(400).json({ error: "保険種別は medical または care である必要があります" });
+      }
+
+      const [updated] = await db.update(receiptTypeCodes)
+        .set({
+          receiptTypeCode,
+          receiptTypeName,
+          insuranceType,
+          displayOrder,
+          description,
+          isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(receiptTypeCodes.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "レセプト種別コードが見つかりません" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating receipt type code:", error);
+      res.status(500).json({ error: "レセプト種別コードの更新に失敗しました" });
+    }
+  });
+
+  // ======================
+  // CSV出力データチェックAPI
+  // ======================
+
+  /**
+   * 単一月次レセプトのデータ検証
+   * GET /api/receipts/:id/validate
+   */
+  app.get("/api/receipts/:id/validate", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // レセプト情報を取得
+      const receipt = await db.query.monthlyReceipts.findFirst({
+        where: eq(monthlyReceipts.id, id),
+      });
+
+      if (!receipt) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      // バリデーション実行
+      const validationResult = await validateMonthlyReceiptData(
+        receipt.facilityId,
+        receipt.patientId,
+        receipt.targetYear,
+        receipt.targetMonth
+      );
+
+      res.json(validationResult);
+    } catch (error) {
+      console.error("Error validating receipt:", error);
+      res.status(500).json({ error: "レセプトの検証に失敗しました" });
+    }
+  });
+
+  /**
+   * 複数月次レセプトのバッチ検証
+   * POST /api/receipts/validate-batch
+   * Body: { receiptIds: string[] }
+   */
+  app.post("/api/receipts/validate-batch", requireAuth, async (req, res) => {
+    try {
+      const { receiptIds } = req.body;
+
+      if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
+        return res.status(400).json({ error: "レセプトIDの配列が必要です" });
+      }
+
+      // バッチ検証実行
+      const resultsMap = await validateMultipleReceipts(receiptIds);
+
+      // Map を オブジェクトに変換して返す
+      const results: Record<string, any> = {};
+      resultsMap.forEach((value, key) => {
+        results[key] = value;
+      });
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error batch validating receipts:", error);
+      res.status(500).json({ error: "レセプトのバッチ検証に失敗しました" });
+    }
+  });
+
+  /**
+   * 月次レセプト生成前の事前チェック
+   * POST /api/receipts/pre-check
+   * Body: { facilityId: string, patientId: string, targetYear: number, targetMonth: number }
+   */
+  app.post("/api/receipts/pre-check", requireAuth, async (req, res) => {
+    try {
+      const { facilityId, patientId, targetYear, targetMonth } = req.body;
+
+      if (!facilityId || !patientId || !targetYear || !targetMonth) {
+        return res.status(400).json({
+          error: "facilityId, patientId, targetYear, targetMonth は必須です"
+        });
+      }
+
+      // バリデーション実行
+      const validationResult = await validateMonthlyReceiptData(
+        facilityId,
+        patientId,
+        targetYear,
+        targetMonth
+      );
+
+      res.json(validationResult);
+    } catch (error) {
+      console.error("Error pre-checking receipt data:", error);
+      res.status(500).json({ error: "レセプトデータの事前チェックに失敗しました" });
+    }
+  });
+
+  // ======================
+  // 医療保険レセプトCSV出力API
+  // ======================
+
+  /**
+   * 単一月次レセプトのCSV出力
+   * GET /api/receipts/:id/export-csv
+   */
+  app.get("/api/receipts/:id/export-csv", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // レセプト情報を取得
+      const receipt = await db.query.monthlyReceipts.findFirst({
+        where: eq(monthlyReceipts.id, id),
+      });
+
+      if (!receipt) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      // 事前バリデーション
+      const validationResult = await validateMonthlyReceiptData(
+        receipt.facilityId,
+        receipt.patientId,
+        receipt.targetYear,
+        receipt.targetMonth
+      );
+
+      if (!validationResult.canExportCsv) {
+        return res.status(400).json({
+          error: "CSV出力に必要なデータが不足しています",
+          validation: validationResult
+        });
+      }
+
+      // 関連データを取得してCSVデータを構築（Phase 3: 保険証・公費情報も取得）
+      const [facility, patient, nursingRecordsData, doctorOrdersData, insuranceCardsData, publicExpensesData] = await Promise.all([
+        db.query.facilities.findFirst({
+          where: eq(facilities.id, receipt.facilityId),
+        }),
+        db.query.patients.findFirst({
+          where: eq(patients.id, receipt.patientId),
+        }),
+        db.query.nursingRecords.findMany({
+          where: and(
+            eq(nursingRecords.patientId, receipt.patientId),
+            eq(nursingRecords.facilityId, receipt.facilityId)
+          ),
+        }),
+        db.query.doctorOrders.findMany({
+          where: and(
+            eq(doctorOrders.patientId, receipt.patientId),
+            eq(doctorOrders.facilityId, receipt.facilityId),
+            eq(doctorOrders.isActive, true)
+          ),
+        }),
+        db.query.insuranceCards.findMany({
+          where: and(
+            eq(insuranceCards.patientId, receipt.patientId),
+            eq(insuranceCards.isActive, true)
+          ),
+        }),
+        db.query.publicExpenseCards.findMany({
+          where: and(
+            eq(publicExpenseCards.patientId, receipt.patientId),
+            eq(publicExpenseCards.isActive, true)
+          ),
+          orderBy: asc(publicExpenseCards.priority),
+        }),
+      ]);
+
+      if (!facility || !patient) {
+        return res.status(500).json({ error: "必要なデータが見つかりません" });
+      }
+
+      // 対象月の訪問記録をフィルタ
+      const startDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 1);
+      const endDate = new Date(receipt.targetYear, receipt.targetMonth, 0);
+      const targetRecords = nursingRecordsData.filter(record => {
+        const visitDate = new Date(record.visitDate);
+        return visitDate >= startDate && visitDate <= endDate;
+      });
+
+      // 有効な訪問看護指示書を取得
+      const validOrder = doctorOrdersData.find(order => {
+        const orderStart = new Date(order.startDate);
+        const orderEnd = new Date(order.endDate);
+        return orderStart <= startDate && orderEnd >= endDate;
+      });
+
+      if (!validOrder) {
+        return res.status(400).json({ error: "有効な訪問看護指示書がありません" });
+      }
+
+      // 医療機関情報を取得
+      const medicalInstitution = await db.query.medicalInstitutions.findFirst({
+        where: eq(medicalInstitutions.id, validOrder.medicalInstitutionId),
+      });
+
+      if (!medicalInstitution) {
+        return res.status(500).json({ error: "医療機関情報が見つかりません" });
+      }
+
+      // CSVデータを構築
+      const csvData: ReceiptCsvData = {
+        receipt: {
+          id: receipt.id,
+          targetYear: receipt.targetYear,
+          targetMonth: receipt.targetMonth,
+          insuranceType: receipt.insuranceType,
+          visitCount: receipt.visitCount,
+          totalPoints: receipt.totalPoints,
+          totalAmount: receipt.totalAmount,
+        },
+        facility: {
+          facilityCode: facility.facilityCode || '0000000',
+          prefectureCode: facility.prefectureCode || '00',
+          name: facility.name,
+          address: facility.address || '',
+          phone: facility.phone || '',
+        },
+        patient: {
+          id: patient.id,
+          patientNumber: patient.patientNumber,
+          lastName: patient.lastName,
+          firstName: patient.firstName,
+          kanaName: patient.kanaName || '',
+          dateOfBirth: patient.dateOfBirth,
+          gender: patient.gender,
+          insuranceNumber: patient.insuranceNumber || '',
+          insuranceType: patient.insuranceType, // Phase 3: 保険種別
+          deathDate: patient.deathDate || null, // RJレコード用：死亡年月日
+        },
+        // Phase 3: 保険証情報（有効な保険証の中から最初のものを使用）
+        insuranceCard: {
+          cardType: insuranceCardsData[0]?.cardType || 'medical',
+          relationshipType: insuranceCardsData[0]?.relationshipType || null,
+          ageCategory: insuranceCardsData[0]?.ageCategory || null,
+          elderlyRecipientCategory: insuranceCardsData[0]?.elderlyRecipientCategory || null,
+          // HO/KOレコード出力用フィールド（schema.tsの既存フィールド名を使用）
+          insurerNumber: insuranceCardsData[0]?.insurerNumber || '',
+          certificateSymbol: insuranceCardsData[0]?.insuredSymbol || '',     // schema: insuredSymbol
+          certificateNumber: insuranceCardsData[0]?.insuredCardNumber || '', // schema: insuredCardNumber
+        },
+        // Phase 3: 公費負担医療情報（優先順位順）
+        publicExpenses: publicExpensesData.map(pe => ({
+          legalCategoryNumber: pe.legalCategoryNumber,
+          beneficiaryNumber: pe.beneficiaryNumber,
+          recipientNumber: pe.recipientNumber,
+          priority: pe.priority,
+        })),
+        medicalInstitution: {
+          institutionCode: medicalInstitution.institutionCode || '0000000',
+          prefectureCode: medicalInstitution.prefectureCode || '00',
+          name: medicalInstitution.name,
+          doctorName: medicalInstitution.doctorName,
+        },
+        doctorOrder: {
+          id: validOrder.id,
+          startDate: validOrder.startDate,
+          endDate: validOrder.endDate,
+          diagnosis: validOrder.diagnosis,
+          icd10Code: validOrder.icd10Code || '',
+          instructionType: validOrder.instructionType, // Phase 3: 指示区分
+        },
+        nursingRecords: targetRecords.map(record => ({
+          id: record.id,
+          visitDate: record.visitDate,
+          actualStartTime: record.actualStartTime instanceof Date
+            ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
+            : (record.actualStartTime || ''),
+          actualEndTime: record.actualEndTime instanceof Date
+            ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
+            : (record.actualEndTime || ''),
+          serviceCode: record.serviceCodeId || '000000000',
+          visitLocationCode: record.visitLocationCode || '00',
+          staffQualificationCode: record.staffQualificationCode || '00',
+          calculatedPoints: record.calculatedPoints || 0,
+          appliedBonuses: (record.appliedBonuses as any[]) || [],
+        })),
+        bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],
+      };
+
+      // 訪問看護療養費CSV生成
+      const csvBuffer = await generateNursingReceiptCsv(csvData);
+
+      // ファイル名を生成
+      const fileName = `receipt_${receipt.targetYear}${String(receipt.targetMonth).padStart(2, '0')}_${patient.patientNumber}.csv`;
+
+      // レスポンスヘッダー設定
+      res.setHeader('Content-Type', 'text/csv; charset=Shift_JIS');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(csvBuffer);
+
+    } catch (error) {
+      console.error("Error exporting receipt CSV:", error);
+      res.status(500).json({ error: "CSV出力に失敗しました" });
     }
   });
 

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +41,7 @@ import {
   Settings,
   Trash2
 } from "lucide-react";
-import { facilityApi, type CreateFacilityRequest } from "@/lib/api";
+import { facilityApi, masterDataApi, type CreateFacilityRequest } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useToast } from "@/hooks/use-toast";
@@ -59,6 +60,9 @@ interface FacilityFormData {
   hasEmergencySupportSystem: boolean;
   hasEmergencySupportSystemEnhanced: boolean;
   burdenReductionMeasures: string[];
+  // Phase3: レセプトCSV対応
+  facilityCode: string;
+  prefectureCode: string;
 }
 
 const initialFormData: FacilityFormData = {
@@ -74,6 +78,9 @@ const initialFormData: FacilityFormData = {
   hasEmergencySupportSystem: false,
   hasEmergencySupportSystemEnhanced: false,
   burdenReductionMeasures: [],
+  // Phase3: レセプトCSV対応初期値
+  facilityCode: "",
+  prefectureCode: "",
 };
 
 export function FacilityManagement() {
@@ -95,6 +102,12 @@ export function FacilityManagement() {
   const { data: facilities, isLoading, refetch, error } = useQuery({
     queryKey: ["facilities"],
     queryFn: facilityApi.getFacilities,
+  });
+
+  // Fetch prefecture codes
+  const { data: prefectureCodes } = useQuery({
+    queryKey: ["prefecture-codes"],
+    queryFn: masterDataApi.getPrefectureCodes,
   });
 
   const handleInputChange = (field: keyof FacilityFormData, value: string | boolean | string[]) => {
@@ -126,6 +139,8 @@ export function FacilityManagement() {
         phone: formData.phone,
         email: formData.email,
         isHeadquarters: formData.isHeadquarters,
+        facilityCode: formData.facilityCode || undefined,
+        prefectureCode: formData.prefectureCode || undefined,
       };
 
       await facilityApi.createFacility(facilityData);
@@ -164,6 +179,9 @@ export function FacilityManagement() {
       hasEmergencySupportSystem: facility.hasEmergencySupportSystem || false,
       hasEmergencySupportSystemEnhanced: facility.hasEmergencySupportSystemEnhanced || false,
       burdenReductionMeasures: (facility.burdenReductionMeasures as string[]) || [],
+      // Phase3: レセプトCSV対応フィールドをロード
+      facilityCode: facility.facilityCode || "",
+      prefectureCode: facility.prefectureCode || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -198,6 +216,9 @@ export function FacilityManagement() {
         hasEmergencySupportSystem: formData.hasEmergencySupportSystem,
         hasEmergencySupportSystemEnhanced: formData.hasEmergencySupportSystemEnhanced,
         burdenReductionMeasures: formData.burdenReductionMeasures,
+        // Phase3: レセプトCSV対応
+        facilityCode: formData.facilityCode || undefined,
+        prefectureCode: formData.prefectureCode || undefined,
       });
       setIsEditDialogOpen(false);
       setShowSlugWarning(false);
@@ -327,6 +348,7 @@ export function FacilityManagement() {
             onSubmit={handleCreateFacility}
             isSubmitting={isSubmitting}
             companySlug={companySlug}
+            prefectureCodes={prefectureCodes}
           />
         </Dialog>
       </div>
@@ -489,6 +511,7 @@ export function FacilityManagement() {
           isSubmitting={isSubmitting}
           isEdit
           companySlug={companySlug}
+          prefectureCodes={prefectureCodes}
         />
       </Dialog>
 
@@ -559,6 +582,7 @@ interface FacilityFormDialogProps {
   isSubmitting: boolean;
   isEdit?: boolean;
   companySlug?: string;
+  prefectureCodes?: Array<{ prefectureCode: string; prefectureName: string }>;
 }
 
 function FacilityFormDialog({
@@ -570,6 +594,7 @@ function FacilityFormDialog({
   isSubmitting,
   isEdit = false,
   companySlug,
+  prefectureCodes = [],
 }: FacilityFormDialogProps) {
   return (
     <DialogContent className="sm:max-w-[500px]">
@@ -639,6 +664,44 @@ function FacilityFormDialog({
               onChange={(e) => onInputChange('email', e.target.value)}
               placeholder="例: info@facility.com"
             />
+          </div>
+        </div>
+
+        {/* Phase3: レセプトCSV対応フィールド */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="facilityCode">施設コード</Label>
+            <Input
+              id="facilityCode"
+              value={formData.facilityCode}
+              onChange={(e) => onInputChange('facilityCode', e.target.value)}
+              placeholder="7桁 (例: 1234567)"
+              maxLength={7}
+            />
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力に必要です（任意）
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="prefectureCode">都道府県</Label>
+            <Select
+              value={formData.prefectureCode}
+              onValueChange={(value) => onInputChange('prefectureCode', value)}
+            >
+              <SelectTrigger id="prefectureCode">
+                <SelectValue placeholder="都道府県を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {prefectureCodes.map((pref) => (
+                  <SelectItem key={pref.prefectureCode} value={pref.prefectureCode}>
+                    {pref.prefectureName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力に必要です（任意）
+            </p>
           </div>
         </div>
 

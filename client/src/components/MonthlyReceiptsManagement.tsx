@@ -62,6 +62,10 @@ interface MonthlyReceipt {
   hasWarnings: boolean
   errorMessages: string[] | null
   warningMessages: string[] | null
+  // Phase 3: レセプトCSV対応
+  csvExportReady: boolean | null
+  csvExportWarnings: Array<{field: string; message: string}> | null
+  lastCsvExportCheck: string | null
   patient?: {
     lastName: string
     firstName: string
@@ -512,6 +516,7 @@ export default function MonthlyReceiptsManagement() {
                     <TableHead className="text-right">合計点数</TableHead>
                     <TableHead className="text-right">合計金額</TableHead>
                     <TableHead>ステータス</TableHead>
+                    <TableHead>CSV出力</TableHead>
                     <TableHead className="text-center">操作</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -535,6 +540,24 @@ export default function MonthlyReceiptsManagement() {
                       <TableCell className="text-right">{receipt.totalPoints.toLocaleString()}点</TableCell>
                       <TableCell className="text-right">¥{receipt.totalAmount.toLocaleString()}</TableCell>
                       <TableCell>{getStatusBadge(receipt)}</TableCell>
+                      <TableCell>
+                        {receipt.csvExportReady ? (
+                          <Badge variant="default" className="gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            準備完了
+                          </Badge>
+                        ) : receipt.csvExportWarnings && receipt.csvExportWarnings.length > 0 ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            不足あり
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1">
+                            <XCircle className="w-3 h-3" />
+                            未チェック
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           {!receipt.isConfirmed && (

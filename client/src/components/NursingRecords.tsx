@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/accordion"
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useToast } from "@/hooks/use-toast"
+import { masterDataApi } from "@/lib/api"
 
 import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan, NursingRecordSearchResult } from "@shared/schema"
 
@@ -133,6 +134,10 @@ interface FormData {
   // Schedule override fields (for non-scheduled records)
   demoStaffNameOverride: string
   purposeOverride: string
+  // Phase 3: レセプトCSV対応
+  nursingServiceCode: string // 訪問看護サービスコード
+  visitLocation: string // 訪問場所コード
+  staffQualification: string // 職員資格コード
 }
 
 // Helper function to get full name
@@ -201,6 +206,11 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     // スケジュール未連携時の手動入力フィールド
     ...(formData.demoStaffNameOverride && { demoStaffNameOverride: formData.demoStaffNameOverride }),
     ...(formData.purposeOverride && { purposeOverride: formData.purposeOverride }),
+
+    // Phase 3: レセプトCSV対応フィールド
+    ...(formData.nursingServiceCode && { nursingServiceCode: formData.nursingServiceCode }),
+    ...(formData.visitLocation && { visitLocation: formData.visitLocation }),
+    ...(formData.staffQualification && { staffQualification: formData.staffQualification }),
   }
 
   // スケジュールIDの紐付け - always include for proper tracking
@@ -313,7 +323,11 @@ const getInitialFormData = (): FormData => {
     selectedScheduleId: '',
     specialManagementData: {},
     demoStaffNameOverride: '',
-    purposeOverride: ''
+    purposeOverride: '',
+    // Phase 3: レセプトCSV対応
+    nursingServiceCode: '',
+    visitLocation: '',
+    staffQualification: ''
   }
 }
 
@@ -397,6 +411,22 @@ export function NursingRecords() {
       }
       return response.json()
     },
+  })
+
+  // Phase 3: レセプトCSV対応 - マスターデータフェッチ
+  const { data: nursingServiceCodes = [] } = useQuery({
+    queryKey: ["nursing-service-codes"],
+    queryFn: () => masterDataApi.getNursingServiceCodes(),
+  })
+
+  const { data: visitLocationCodes = [] } = useQuery({
+    queryKey: ["visit-location-codes"],
+    queryFn: () => masterDataApi.getVisitLocationCodes(),
+  })
+
+  const { data: staffQualificationCodes = [] } = useQuery({
+    queryKey: ["staff-qualification-codes"],
+    queryFn: () => masterDataApi.getStaffQualificationCodes(),
   })
 
   // Fetch nursing records from API with search filters
@@ -775,7 +805,11 @@ export function NursingRecords() {
       selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {},
       demoStaffNameOverride: record.demoStaffNameOverride || '',
-      purposeOverride: record.purposeOverride || ''
+      purposeOverride: record.purposeOverride || '',
+      // Phase 3: レセプトCSV対応
+      nursingServiceCode: (record as any).nursingServiceCode || '',
+      visitLocation: (record as any).visitLocation || '',
+      staffQualification: (record as any).staffQualification || ''
     })
 
   }
@@ -819,7 +853,11 @@ export function NursingRecords() {
       selectedScheduleId: record.scheduleId || '',
       specialManagementData: (record.specialManagementData as Record<string, any>) || {},
       demoStaffNameOverride: record.demoStaffNameOverride || '',
-      purposeOverride: record.purposeOverride || ''
+      purposeOverride: record.purposeOverride || '',
+      // Phase 3: レセプトCSV対応
+      nursingServiceCode: (record as any).nursingServiceCode || '',
+      visitLocation: (record as any).visitLocation || '',
+      staffQualification: (record as any).staffQualification || ''
     })
   }
 
@@ -2091,6 +2129,84 @@ export function NursingRecords() {
                   onChange={(e) => setFormData(prev => ({ ...prev, observations: e.target.value }))}
                   className="min-h-[120px] resize-none"
                 />
+              </div>
+
+              {/* Phase 3: レセプトCSV対応フィールド */}
+              <div className="border-t pt-4 mt-4">
+                <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目（任意）</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* 訪問看護サービスコード */}
+                  <div className="space-y-2">
+                    <Label htmlFor="nursing-service-code">サービスコード</Label>
+                    <Select
+                      value={formData.nursingServiceCode || "none"}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, nursingServiceCode: value === "none" ? "" : value }))}
+                    >
+                      <SelectTrigger id="nursing-service-code">
+                        <SelectValue placeholder="選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">未選択</SelectItem>
+                        {nursingServiceCodes.map((code) => (
+                          <SelectItem key={code.serviceCode} value={code.serviceCode}>
+                            {code.serviceCode} - {code.serviceName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      訪問看護サービスの種類
+                    </p>
+                  </div>
+
+                  {/* 訪問場所コード */}
+                  <div className="space-y-2">
+                    <Label htmlFor="visit-location">訪問場所</Label>
+                    <Select
+                      value={formData.visitLocation || "none"}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, visitLocation: value === "none" ? "" : value }))}
+                    >
+                      <SelectTrigger id="visit-location">
+                        <SelectValue placeholder="選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">未選択</SelectItem>
+                        {visitLocationCodes.map((code) => (
+                          <SelectItem key={code.locationCode} value={code.locationCode}>
+                            {code.locationCode} - {code.locationName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      訪問を実施した場所
+                    </p>
+                  </div>
+
+                  {/* 職員資格コード */}
+                  <div className="space-y-2">
+                    <Label htmlFor="staff-qualification">職員資格</Label>
+                    <Select
+                      value={formData.staffQualification || "none"}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, staffQualification: value === "none" ? "" : value }))}
+                    >
+                      <SelectTrigger id="staff-qualification">
+                        <SelectValue placeholder="選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">未選択</SelectItem>
+                        {staffQualificationCodes.map((code) => (
+                          <SelectItem key={code.qualificationCode} value={code.qualificationCode}>
+                            {code.qualificationCode} - {code.qualificationName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      訪問職員の資格
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* 加算管理セクション */}

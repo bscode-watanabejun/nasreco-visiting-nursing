@@ -28,10 +28,16 @@ interface FormData {
   startDate: string
   endDate: string
   diagnosis: string
+  icd10Code: string // ICD-10コード（レセプトCSV出力用）
   orderContent: string
   weeklyVisitLimit: string
   notes: string
   file?: File | null
+  instructionType: 'regular' | 'special' | 'psychiatric' | 'psychiatric_special' | 'medical_observation' | 'medical_observation_special' | ''
+  insuranceType: 'medical' | 'care' | ''
+  hasInfusionInstruction: 'yes' | 'no' | ''
+  hasPressureUlcerTreatment: 'yes' | 'no' | ''
+  hasHomeInfusionManagement: 'yes' | 'no' | ''
 }
 
 const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
@@ -40,9 +46,15 @@ const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
   startDate: order?.startDate || new Date().toISOString().split('T')[0],
   endDate: order?.endDate || '',
   diagnosis: order?.diagnosis || '',
+  icd10Code: order?.icd10Code || '',
   orderContent: order?.orderContent || '',
   weeklyVisitLimit: order?.weeklyVisitLimit?.toString() || '',
   notes: order?.notes || '',
+  instructionType: order?.instructionType || 'regular',
+  insuranceType: order?.insuranceType || '',
+  hasInfusionInstruction: order?.hasInfusionInstruction ? 'yes' : order?.hasInfusionInstruction === false ? 'no' : '',
+  hasPressureUlcerTreatment: order?.hasPressureUlcerTreatment ? 'yes' : order?.hasPressureUlcerTreatment === false ? 'no' : '',
+  hasHomeInfusionManagement: order?.hasHomeInfusionManagement ? 'yes' : order?.hasHomeInfusionManagement === false ? 'no' : '',
 })
 
 export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: DoctorOrderDialogProps) {
@@ -122,12 +134,35 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
         multipartData.append('startDate', formData.startDate)
         multipartData.append('endDate', formData.endDate)
         multipartData.append('diagnosis', formData.diagnosis)
+        if (formData.icd10Code) {
+          multipartData.append('icd10Code', formData.icd10Code)
+        }
         multipartData.append('orderContent', formData.orderContent)
         if (formData.weeklyVisitLimit) {
           multipartData.append('weeklyVisitLimit', formData.weeklyVisitLimit)
         }
         if (formData.notes) {
           multipartData.append('notes', formData.notes)
+        }
+        if (formData.instructionType) {
+          multipartData.append('instructionType', formData.instructionType)
+        }
+        if (formData.insuranceType) {
+          multipartData.append('insuranceType', formData.insuranceType)
+        }
+        // 指示期間を訪問看護指示期間としても送信（レセプトCSV出力用）
+        multipartData.append('nursingInstructionStartDate', formData.startDate)
+        if (formData.endDate) {
+          multipartData.append('nursingInstructionEndDate', formData.endDate)
+        }
+        if (formData.hasInfusionInstruction) {
+          multipartData.append('hasInfusionInstruction', formData.hasInfusionInstruction === 'yes' ? 'true' : 'false')
+        }
+        if (formData.hasPressureUlcerTreatment) {
+          multipartData.append('hasPressureUlcerTreatment', formData.hasPressureUlcerTreatment === 'yes' ? 'true' : 'false')
+        }
+        if (formData.hasHomeInfusionManagement) {
+          multipartData.append('hasHomeInfusionManagement', formData.hasHomeInfusionManagement === 'yes' ? 'true' : 'false')
         }
         multipartData.append('file', formData.file)
 
@@ -144,9 +179,18 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
           startDate: formData.startDate,
           endDate: formData.endDate,
           diagnosis: formData.diagnosis,
+          ...(formData.icd10Code && { icd10Code: formData.icd10Code }),
           orderContent: formData.orderContent,
           ...(formData.weeklyVisitLimit && { weeklyVisitLimit: parseInt(formData.weeklyVisitLimit) }),
           ...(formData.notes && { notes: formData.notes }),
+          ...(formData.instructionType && { instructionType: formData.instructionType }),
+          ...(formData.insuranceType && { insuranceType: formData.insuranceType }),
+          // 指示期間を訪問看護指示期間としても送信（レセプトCSV出力用）
+          nursingInstructionStartDate: formData.startDate,
+          nursingInstructionEndDate: formData.endDate,
+          ...(formData.hasInfusionInstruction && { hasInfusionInstruction: formData.hasInfusionInstruction === 'yes' }),
+          ...(formData.hasPressureUlcerTreatment && { hasPressureUlcerTreatment: formData.hasPressureUlcerTreatment === 'yes' }),
+          ...(formData.hasHomeInfusionManagement && { hasHomeInfusionManagement: formData.hasHomeInfusionManagement === 'yes' }),
         }
 
         response = await fetch(url, {
@@ -264,6 +308,135 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
               placeholder="例: 脳梗塞後遺症、糖尿病"
               required
             />
+          </div>
+
+          {/* ICD-10 Code */}
+          <div className="space-y-2">
+            <Label htmlFor="icd10Code">ICD-10コード</Label>
+            <Input
+              id="icd10Code"
+              value={formData.icd10Code}
+              onChange={(e) => setFormData(prev => ({ ...prev, icd10Code: e.target.value }))}
+              placeholder="例: I639 (7桁以内)"
+              maxLength={7}
+            />
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力に必要です（任意）
+            </p>
+          </div>
+
+          {/* Insurance Type */}
+          <div className="space-y-2">
+            <Label htmlFor="insuranceType">保険種別</Label>
+            <Select
+              value={formData.insuranceType}
+              onValueChange={(value: 'medical' | 'care') =>
+                setFormData(prev => ({ ...prev, insuranceType: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="保険種別を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="medical">医療保険</SelectItem>
+                <SelectItem value="care">介護保険</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              レセプト請求先の判定に使用されます
+            </p>
+          </div>
+
+          {/* Instruction Type */}
+          <div className="space-y-2">
+            <Label htmlFor="instructionType">指示区分</Label>
+            <Select
+              value={formData.instructionType}
+              onValueChange={(value: 'regular' | 'special' | 'psychiatric' | 'psychiatric_special' | 'medical_observation' | 'medical_observation_special') =>
+                setFormData(prev => ({ ...prev, instructionType: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="指示区分を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">訪問看護指示（通常）</SelectItem>
+                <SelectItem value="special">特別訪問看護指示</SelectItem>
+                <SelectItem value="psychiatric">精神科訪問看護指示</SelectItem>
+                <SelectItem value="psychiatric_special">精神科特別訪問看護指示</SelectItem>
+                <SelectItem value="medical_observation">医療観察精神科訪問看護指示</SelectItem>
+                <SelectItem value="medical_observation_special">医療観察精神科特別訪問看護指示</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力時の指示区分コードの判定に使用されます
+            </p>
+          </div>
+
+          {/* Infusion Instruction */}
+          <div className="space-y-2">
+            <Label htmlFor="hasInfusionInstruction">点滴注射指示</Label>
+            <Select
+              value={formData.hasInfusionInstruction}
+              onValueChange={(value: 'yes' | 'no') =>
+                setFormData(prev => ({ ...prev, hasInfusionInstruction: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="点滴注射指示の有無を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">はい</SelectItem>
+                <SelectItem value="no">いいえ</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              在宅患者訪問点滴注射管理指導料の算定判定に使用されます
+            </p>
+          </div>
+
+          {/* Pressure Ulcer Treatment */}
+          <div className="space-y-2">
+            <Label htmlFor="hasPressureUlcerTreatment">床ずれ処置</Label>
+            <Select
+              value={formData.hasPressureUlcerTreatment}
+              onValueChange={(value: 'yes' | 'no') =>
+                setFormData(prev => ({ ...prev, hasPressureUlcerTreatment: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="床ずれ処置の有無を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">はい</SelectItem>
+                <SelectItem value="no">いいえ</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              褥瘡処置加算の算定判定に使用されます
+            </p>
+          </div>
+
+          {/* Home Infusion Management */}
+          <div className="space-y-2">
+            <Label htmlFor="hasHomeInfusionManagement">在宅患者訪問点滴注射管理指導料</Label>
+            <Select
+              value={formData.hasHomeInfusionManagement}
+              onValueChange={(value: 'yes' | 'no') =>
+                setFormData(prev => ({ ...prev, hasHomeInfusionManagement: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="在宅患者訪問点滴注射管理指導料の有無を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">はい</SelectItem>
+                <SelectItem value="no">いいえ</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              該当する加算の算定判定に使用されます
+            </p>
           </div>
 
           {/* Order Content */}

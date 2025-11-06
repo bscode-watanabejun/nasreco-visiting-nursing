@@ -19,6 +19,35 @@ export const scheduleStatusEnum = pgEnum("schedule_status", ["scheduled", "in_pr
 export const insuranceCardTypeEnum = pgEnum("insurance_card_type", ["medical", "long_term_care"]);
 export const copaymentRateEnum = pgEnum("copayment_rate", ["10", "20", "30"]);
 
+// Phase 3: レセプト動的判定用のENUM定義
+export const relationshipTypeEnum = pgEnum("relationship_type", [
+  "self",            // 本人/世帯主
+  "preschool",       // 未就学者
+  "family",          // 家族/その他
+  "elderly_general", // 高齢受給者一般・低所得者
+  "elderly_70",      // 高齢受給者7割
+]);
+
+export const ageCategoryEnum = pgEnum("age_category", [
+  "preschool",       // 未就学者（6歳未満）
+  "general",         // 一般
+  "elderly",         // 高齢者（75歳以上）
+]);
+
+export const elderlyRecipientCategoryEnum = pgEnum("elderly_recipient_category", [
+  "general_low",     // 一般・低所得者
+  "seventy",         // 7割負担
+]);
+
+export const instructionTypeEnum = pgEnum("instruction_type", [
+  "regular",                    // 01: 訪問看護指示
+  "special",                    // 02: 特別訪問看護指示
+  "psychiatric",                // 03: 精神科訪問看護指示
+  "psychiatric_special",        // 04: 精神科特別訪問看護指示
+  "medical_observation",        // 05: 医療観察精神科訪問看護指示
+  "medical_observation_special", // 06: 医療観察精神科特別訪問看護指示
+]);
+
 // ========== Session Table (express-session store) ==========
 // Note: This table is managed by connect-pg-simple, but we define it here to prevent drizzle-kit from deleting it
 // Match the exact structure created by connect-pg-simple to avoid migration warnings
@@ -58,6 +87,10 @@ export const facilities = pgTable("facilities", {
   hasEmergencySupportSystem: boolean("has_emergency_support_system").default(false), // 緊急時訪問看護加算（I）（介護保険）
   hasEmergencySupportSystemEnhanced: boolean("has_emergency_support_system_enhanced").default(false), // 緊急時訪問看護加算（II）（介護保険）
   burdenReductionMeasures: json("burden_reduction_measures"), // 看護業務負担軽減の取り組み（JSON配列）
+
+  // レセプトCSV出力用フィールド
+  facilityCode: varchar("facility_code", { length: 7 }), // 7桁の施設コード（既存データ考慮でNULLABLE）
+  prefectureCode: varchar("prefecture_code", { length: 2 }), // 都道府県コード（既存データ考慮でNULLABLE）
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -106,6 +139,7 @@ export const patients = pgTable("patients", {
   patientNumber: text("patient_number").notNull(),
   lastName: text("last_name").notNull(),
   firstName: text("first_name").notNull(),
+  kanaName: varchar("kana_name", { length: 50 }), // カナ氏名（全角カタカナ、既存データ考慮でNULLABLE）
   dateOfBirth: date("date_of_birth").notNull(),
   gender: genderEnum("gender").notNull(),
   address: text("address"),
@@ -268,6 +302,11 @@ export const nursingRecords = pgTable("nursing_records", {
   // Week 3: 専門管理加算用フィールド
   specialistCareType: text("specialist_care_type"), // 専門的ケアの種類（palliative_care, pressure_ulcer, stoma_care, specific_procedures）
 
+  // レセプトCSV出力用フィールド（新規訪問記録のみ必須）
+  serviceCodeId: varchar("service_code_id").references(() => nursingServiceCodes.id), // サービスコードマスタへの参照
+  visitLocationCode: varchar("visit_location_code", { length: 2 }), // 訪問場所コード
+  staffQualificationCode: varchar("staff_qualification_code", { length: 2 }), // 職員資格コード
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -318,6 +357,11 @@ export const medicalInstitutions = pgTable("medical_institutions", {
   fax: text("fax"), // FAX番号
   email: text("email"), // メールアドレス
   notes: text("notes"), // 備考
+
+  // レセプトCSV出力用フィールド
+  institutionCode: varchar("institution_code", { length: 7 }), // 7桁の医療機関コード（既存データ考慮でNULLABLE）
+  prefectureCode: varchar("prefecture_code", { length: 2 }), // 都道府県コード（既存データ考慮でNULLABLE）
+
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -350,11 +394,22 @@ export const doctorOrders = pgTable("doctor_orders", {
   startDate: date("start_date").notNull(), // 指示期間開始日
   endDate: date("end_date").notNull(), // 指示期間終了日
   diagnosis: text("diagnosis").notNull(), // 病名・主たる傷病名
+  icd10Code: varchar("icd10_code", { length: 7 }), // ICD-10傷病コード（既存データ考慮でNULLABLE）
   orderContent: text("order_content").notNull(), // 指示内容
   weeklyVisitLimit: integer("weekly_visit_limit"), // 週の訪問回数上限
   filePath: text("file_path"), // PDF/画像ファイルパス
   originalFileName: text("original_file_name"), // 元のファイル名
   notes: text("notes"), // 備考
+
+  // Phase 3: レセプト指示区分判定用のフィールド
+  instructionType: instructionTypeEnum("instruction_type").notNull().default("regular"), // 指示区分
+  insuranceType: insuranceTypeEnum("insurance_type"), // 保険種別（医療保険・介護保険）
+  nursingInstructionStartDate: date("nursing_instruction_start_date"), // 訪問看護指示期間開始日
+  nursingInstructionEndDate: date("nursing_instruction_end_date"), // 訪問看護指示期間終了日
+  hasInfusionInstruction: boolean("has_infusion_instruction"), // 点滴注射指示の有無
+  hasPressureUlcerTreatment: boolean("has_pressure_ulcer_treatment"), // 床ずれ処置の有無
+  hasHomeInfusionManagement: boolean("has_home_infusion_management"), // 在宅患者訪問点滴注射管理指導料の有無
+
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -376,6 +431,40 @@ export const insuranceCards = pgTable("insurance_cards", {
   certificationDate: date("certification_date"), // 認定日（介護保険のみ）
   filePath: text("file_path"), // PDF/画像ファイルパス
   originalFileName: text("original_file_name"), // 元のファイル名
+  notes: text("notes"), // 備考
+
+  // Phase 3: レセプト種別判定用の追加フィールド
+  relationshipType: relationshipTypeEnum("relationship_type"), // 本人家族区分
+  ageCategory: ageCategoryEnum("age_category"), // 年齢区分
+  elderlyRecipientCategory: elderlyRecipientCategoryEnum("elderly_recipient_category"), // 高齢受給者区分
+
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Public Expense Cards Table (公費負担医療情報) ==========
+// Phase 3: レセプト種別判定に必要な公費情報を管理
+export const publicExpenseCards = pgTable("public_expense_cards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+
+  // 公費情報
+  beneficiaryNumber: text("beneficiary_number").notNull(), // 負担者番号（8桁）
+  recipientNumber: text("recipient_number"), // 受給者番号（7桁）※医療観察法（法別30）は不要
+
+  // 法別番号（公費の種類を識別）例: "10"=生活保護, "51"=特定疾患, "54"=難病
+  legalCategoryNumber: text("legal_category_number").notNull(),
+
+  // 優先順位（複数公費併用時の順序: 1=第一公費, 2=第二公費, 3=第三公費, 4=第四公費）
+  priority: integer("priority").notNull(),
+
+  // 有効期間
+  validFrom: date("valid_from").notNull(),
+  validUntil: date("valid_until"),
+
+  // その他
   notes: text("notes"), // 備考
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -724,9 +813,79 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   errorMessages: json("error_messages"), // エラーメッセージ配列
   warningMessages: json("warning_messages"), // 警告メッセージ配列
 
+  // CSV出力関連
+  csvExportReady: boolean("csv_export_ready").default(false), // CSV出力可能フラグ
+  csvExportWarnings: json("csv_export_warnings"), // 不足データの警告情報（JSON配列）
+  lastCsvExportCheck: timestamp("last_csv_export_check", { withTimezone: true }), // 最終チェック日時
+
   // 備考
   notes: text("notes"),
 
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Receipt CSV Export Master Tables (レセプトCSV出力用マスタ) ==========
+
+// 都道府県コードマスタ
+export const prefectureCodes = pgTable("prefecture_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prefectureCode: varchar("prefecture_code", { length: 2 }).notNull().unique(), // 01〜47
+  prefectureName: text("prefecture_name").notNull(), // 北海道、青森県、...
+  displayOrder: integer("display_order").notNull(), // 表示順序（1〜47）
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 訪問看護サービスコードマスタ
+export const nursingServiceCodes = pgTable("nursing_service_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  serviceCode: varchar("service_code", { length: 9 }).notNull(), // 9桁のサービスコード
+  serviceName: text("service_name").notNull(), // サービス名称
+  points: integer("points").notNull(), // 基本点数
+  insuranceType: insuranceTypeEnum("insurance_type").notNull(), // 医療保険 or 介護保険
+  validFrom: date("valid_from").notNull(), // 有効期間開始日
+  validTo: date("valid_to"), // 有効期間終了日（nullは現行版）
+  description: text("description"), // 説明・備考
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 職員資格コードマスタ
+export const staffQualificationCodes = pgTable("staff_qualification_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  qualificationCode: varchar("qualification_code", { length: 2 }).notNull().unique(), // 別表20コード
+  qualificationName: text("qualification_name").notNull(), // 資格名称（例：保健師、助産師、看護師、准看護師等）
+  description: text("description"), // 説明・備考
+  displayOrder: integer("display_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 訪問場所コードマスタ
+export const visitLocationCodes = pgTable("visit_location_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  locationCode: varchar("location_code", { length: 2 }).notNull().unique(), // 別表18コード
+  locationName: text("location_name").notNull(), // 場所名称（例：自宅、特養、老健等）
+  description: text("description"), // 説明・備考
+  displayOrder: integer("display_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// レセプト種別コードマスタ
+export const receiptTypeCodes = pgTable("receipt_type_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  receiptTypeCode: varchar("receipt_type_code", { length: 4 }).notNull().unique(), // 別表4コード（4桁）
+  receiptTypeName: text("receipt_type_name").notNull(), // 種別名称
+  insuranceType: insuranceTypeEnum("insurance_type").notNull(), // 医療保険 or 介護保険
+  description: text("description"), // 説明・備考
+  displayOrder: integer("display_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
@@ -916,6 +1075,37 @@ export const insertMonthlyReceiptSchema = createInsertSchema(monthlyReceipts).om
   updatedAt: true,
 });
 
+// Receipt CSV Export Master Insert Schemas
+export const insertPrefectureCodeSchema = createInsertSchema(prefectureCodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertNursingServiceCodeSchema = createInsertSchema(nursingServiceCodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertStaffQualificationCodeSchema = createInsertSchema(staffQualificationCodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertVisitLocationCodeSchema = createInsertSchema(visitLocationCodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertReceiptTypeCodeSchema = createInsertSchema(receiptTypeCodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -983,6 +1173,13 @@ export const updateBonusMasterSchema = insertBonusMasterSchema.partial();
 export const updateBonusCalculationHistorySchema = insertBonusCalculationHistorySchema.partial();
 
 export const updateMonthlyReceiptSchema = insertMonthlyReceiptSchema.partial();
+
+// Receipt CSV Export Master Update Schemas
+export const updatePrefectureCodeSchema = insertPrefectureCodeSchema.partial();
+export const updateNursingServiceCodeSchema = insertNursingServiceCodeSchema.partial();
+export const updateStaffQualificationCodeSchema = insertStaffQualificationCodeSchema.partial();
+export const updateVisitLocationCodeSchema = insertVisitLocationCodeSchema.partial();
+export const updateReceiptTypeCodeSchema = insertReceiptTypeCodeSchema.partial();
 
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
@@ -1083,6 +1280,27 @@ export type UpdateBonusCalculationHistory = z.infer<typeof updateBonusCalculatio
 export type InsertMonthlyReceipt = z.infer<typeof insertMonthlyReceiptSchema>;
 export type MonthlyReceipt = typeof monthlyReceipts.$inferSelect;
 export type UpdateMonthlyReceipt = z.infer<typeof updateMonthlyReceiptSchema>;
+
+// Receipt CSV Export Master Types
+export type InsertPrefectureCode = z.infer<typeof insertPrefectureCodeSchema>;
+export type PrefectureCode = typeof prefectureCodes.$inferSelect;
+export type UpdatePrefectureCode = z.infer<typeof updatePrefectureCodeSchema>;
+
+export type InsertNursingServiceCode = z.infer<typeof insertNursingServiceCodeSchema>;
+export type NursingServiceCode = typeof nursingServiceCodes.$inferSelect;
+export type UpdateNursingServiceCode = z.infer<typeof updateNursingServiceCodeSchema>;
+
+export type InsertStaffQualificationCode = z.infer<typeof insertStaffQualificationCodeSchema>;
+export type StaffQualificationCode = typeof staffQualificationCodes.$inferSelect;
+export type UpdateStaffQualificationCode = z.infer<typeof updateStaffQualificationCodeSchema>;
+
+export type InsertVisitLocationCode = z.infer<typeof insertVisitLocationCodeSchema>;
+export type VisitLocationCode = typeof visitLocationCodes.$inferSelect;
+export type UpdateVisitLocationCode = z.infer<typeof updateVisitLocationCodeSchema>;
+
+export type InsertReceiptTypeCode = z.infer<typeof insertReceiptTypeCodeSchema>;
+export type ReceiptTypeCode = typeof receiptTypeCodes.$inferSelect;
+export type UpdateReceiptTypeCode = z.infer<typeof updateReceiptTypeCodeSchema>;
 
 // Pagination Types
 export interface PaginationOptions {
@@ -1293,6 +1511,10 @@ export const nursingRecordsRelations = relations(nursingRecords, ({ one, many })
   schedule: one(schedules, {
     fields: [nursingRecords.scheduleId],
     references: [schedules.id],
+  }),
+  serviceCode: one(nursingServiceCodes, {
+    fields: [nursingRecords.serviceCodeId],
+    references: [nursingServiceCodes.id],
   }),
   bonusCalculationHistory: many(bonusCalculationHistory),
 }));

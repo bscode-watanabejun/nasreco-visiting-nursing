@@ -748,15 +748,17 @@ function evaluateCareEarlyMorningTime(context: BonusCalculationContext): Conditi
     return { passed: false, reason: "訪問開始時刻が未設定" };
   }
 
-  const startTime = new Date(context.visitStartTime);
-  const hours = startTime.getHours();
+  // UTC時刻をJST（日本標準時）に変換して時刻を取得
+  const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+  const hours = jstDate.getUTCHours();
+  const minutes = jstDate.getUTCMinutes();
   const passed = hours >= 6 && hours < 8;
 
   return {
     passed,
     reason: passed
-      ? `早朝時間帯（6:00-8:00）の訪問（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`
-      : `早朝時間帯外（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`,
+      ? `早朝時間帯（6:00-8:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
+      : `早朝時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
   };
 }
 
@@ -768,15 +770,17 @@ function evaluateCareNightTime(context: BonusCalculationContext): ConditionEvalu
     return { passed: false, reason: "訪問開始時刻が未設定" };
   }
 
-  const startTime = new Date(context.visitStartTime);
-  const hours = startTime.getHours();
+  // UTC時刻をJST（日本標準時）に変換して時刻を取得
+  const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+  const hours = jstDate.getUTCHours();
+  const minutes = jstDate.getUTCMinutes();
   const passed = hours >= 18 && hours < 22;
 
   return {
     passed,
     reason: passed
-      ? `夜間時間帯（18:00-22:00）の訪問（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`
-      : `夜間時間帯外（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`,
+      ? `夜間時間帯（18:00-22:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
+      : `夜間時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
   };
 }
 
@@ -788,15 +792,17 @@ function evaluateCareLateNightTime(context: BonusCalculationContext): ConditionE
     return { passed: false, reason: "訪問開始時刻が未設定" };
   }
 
-  const startTime = new Date(context.visitStartTime);
-  const hours = startTime.getHours();
+  // UTC時刻をJST（日本標準時）に変換して時刻を取得
+  const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+  const hours = jstDate.getUTCHours();
+  const minutes = jstDate.getUTCMinutes();
   const passed = hours >= 22 || hours < 6;
 
   return {
     passed,
     reason: passed
-      ? `深夜時間帯（22:00-6:00）の訪問（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`
-      : `深夜時間帯外（開始時刻: ${hours}:${startTime.getMinutes().toString().padStart(2, '0')}）`,
+      ? `深夜時間帯（22:00-6:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
+      : `深夜時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
   };
 }
 

@@ -49,6 +49,9 @@ export interface CreateFacilityRequest {
   address?: string;
   phone?: string;
   email?: string;
+  // Phase3: レセプトCSV対応
+  facilityCode?: string;
+  prefectureCode?: string;
 }
 
 export interface UpdateFacilityRequest {
@@ -64,6 +67,55 @@ export interface UpdateFacilityRequest {
   hasEmergencySupportSystem?: boolean;
   hasEmergencySupportSystemEnhanced?: boolean;
   burdenReductionMeasures?: string[];
+  // Phase3: レセプトCSV対応
+  facilityCode?: string;
+  prefectureCode?: string;
+}
+
+export interface PrefectureCode {
+  id: string;
+  prefectureCode: string;
+  prefectureName: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface NursingServiceCode {
+  id: string;
+  serviceCode: string;
+  serviceName: string;
+  points: number;
+  insuranceType: 'medical' | 'care';
+  validFrom: string;
+  validTo: string | null;
+  description: string | null;
+  isActive: boolean;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface StaffQualificationCode {
+  id: string;
+  qualificationCode: string;
+  qualificationName: string;
+  description: string | null;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface VisitLocationCode {
+  id: string;
+  locationCode: string;
+  locationName: string;
+  description: string | null;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: Date | null;
+  updatedAt: Date | null;
 }
 
 class ApiError extends Error {
@@ -286,6 +338,33 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ newPassword }),
     });
+  },
+};
+
+// Master data API functions
+export const masterDataApi = {
+  // Get prefecture codes
+  async getPrefectureCodes(): Promise<PrefectureCode[]> {
+    return fetchApi<PrefectureCode[]>('/master/prefecture-codes');
+  },
+
+  // Get nursing service codes
+  async getNursingServiceCodes(params?: { isActive?: boolean; insuranceType?: 'medical' | 'care' }): Promise<NursingServiceCode[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
+    if (params?.insuranceType) queryParams.append('insuranceType', params.insuranceType);
+    const query = queryParams.toString();
+    return fetchApi<NursingServiceCode[]>(`/master/nursing-service-codes${query ? `?${query}` : ''}`);
+  },
+
+  // Get staff qualification codes
+  async getStaffQualificationCodes(): Promise<StaffQualificationCode[]> {
+    return fetchApi<StaffQualificationCode[]>('/master/staff-qualification-codes');
+  },
+
+  // Get visit location codes
+  async getVisitLocationCodes(): Promise<VisitLocationCode[]> {
+    return fetchApi<VisitLocationCode[]>('/master/visit-location-codes');
   },
 };
 
