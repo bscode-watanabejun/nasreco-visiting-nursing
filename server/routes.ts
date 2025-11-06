@@ -2448,14 +2448,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const createdSchedules = [];
       for (const scheduleDate of filteredDates) {
         // Combine date with time
+        // Note: Time is interpreted as JST, so we need to subtract 9 hours to store as UTC
         const [startHour, startMinute] = startTime.split(':').map(Number);
         const [endHour, endMinute] = endTime.split(':').map(Number);
 
         const scheduledStartTime = new Date(scheduleDate);
-        scheduledStartTime.setHours(startHour, startMinute, 0, 0);
+        scheduledStartTime.setUTCHours(startHour - 9, startMinute, 0, 0);
 
         const scheduledEndTime = new Date(scheduleDate);
-        scheduledEndTime.setHours(endHour, endMinute, 0, 0);
+        scheduledEndTime.setUTCHours(endHour - 9, endMinute, 0, 0);
 
         const scheduleData = {
           facilityId,
