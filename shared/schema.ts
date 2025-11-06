@@ -307,6 +307,10 @@ export const nursingRecords = pgTable("nursing_records", {
   visitLocationCode: varchar("visit_location_code", { length: 2 }), // 訪問場所コード
   staffQualificationCode: varchar("staff_qualification_code", { length: 2 }), // 職員資格コード
 
+  // Phase 3: 編集管理用フィールド
+  lastEditedBy: varchar("last_edited_by").references(() => users.id), // 最終編集者
+  editCount: integer("edit_count").default(0), // 編集回数
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -888,6 +892,18 @@ export const receiptTypeCodes = pgTable("receipt_type_codes", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// ========== Nursing Record Edit History (Phase 3: 編集履歴) ==========
+export const nursingRecordEditHistory = pgTable("nursing_record_edit_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  nursingRecordId: varchar("nursing_record_id").notNull().references(() => nursingRecords.id, { onDelete: 'cascade' }),
+  editedBy: varchar("edited_by").notNull().references(() => users.id),
+  editedAt: timestamp("edited_at", { withTimezone: true }).defaultNow().notNull(),
+  changeType: varchar("change_type", { length: 50 }).notNull(), // 'update' | 'status_change'
+  previousData: json("previous_data"), // 変更前のデータ（JSON）
+  newData: json("new_data"), // 変更後のデータ（JSON）
+  remarks: text("remarks"), // 備考
 });
 
 // ========== Insert Schemas ==========
@@ -1516,6 +1532,11 @@ export const nursingRecordsRelations = relations(nursingRecords, ({ one, many })
     fields: [nursingRecords.serviceCodeId],
     references: [nursingServiceCodes.id],
   }),
+  lastEditor: one(users, {
+    fields: [nursingRecords.lastEditedBy],
+    references: [users.id],
+  }),
+  editHistory: many(nursingRecordEditHistory),
   bonusCalculationHistory: many(bonusCalculationHistory),
 }));
 
@@ -1584,6 +1605,17 @@ export const monthlyReceiptsRelations = relations(monthlyReceipts, ({ one }) => 
   }),
   confirmedBy: one(users, {
     fields: [monthlyReceipts.confirmedBy],
+    references: [users.id],
+  }),
+}));
+
+export const nursingRecordEditHistoryRelations = relations(nursingRecordEditHistory, ({ one }) => ({
+  nursingRecord: one(nursingRecords, {
+    fields: [nursingRecordEditHistory.nursingRecordId],
+    references: [nursingRecords.id],
+  }),
+  editor: one(users, {
+    fields: [nursingRecordEditHistory.editedBy],
     references: [users.id],
   }),
 }));

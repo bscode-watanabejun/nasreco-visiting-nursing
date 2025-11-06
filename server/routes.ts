@@ -3024,6 +3024,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
 
+      // Phase 3: 編集権限チェック
+      const isAdmin = ['admin', 'manager'].includes(req.user.role);
+      const isOwner = existingRecord.nurseId === req.user.id;
+
+      if (existingRecord.status === 'reviewed') {
+        // 確認済み記録は管理者のみ編集可能
+        if (!isAdmin) {
+          return res.status(403).json({
+            error: "確認済みの記録は管理者のみ編集できます"
+          });
+        }
+      } else if (existingRecord.status === 'completed' || existingRecord.status === 'draft') {
+        // 完了/下書き記録は作成者または管理者のみ編集可能
+        if (!isOwner && !isAdmin) {
+          return res.status(403).json({
+            error: "この記録を編集する権限がありません"
+          });
+        }
+      }
+
       // DEBUG: Log scheduleId before and after parsing
       console.log('🔍 DEBUG - PUT /api/nursing-records/:id');
       console.log('  - record id:', id);
@@ -3063,7 +3083,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('  - validatedData before update (scheduleId):', validatedData.scheduleId);
 
-      const record = await storage.updateNursingRecord(id, validatedData);
+      // Phase 3: 編集履歴用に既存データを保存
+      const record = await storage.updateNursingRecord(id, validatedData, req.user.id, existingRecord);
       if (!record) {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
@@ -3094,6 +3115,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       console.error("Update nursing record error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
+  // Get nursing record edit history (Phase 3: 管理者のみ)
+  app.get("/api/nursing-records/:id/edit-history", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // 管理者のみアクセス可能
+      if (!['admin', 'manager'].includes(req.user.role)) {
+        return res.status(403).json({ error: "編集履歴は管理者のみ閲覧できます" });
+      }
+
+      // Check if nursing record belongs to user's facility
+      const existingRecord = await storage.getNursingRecord(id);
+      if (!existingRecord || existingRecord.facilityId !== req.user.facilityId) {
+        return res.status(404).json({ error: "看護記録が見つかりません" });
+      }
+
+      const history = await storage.getNursingRecordEditHistory(id);
+      res.json(history);
+
+    } catch (error) {
+      console.error("Get nursing record edit history error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
