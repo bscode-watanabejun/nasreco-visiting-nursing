@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,7 +53,8 @@ import {
   Info,
   Sliders,
   RotateCcw,
-  CalendarDays
+  CalendarDays,
+  Activity
 } from "lucide-react"
 import {
   Accordion,
@@ -339,6 +341,24 @@ export function NursingRecords() {
   const { data: currentUser } = useCurrentUser()
   const { toast } = useToast()
 
+  // Phase 3: 編集権限判定関数
+  const canEditRecord = (record: NursingRecordDisplay | null): boolean => {
+    if (!currentUser || !record) return false
+
+    const isAdmin = currentUser.role === 'admin' || currentUser.role === 'manager'
+    const isOwner = record.nurseId === currentUser.id
+
+    if (record.status === 'reviewed') {
+      // 確認済み記録は管理者のみ編集可能
+      return isAdmin
+    } else if (record.status === 'completed' || record.status === 'draft') {
+      // 完了/下書き記録は作成者または管理者のみ編集可能
+      return isOwner || isAdmin
+    }
+
+    return false
+  }
+
   // Check URL parameters for initial state
   const urlParams = new URLSearchParams(searchParams)
   const modeFromUrl = urlParams.get('mode')
@@ -347,7 +367,7 @@ export function NursingRecords() {
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
   const [isCreating, setIsCreating] = useState(initialIsCreating)
   const [isEditing, setIsEditing] = useState(false)
-  const [activeTab, setActiveTab] = useState<'basic' | 'vitals' | 'care' | 'special' | 'photos'>('basic')
+  const [activeTab, setActiveTab] = useState<'basic' | 'vitals-care' | 'special' | 'receipt' | 'photos'>('basic')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormData>(getInitialFormData())
@@ -815,6 +835,18 @@ export function NursingRecords() {
   }
 
   const handleEditRecord = (record: NursingRecordDisplay) => {
+    // Phase 3: 編集権限チェック
+    if (!canEditRecord(record)) {
+      toast({
+        title: "編集権限がありません",
+        description: record.status === 'reviewed'
+          ? "確認済みの記録は管理者のみ編集できます"
+          : "この記録を編集する権限がありません",
+        variant: "destructive"
+      })
+      return
+    }
+
     setSelectedRecord(record)
     setIsCreating(false)
     setIsEditing(true)
@@ -1817,12 +1849,20 @@ export function NursingRecords() {
 
             {/* Action Buttons */}
             <div className="flex gap-2 justify-end">
-              {selectedRecord.status === 'draft' && (
-                <Button onClick={() => handleEditRecord(selectedRecord)}>
-                  <Edit className="mr-1 h-4 w-4" />
-                  編集
-                </Button>
-              )}
+              {/* Phase 3: 権限に基づいた編集ボタン */}
+              <Button
+                onClick={() => handleEditRecord(selectedRecord)}
+                disabled={!canEditRecord(selectedRecord)}
+                title={!canEditRecord(selectedRecord)
+                  ? (selectedRecord.status === 'reviewed'
+                    ? '確認済みの記録は管理者のみ編集できます'
+                    : 'この記録を編集する権限がありません')
+                  : undefined
+                }
+              >
+                <Edit className="mr-1 h-4 w-4" />
+                編集
+              </Button>
               {selectedRecord.status === 'completed' &&
                currentUser &&
                (currentUser.role === 'admin' || currentUser.role === 'manager') && (
@@ -2059,22 +2099,28 @@ export function NursingRecords() {
         {/* 5 Tabs */}
         {(isCreating || isEditing) ? (
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
-            <TabsList className="grid w-full grid-cols-5 h-auto">
-              <TabsTrigger value="basic" className="text-xs sm:text-sm py-2">
-                基本記録
-                <span className="ml-1 text-red-500">●</span>
+            <TabsList className="grid w-full grid-cols-5 h-auto gap-0.5 sm:gap-1">
+              <TabsTrigger value="basic" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+                <span className="hidden sm:inline">基本記録</span>
+                <span className="sm:hidden">基本</span>
+                <span className="ml-0.5 sm:ml-1 text-red-500">●</span>
               </TabsTrigger>
-              <TabsTrigger value="vitals" className="text-xs sm:text-sm py-2">
-                バイタル
+              <TabsTrigger value="vitals-care" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+                <span className="hidden sm:inline">バイタル・ケア</span>
+                <span className="sm:hidden">バイタル</span>
               </TabsTrigger>
-              <TabsTrigger value="care" className="text-xs sm:text-sm py-2">
-                ケア内容
+              <TabsTrigger value="special" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+                <span className="hidden sm:inline">特管記録</span>
+                <span className="sm:hidden">特管</span>
               </TabsTrigger>
-              <TabsTrigger value="special" className="text-xs sm:text-sm py-2">
-                特管記録
+              <TabsTrigger value="receipt" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+                <span className="hidden sm:inline">レセプト・加算</span>
+                <span className="sm:hidden">レセプト</span>
+                <Badge variant="outline" className="ml-0.5 sm:ml-1 text-[10px] sm:text-xs hidden sm:inline-flex">任意</Badge>
               </TabsTrigger>
-              <TabsTrigger value="photos" className="text-xs sm:text-sm py-2">
-                写真・メモ
+              <TabsTrigger value="photos" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+                <span className="hidden sm:inline">写真・メモ</span>
+                <span className="sm:hidden">写真</span>
               </TabsTrigger>
             </TabsList>
 
@@ -2130,10 +2176,240 @@ export function NursingRecords() {
                   className="min-h-[120px] resize-none"
                 />
               </div>
+            </TabsContent>
+
+            {/* バイタル・ケアタブ */}
+            <TabsContent value="vitals-care" className="space-y-4 mt-4">
+              {/* バイタルサインセクション */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold flex items-center">
+                  <Activity className="mr-2 h-4 w-4" />
+                  バイタルサイン
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bp">血圧 (mmHg)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="bp-systolic"
+                        type="number"
+                        placeholder="収縮期"
+                        value={formData.bloodPressureSystolic || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          bloodPressureSystolic: e.target.value
+                        }))}
+                        className="w-24"
+                      />
+                      <span>/</span>
+                      <Input
+                        id="bp-diastolic"
+                        type="number"
+                        placeholder="拡張期"
+                        value={formData.bloodPressureDiastolic || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          bloodPressureDiastolic: e.target.value
+                        }))}
+                        className="w-24"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="heart-rate">脈拍 (bpm)</Label>
+                    <Input
+                      id="heart-rate"
+                      type="number"
+                      placeholder="脈拍"
+                      value={formData.heartRate || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        heartRate: e.target.value
+                      }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="temperature">体温 (°C)</Label>
+                    <Input
+                      id="temperature"
+                      type="number"
+                      step="0.1"
+                      placeholder="体温"
+                      value={formData.temperature || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        temperature: e.target.value
+                      }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="respiratory-rate">呼吸数 (回/分)</Label>
+                    <Input
+                      id="respiratory-rate"
+                      type="number"
+                      placeholder="呼吸数"
+                      value={formData.respiratoryRate || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        respiratoryRate: e.target.value
+                      }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="oxygen-saturation">酸素飽和度 (%)</Label>
+                    <Input
+                      id="oxygen-saturation"
+                      type="number"
+                      placeholder="SpO2"
+                      value={formData.oxygenSaturation || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        oxygenSaturation: e.target.value
+                      }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Separator className="my-6" />
+
+              {/* ケア内容セクション */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold flex items-center">
+                  <FileText className="mr-2 h-4 w-4" />
+                  ケア内容
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="care-provided">実施したケア内容</Label>
+                  <Textarea
+                    id="care-provided"
+                    placeholder="実施した看護ケア、処置、指導内容などを記録してください"
+                    value={formData.careProvided}
+                    onChange={(e) => setFormData(prev => ({ ...prev, careProvided: e.target.value }))}
+                    className="min-h-[120px] resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="next-visit-notes">次回訪問時の申し送り</Label>
+                  <Textarea
+                    id="next-visit-notes"
+                    placeholder="次回訪問時に注意すべき点、継続すべきケアなどを記録してください"
+                    value={formData.nextVisitNotes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, nextVisitNotes: e.target.value }))}
+                    className="min-h-[120px] resize-none"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* 特管記録タブ */}
+            <TabsContent value="special" className="mt-4">
+              {(() => {
+                const selectedPatient = patientsData?.data.find(p => p.id === formData.patientId)
+                const specialTypes = selectedPatient?.specialManagementTypes || []
+
+                if (specialTypes.length === 0) {
+                  return (
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>特別管理加算の設定がありません</AlertTitle>
+                      <AlertDescription>
+                        この患者には特別管理加算の設定がありません。患者情報画面から特別管理加算を設定してください。
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
+
+                return (
+                  <div className="space-y-4">
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>特別管理加算記録</AlertTitle>
+                      <AlertDescription>
+                        この患者には以下の特別管理加算が設定されています：{specialTypes.join('、')}
+                      </AlertDescription>
+                    </Alert>
+
+                    {specialTypes.map((type, index) => {
+                      const dataKey = `special_${type.replace(/\s+/g, '_')}`
+                      const currentData = formData.specialManagementData?.[dataKey] || {}
+
+                      return (
+                        <Card key={index}>
+                          <CardHeader>
+                            <CardTitle className="text-base">{type}</CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor={`${dataKey}-care`}>実施した管理・ケア内容</Label>
+                              <Textarea
+                                id={`${dataKey}-care`}
+                                placeholder="実施した特別管理の内容を記録してください"
+                                value={currentData.care || ''}
+                                onChange={(e) => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    specialManagementData: {
+                                      ...prev.specialManagementData,
+                                      [dataKey]: {
+                                        ...currentData,
+                                        care: e.target.value
+                                      }
+                                    }
+                                  }))
+                                }}
+                                className="min-h-[100px] resize-none"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor={`${dataKey}-observation`}>観察事項</Label>
+                              <Textarea
+                                id={`${dataKey}-observation`}
+                                placeholder="特別管理に関連する観察事項を記録してください"
+                                value={currentData.observation || ''}
+                                onChange={(e) => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    specialManagementData: {
+                                      ...prev.specialManagementData,
+                                      [dataKey]: {
+                                        ...currentData,
+                                        observation: e.target.value
+                                      }
+                                    }
+                                  }))
+                                }}
+                                className="min-h-[80px] resize-none"
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </TabsContent>
+
+            {/* レセプト・加算タブ（新規） */}
+            <TabsContent value="receipt" className="space-y-4 mt-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>レセプト・加算情報</AlertTitle>
+                <AlertDescription>
+                  レセプト請求に必要な情報です。訪問時に入力できなかった場合は、後から事務担当者が入力できます。
+                </AlertDescription>
+              </Alert>
 
               {/* Phase 3: レセプトCSV対応フィールド */}
-              <div className="border-t pt-4 mt-4">
-                <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目（任意）</h3>
+              <div className="border rounded-lg p-4">
+                <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* 訪問看護サービスコード */}
                   <div className="space-y-2">
@@ -3445,17 +3721,23 @@ export function NursingRecords() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {record.status === 'draft' && (
-                      <Button
-                        size="sm"
-                        className="text-xs h-8 flex-1"
-                        onClick={() => handleEditRecord(record)}
-                        data-testid={`button-edit-${record.id}`}
-                      >
-                        <Edit className="mr-1 h-3 w-3" />
-                        編集
-                      </Button>
-                    )}
+                    {/* Phase 3: 権限チェック統合 */}
+                    <Button
+                      size="sm"
+                      className="text-xs h-8 flex-1"
+                      onClick={() => handleEditRecord(record)}
+                      disabled={!canEditRecord(record)}
+                      data-testid={`button-edit-${record.id}`}
+                      title={!canEditRecord(record)
+                        ? (record.status === 'reviewed'
+                          ? '確認済みの記録は管理者のみ編集できます'
+                          : 'この記録を編集する権限がありません')
+                        : undefined
+                      }
+                    >
+                      <Edit className="mr-1 h-3 w-3" />
+                      編集
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -3513,16 +3795,22 @@ export function NursingRecords() {
                   </div>
 
                   <div className="flex gap-2 flex-shrink-0">
-                    {record.status === 'draft' && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleEditRecord(record)}
-                        data-testid={`button-edit-${record.id}`}
-                      >
-                        <Edit className="mr-1 h-3 w-3" />
-                        編集
-                      </Button>
-                    )}
+                    {/* Phase 3: 権限チェック統合 */}
+                    <Button
+                      size="sm"
+                      onClick={() => handleEditRecord(record)}
+                      disabled={!canEditRecord(record)}
+                      data-testid={`button-edit-${record.id}`}
+                      title={!canEditRecord(record)
+                        ? (record.status === 'reviewed'
+                          ? '確認済みの記録は管理者のみ編集できます'
+                          : 'この記録を編集する権限がありません')
+                        : undefined
+                      }
+                    >
+                      <Edit className="mr-1 h-3 w-3" />
+                      編集
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"

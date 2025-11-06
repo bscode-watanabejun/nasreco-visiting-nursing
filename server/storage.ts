@@ -8,9 +8,9 @@ import {
   type Medication, type InsertMedication,
   type Schedule, type InsertSchedule,
   type PaginationOptions, type PaginatedResult,
-  users, companies, facilities, patients, visits, nursingRecords, medications, schedules
+  users, companies, facilities, patients, visits, nursingRecords, medications, schedules, nursingRecordEditHistory
 } from "@shared/schema";
-import { eq, and, desc, asc, count, isNull, gte, lte } from "drizzle-orm";
+import { eq, and, desc, asc, count, isNull, gte, lte, sql } from "drizzle-orm";
 import { db } from "./db";
 
 // Storage interface for all visiting nursing system operations
@@ -81,8 +81,11 @@ export interface IStorage {
   getNursingRecordsByPatient(patientId: string): Promise<NursingRecord[]>;
   getNursingRecordsByNurse(nurseId: string): Promise<NursingRecord[]>;
   createNursingRecord(record: Omit<InsertNursingRecord, 'facilityId' | 'nurseId'>, facilityId: string, nurseId: string): Promise<NursingRecord>;
-  updateNursingRecord(id: string, record: Partial<InsertNursingRecord>): Promise<NursingRecord | undefined>;
+  updateNursingRecord(id: string, record: Partial<InsertNursingRecord>, userId: string, previousData?: any): Promise<NursingRecord | undefined>;
   deleteNursingRecord(id: string): Promise<boolean>;
+
+  // ========== Nursing Record Edit History (Phase 3) ==========
+  getNursingRecordEditHistory(nursingRecordId: string): Promise<any[]>;
 
   // ========== Medications ==========
   getMedication(id: string): Promise<Medication | undefined>;
@@ -475,13 +478,34 @@ export class PostgreSQLStorage implements IStorage {
     return result[0];
   }
 
-  async updateNursingRecord(id: string, record: Partial<InsertNursingRecord>): Promise<NursingRecord | undefined> {
-    const result = await db
-      .update(nursingRecords)
-      .set({ ...record, updatedAt: new Date() })
-      .where(eq(nursingRecords.id, id))
-      .returning();
-    return result[0];
+  async updateNursingRecord(id: string, record: Partial<InsertNursingRecord>, userId: string, previousData?: any): Promise<NursingRecord | undefined> {
+    // Phase 3: トランザクションで履歴記録 + 更新
+    return await db.transaction(async (tx) => {
+      // 編集履歴を記録
+      if (previousData) {
+        await tx.insert(nursingRecordEditHistory).values({
+          nursingRecordId: id,
+          editedBy: userId,
+          changeType: record.status !== previousData.status ? 'status_change' : 'update',
+          previousData: previousData,
+          newData: record,
+        });
+      }
+
+      // 訪問記録を更新（編集カウントをインクリメント）
+      const result = await tx
+        .update(nursingRecords)
+        .set({
+          ...record,
+          lastEditedBy: userId,
+          editCount: previousData ? sql`${nursingRecords.editCount} + 1` : nursingRecords.editCount,
+          updatedAt: new Date()
+        })
+        .where(eq(nursingRecords.id, id))
+        .returning();
+
+      return result[0];
+    });
   }
 
   async deleteNursingRecord(id: string): Promise<boolean> {
@@ -490,6 +514,15 @@ export class PostgreSQLStorage implements IStorage {
       .set({ deletedAt: new Date() })
       .where(eq(nursingRecords.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Phase 3: 編集履歴取得
+  async getNursingRecordEditHistory(nursingRecordId: string): Promise<any[]> {
+    return await db
+      .select()
+      .from(nursingRecordEditHistory)
+      .where(eq(nursingRecordEditHistory.nursingRecordId, nursingRecordId))
+      .orderBy(desc(nursingRecordEditHistory.editedAt));
   }
 
   // ========== Medications ==========
