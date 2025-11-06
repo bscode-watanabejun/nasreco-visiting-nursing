@@ -252,6 +252,10 @@ const validateFormData = (formData: FormData, isComplete: boolean, selectedPatie
     }
 
     // 加算管理のバリデーション
+    if (formData.hasEmergencyVisit && !formData.emergencyVisitReason?.trim()) {
+      errors.push('緊急訪問看護加算の理由を入力してください')
+    }
+
     if (formData.isSecondVisit && !formData.multipleVisitReason.trim()) {
       errors.push('複数回訪問の理由を入力してください')
     }
@@ -2162,6 +2166,22 @@ export function NursingRecords() {
                   />
                 </div>
               </div>
+
+              {/* 90分超の警告 */}
+              {(() => {
+                const startTime = formData.actualStartTime ? new Date(`2000-01-01T${formData.actualStartTime}`) : null
+                const endTime = formData.actualEndTime ? new Date(`2000-01-01T${formData.actualEndTime}`) : null
+                const duration = startTime && endTime ? (endTime.getTime() - startTime.getTime()) / 1000 / 60 : 0
+                return duration > 90 ? (
+                  <Alert className="border-amber-300 bg-amber-50">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertTitle className="text-amber-900">長時間訪問（90分超）</AlertTitle>
+                    <AlertDescription className="text-amber-700">
+                      訪問時間が90分を超えています（{Math.floor(duration)}分）。「レセプト・加算」タブで長時間訪問の理由を記載してください。
+                    </AlertDescription>
+                  </Alert>
+                ) : null
+              })()}
 
               <div className="space-y-2">
                 <Label htmlFor="observations">
