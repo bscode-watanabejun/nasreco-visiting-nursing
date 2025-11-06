@@ -8507,7 +8507,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========== マスターデータCRUD API ==========
 
   // 都道府県コード - 作成
-  app.post("/api/master/prefecture-codes", async (req, res) => {
+  app.post("/api/master/prefecture-codes", requireSystemAdmin, async (req, res) => {
     try {
       const { prefectureCode, prefectureName, displayOrder } = req.body;
 
@@ -8533,7 +8533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 都道府県コード - 更新
-  app.put("/api/master/prefecture-codes/:id", async (req, res) => {
+  app.put("/api/master/prefecture-codes/:id", requireSystemAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { prefectureCode, prefectureName, displayOrder, isActive } = req.body;
@@ -8561,7 +8561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 訪問看護サービスコード - 作成
-  app.post("/api/master/nursing-service-codes", async (req, res) => {
+  app.post("/api/master/nursing-service-codes", requireSystemAdmin, async (req, res) => {
     try {
       const { serviceCode, serviceName, insuranceType, points, description } = req.body;
 
@@ -8596,7 +8596,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 訪問看護サービスコード - 更新
-  app.put("/api/master/nursing-service-codes/:id", async (req, res) => {
+  app.put("/api/master/nursing-service-codes/:id", requireSystemAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { serviceCode, serviceName, insuranceType, points, description, isActive } = req.body;
@@ -8630,7 +8630,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 職員資格コード - 作成
-  app.post("/api/master/staff-qualification-codes", async (req, res) => {
+  app.post("/api/master/staff-qualification-codes", requireSystemAdmin, async (req, res) => {
     try {
       const { qualificationCode, qualificationName, displayOrder } = req.body;
 
@@ -8656,7 +8656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 職員資格コード - 更新
-  app.put("/api/master/staff-qualification-codes/:id", async (req, res) => {
+  app.put("/api/master/staff-qualification-codes/:id", requireSystemAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { qualificationCode, qualificationName, displayOrder, isActive } = req.body;
@@ -8684,7 +8684,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 訪問場所コード - 作成
-  app.post("/api/master/visit-location-codes", async (req, res) => {
+  app.post("/api/master/visit-location-codes", requireSystemAdmin, async (req, res) => {
     try {
       const { locationCode, locationName, displayOrder } = req.body;
 
@@ -8710,7 +8710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 訪問場所コード - 更新
-  app.put("/api/master/visit-location-codes/:id", async (req, res) => {
+  app.put("/api/master/visit-location-codes/:id", requireSystemAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { locationCode, locationName, displayOrder, isActive } = req.body;
@@ -8738,7 +8738,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // レセプト種別コード - 作成
-  app.post("/api/master/receipt-type-codes", async (req, res) => {
+  app.post("/api/master/receipt-type-codes", requireSystemAdmin, async (req, res) => {
     try {
       const { receiptTypeCode, receiptTypeName, insuranceType, displayOrder, description } = req.body;
 
@@ -8770,7 +8770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // レセプト種別コード - 更新
-  app.put("/api/master/receipt-type-codes/:id", async (req, res) => {
+  app.put("/api/master/receipt-type-codes/:id", requireSystemAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { receiptTypeCode, receiptTypeName, insuranceType, displayOrder, description, isActive } = req.body;

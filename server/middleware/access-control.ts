@@ -117,6 +117,11 @@ export const requireHeadquarters = async (req: Request, res: Response, next: Nex
  * NOTE: This is kept for backward compatibility, but checkPathFacilityAccess is recommended for path-based routing
  */
 export const checkSubdomainAccess = async (req: Request, res: Response, next: NextFunction) => {
+  // Skip check for system admins - they have global access
+  if (req.user && req.user.role === 'system_admin') {
+    return next();
+  }
+
   // Skip check for headquarters or if no facility context
   if (!req.facility || req.isHeadquarters) {
     return next();

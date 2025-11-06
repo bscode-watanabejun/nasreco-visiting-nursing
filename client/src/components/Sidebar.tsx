@@ -36,6 +36,7 @@ import {
 } from "lucide-react"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
 import { useUserBasedHeadquarters } from "@/hooks/useUserBasedHeadquarters"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { useQuery } from "@tanstack/react-query"
 import { useBasePath } from "@/hooks/useBasePath"
 
@@ -257,12 +258,32 @@ const headquartersNavigationItems: NavigationItem[] = [
   },
 ];
 
+// System admin-specific navigation items
+const systemAdminNavigationItems: NavigationItem[] = [
+  {
+    title: "企業管理",
+    href: "/system-admin/companies",
+    icon: Building2,
+    badge: null,
+  },
+  {
+    title: "レセプトマスタ管理",
+    href: "/system-admin/master-data",
+    icon: Database,
+    badge: null,
+  },
+];
+
 export function AppSidebar() {
   const [location] = useLocation()
   const isHeadquarters = useIsHeadquarters()
   const isUserBasedHeadquarters = useUserBasedHeadquarters()
   const { isMobile, setOpenMobile } = useSidebar()
   const basePath = useBasePath()
+  const { data: currentUser } = useCurrentUser()
+
+  // Check if user is system admin
+  const isSystemAdmin = currentUser?.role === 'system_admin'
 
   // Use user-based headquarters detection as the primary indicator
   const shouldShowHeadquartersMenu = isUserBasedHeadquarters || isHeadquarters
@@ -319,7 +340,43 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {shouldShowHeadquartersMenu ? (
+        {isSystemAdmin ? (
+          // System admin menu - simple single group
+          <SidebarGroup>
+            <SidebarGroupLabel>システム管理</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {systemAdminNavigationItems.map((item) => {
+                  const Icon = item.icon
+                  const active = isActive(item.href)
+
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={active}
+                        className="h-10"
+                      >
+                        <Link href={item.href} onClick={handleLinkClick}>
+                          <Icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                          {item.badge && (
+                            <Badge
+                              variant={item.badge.variant}
+                              className="ml-auto h-5 px-1.5 text-xs"
+                            >
+                              {item.badge.text}
+                            </Badge>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : shouldShowHeadquartersMenu ? (
           // Headquarters menu - simple single group
           <SidebarGroup>
             <SidebarGroupLabel>本社メニュー</SidebarGroupLabel>

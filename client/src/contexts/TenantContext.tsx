@@ -105,6 +105,19 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // URL format: /companySlug/facilitySlug/...
       const pathParts = window.location.pathname.split('/').filter(Boolean);
 
+      // System admin routes (/system-admin/*) should not be processed as tenant routes
+      if (pathParts.length > 0 && pathParts[0] === 'system-admin') {
+        console.log('[TenantContext] System admin route detected, skipping tenant info fetch');
+        setTenantInfo({
+          company: null,
+          facility: null,
+          subdomain: null,
+          isHeadquarters: false,
+          isLoading: false,
+        });
+        return;
+      }
+
       const knownPages = [
         'dashboard', 'patients', 'records', 'schedule', 'users', 'facilities',
         'medical-institutions', 'care-managers', 'buildings', 'insurance-cards',

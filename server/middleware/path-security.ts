@@ -37,6 +37,12 @@ export const checkPathFacilityAccess = (req: AuthenticatedPathRequest, res: Resp
   console.log(`[PathSecurity] isCorporateAdmin: ${req.isCorporateAdmin}`);
   console.log(`[PathSecurity] accessibleFacilities: ${JSON.stringify(req.accessibleFacilities)}`);
 
+  // System admins have global access - skip all facility checks
+  if (req.user.role === 'system_admin') {
+    console.log(`[PathSecurity] ✅ System admin - bypassing facility checks`);
+    return next();
+  }
+
   // If no facility in URL, only allow if user is corporate admin at headquarters
   if (!req.facility) {
     if (req.isCorporateAdmin && req.user.accessLevel === 'corporate') {

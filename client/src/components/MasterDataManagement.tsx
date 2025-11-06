@@ -38,8 +38,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Edit, Database } from "lucide-react"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { Plus, Edit, Database, AlertCircle } from "lucide-react"
 import { masterDataApi } from "@/lib/api"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import type {
   PrefectureCode,
   NursingServiceCode,
@@ -65,7 +67,11 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 export function MasterDataManagement() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { data: currentUser } = useCurrentUser()
   const [activeTab, setActiveTab] = useState("prefecture")
+
+  // Check if user is system admin (only they can edit)
+  const isSystemAdmin = currentUser?.role === 'system_admin'
 
   // Status filters for each tab
   const [prefectureFilter, setPrefectureFilter] = useState<StatusFilter>('active')
@@ -94,7 +100,9 @@ export function MasterDataManagement() {
   const { data: prefectureCodes = [] } = useQuery({
     queryKey: ["prefecture-codes-all"],
     queryFn: async () => {
-      const response = await fetch("/api/master/prefecture-codes")
+      const response = await fetch("/api/master/prefecture-codes", {
+        credentials: 'include'
+      })
       if (!response.ok) throw new Error("都道府県コードの取得に失敗しました")
       return response.json() as Promise<PrefectureCode[]>
     },
@@ -154,7 +162,9 @@ export function MasterDataManagement() {
   const { data: serviceCodes = [] } = useQuery({
     queryKey: ["nursing-service-codes-all"],
     queryFn: async () => {
-      const response = await fetch("/api/master/nursing-service-codes")
+      const response = await fetch("/api/master/nursing-service-codes", {
+        credentials: 'include'
+      })
       if (!response.ok) throw new Error("サービスコードの取得に失敗しました")
       return response.json() as Promise<NursingServiceCode[]>
     },
@@ -222,7 +232,9 @@ export function MasterDataManagement() {
   const { data: qualificationCodes = [] } = useQuery({
     queryKey: ["staff-qualification-codes-all"],
     queryFn: async () => {
-      const response = await fetch("/api/master/staff-qualification-codes")
+      const response = await fetch("/api/master/staff-qualification-codes", {
+        credentials: 'include'
+      })
       if (!response.ok) throw new Error("職員資格コードの取得に失敗しました")
       return response.json() as Promise<StaffQualificationCode[]>
     },
@@ -280,7 +292,9 @@ export function MasterDataManagement() {
   const { data: locationCodes = [] } = useQuery({
     queryKey: ["visit-location-codes-all"],
     queryFn: async () => {
-      const response = await fetch("/api/master/visit-location-codes")
+      const response = await fetch("/api/master/visit-location-codes", {
+        credentials: 'include'
+      })
       if (!response.ok) throw new Error("訪問場所コードの取得に失敗しました")
       return response.json() as Promise<VisitLocationCode[]>
     },
@@ -340,7 +354,9 @@ export function MasterDataManagement() {
   const { data: receiptTypeCodes = [] } = useQuery({
     queryKey: ["receipt-type-codes-all"],
     queryFn: async () => {
-      const response = await fetch("/api/master/receipt-type-codes")
+      const response = await fetch("/api/master/receipt-type-codes", {
+        credentials: 'include'
+      })
       if (!response.ok) throw new Error("レセプト種別コードの取得に失敗しました")
       return response.json() as Promise<ReceiptTypeCode[]>
     },
@@ -406,6 +422,28 @@ export function MasterDataManagement() {
         </div>
       </div>
 
+      {/* System Admin Mode Banner */}
+      {isSystemAdmin && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>システム管理者モード</AlertTitle>
+          <AlertDescription>
+            レセプトマスタの編集が可能です。変更は全テナントに影響します。
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Read-only Mode Banner */}
+      {!isSystemAdmin && (
+        <Alert variant="default">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>閲覧モード</AlertTitle>
+          <AlertDescription>
+            レセプトマスタは閲覧のみ可能です。
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="prefecture">都道府県</TabsTrigger>
@@ -450,16 +488,18 @@ export function MasterDataManagement() {
                       無効のみ
                     </Button>
                   </div>
-                  <Button
-                    onClick={() => {
-                      setEditingPrefecture(null)
-                      setPrefectureForm({ prefectureCode: "", prefectureName: "", displayOrder: 0, isActive: true })
-                      setPrefectureDialog(true)
-                    }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    新規作成
-                  </Button>
+                  {isSystemAdmin && (
+                    <Button
+                      onClick={() => {
+                        setEditingPrefecture(null)
+                        setPrefectureForm({ prefectureCode: "", prefectureName: "", displayOrder: 0, isActive: true })
+                        setPrefectureDialog(true)
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新規作成
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -471,7 +511,7 @@ export function MasterDataManagement() {
                     <TableHead>都道府県名</TableHead>
                     <TableHead>表示順</TableHead>
                     <TableHead>状態</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -485,24 +525,26 @@ export function MasterDataManagement() {
                           {code.isActive ? "有効" : "無効"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditingPrefecture(code)
-                            setPrefectureForm({
-                              prefectureCode: code.prefectureCode,
-                              prefectureName: code.prefectureName,
-                              displayOrder: code.displayOrder,
-                              isActive: code.isActive,
-                            })
-                            setPrefectureDialog(true)
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+                      {isSystemAdmin && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingPrefecture(code)
+                              setPrefectureForm({
+                                prefectureCode: code.prefectureCode,
+                                prefectureName: code.prefectureName,
+                                displayOrder: code.displayOrder,
+                                isActive: code.isActive,
+                              })
+                              setPrefectureDialog(true)
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -546,23 +588,25 @@ export function MasterDataManagement() {
                       無効のみ
                     </Button>
                   </div>
-                  <Button
-                    onClick={() => {
-                      setEditingService(null)
-                      setServiceForm({
-                        serviceCode: "",
-                        serviceName: "",
-                        insuranceType: "medical",
-                        points: "",
-                        description: "",
-                        isActive: true,
-                      })
-                      setServiceDialog(true)
-                    }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    新規作成
-                  </Button>
+                  {isSystemAdmin && (
+                    <Button
+                      onClick={() => {
+                        setEditingService(null)
+                        setServiceForm({
+                          serviceCode: "",
+                          serviceName: "",
+                          insuranceType: "medical",
+                          points: "",
+                          description: "",
+                          isActive: true,
+                        })
+                        setServiceDialog(true)
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新規作成
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -575,7 +619,7 @@ export function MasterDataManagement() {
                     <TableHead>保険種別</TableHead>
                     <TableHead>単位/金額</TableHead>
                     <TableHead>状態</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -594,26 +638,28 @@ export function MasterDataManagement() {
                           {code.isActive ? "有効" : "無効"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditingService(code)
-                            setServiceForm({
-                              serviceCode: code.serviceCode,
-                              serviceName: code.serviceName,
-                              insuranceType: code.insuranceType,
-                              points: code.points?.toString() || "",
-                              description: code.description || "",
-                              isActive: code.isActive,
-                            })
-                            setServiceDialog(true)
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+                      {isSystemAdmin && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingService(code)
+                              setServiceForm({
+                                serviceCode: code.serviceCode,
+                                serviceName: code.serviceName,
+                                insuranceType: code.insuranceType,
+                                points: code.points?.toString() || "",
+                                description: code.description || "",
+                                isActive: code.isActive,
+                              })
+                              setServiceDialog(true)
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -657,16 +703,18 @@ export function MasterDataManagement() {
                       無効のみ
                     </Button>
                   </div>
-                  <Button
-                    onClick={() => {
-                      setEditingQualification(null)
-                      setQualificationForm({ qualificationCode: "", qualificationName: "", displayOrder: 0, isActive: true })
-                      setQualificationDialog(true)
-                    }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    新規作成
-                  </Button>
+                  {isSystemAdmin && (
+                    <Button
+                      onClick={() => {
+                        setEditingQualification(null)
+                        setQualificationForm({ qualificationCode: "", qualificationName: "", displayOrder: 0, isActive: true })
+                        setQualificationDialog(true)
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新規作成
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -678,7 +726,7 @@ export function MasterDataManagement() {
                     <TableHead>資格名</TableHead>
                     <TableHead>表示順</TableHead>
                     <TableHead>状態</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -692,24 +740,26 @@ export function MasterDataManagement() {
                           {code.isActive ? "有効" : "無効"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditingQualification(code)
-                            setQualificationForm({
-                              qualificationCode: code.qualificationCode,
-                              qualificationName: code.qualificationName,
-                              displayOrder: code.displayOrder,
-                              isActive: code.isActive,
-                            })
-                            setQualificationDialog(true)
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+                      {isSystemAdmin && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingQualification(code)
+                              setQualificationForm({
+                                qualificationCode: code.qualificationCode,
+                                qualificationName: code.qualificationName,
+                                displayOrder: code.displayOrder,
+                                isActive: code.isActive,
+                              })
+                              setQualificationDialog(true)
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -753,16 +803,18 @@ export function MasterDataManagement() {
                       無効のみ
                     </Button>
                   </div>
-                  <Button
-                    onClick={() => {
-                      setEditingLocation(null)
-                      setLocationForm({ locationCode: "", locationName: "", displayOrder: 0, isActive: true })
-                      setLocationDialog(true)
-                    }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    新規作成
-                  </Button>
+                  {isSystemAdmin && (
+                    <Button
+                      onClick={() => {
+                        setEditingLocation(null)
+                        setLocationForm({ locationCode: "", locationName: "", displayOrder: 0, isActive: true })
+                        setLocationDialog(true)
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新規作成
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -774,7 +826,7 @@ export function MasterDataManagement() {
                     <TableHead>場所名</TableHead>
                     <TableHead>表示順</TableHead>
                     <TableHead>状態</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -788,24 +840,26 @@ export function MasterDataManagement() {
                           {code.isActive ? "有効" : "無効"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditingLocation(code)
-                            setLocationForm({
-                              locationCode: code.locationCode,
-                              locationName: code.locationName,
-                              displayOrder: code.displayOrder,
-                              isActive: code.isActive,
-                            })
-                            setLocationDialog(true)
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+                      {isSystemAdmin && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingLocation(code)
+                              setLocationForm({
+                                locationCode: code.locationCode,
+                                locationName: code.locationName,
+                                displayOrder: code.displayOrder,
+                                isActive: code.isActive,
+                              })
+                              setLocationDialog(true)
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -849,23 +903,25 @@ export function MasterDataManagement() {
                       無効のみ
                     </Button>
                   </div>
-                  <Button
-                    onClick={() => {
-                      setEditingReceiptType(null)
-                      setReceiptTypeForm({
-                        receiptTypeCode: "",
-                        receiptTypeName: "",
-                        insuranceType: "medical",
-                        displayOrder: 0,
-                        description: "",
-                        isActive: true,
-                      })
-                      setReceiptTypeDialog(true)
-                    }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    新規作成
-                  </Button>
+                  {isSystemAdmin && (
+                    <Button
+                      onClick={() => {
+                        setEditingReceiptType(null)
+                        setReceiptTypeForm({
+                          receiptTypeCode: "",
+                          receiptTypeName: "",
+                          insuranceType: "medical",
+                          displayOrder: 0,
+                          description: "",
+                          isActive: true,
+                        })
+                        setReceiptTypeDialog(true)
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新規作成
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -878,7 +934,7 @@ export function MasterDataManagement() {
                     <TableHead>保険種別</TableHead>
                     <TableHead>表示順</TableHead>
                     <TableHead>状態</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -897,26 +953,28 @@ export function MasterDataManagement() {
                           {code.isActive ? "有効" : "無効"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditingReceiptType(code)
-                            setReceiptTypeForm({
-                              receiptTypeCode: code.receiptTypeCode,
-                              receiptTypeName: code.receiptTypeName,
-                              insuranceType: code.insuranceType,
-                              displayOrder: code.displayOrder,
-                              description: code.description || "",
-                              isActive: code.isActive,
-                            })
-                            setReceiptTypeDialog(true)
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+                      {isSystemAdmin && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingReceiptType(code)
+                              setReceiptTypeForm({
+                                receiptTypeCode: code.receiptTypeCode,
+                                receiptTypeName: code.receiptTypeName,
+                                insuranceType: code.insuranceType,
+                                displayOrder: code.displayOrder,
+                                description: code.description || "",
+                                isActive: code.isActive,
+                              })
+                              setReceiptTypeDialog(true)
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

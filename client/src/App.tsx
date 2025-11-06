@@ -79,7 +79,7 @@ function MainLayout() {
   const isHeadquarters = useIsHeadquarters();
   const isUserBasedHeadquarters = useUserBasedHeadquarters();
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { basePath, companySlug, facilitySlug } = usePathContext();
 
   // Get current user information
@@ -144,7 +144,7 @@ function MainLayout() {
     if (currentUser) {
       setIsAuthenticated(true);
 
-      // System Admin redirect: always redirect to /system-admin/companies
+      // System Admin redirect: only allow /system-admin/* routes
       if (currentUser.role === 'system_admin') {
         const currentPath = window.location.pathname;
 
@@ -363,31 +363,36 @@ function MainLayout() {
     "--sidebar-width-icon": "4rem",
   };
 
-  // System Admin layout (no sidebar)
+  // System Admin layout (always show sidebar)
   if (currentUser?.role === 'system_admin') {
     return (
-      <div className="flex h-screen w-full overflow-x-hidden">
-        <div className="flex flex-col flex-1 min-w-0 overflow-x-hidden">
-          <header className="border-b bg-background">
-            <div className="flex items-center justify-between px-4 py-3">
-              <h1 className="text-lg font-semibold">システム管理</h1>
-              <Navbar
-                currentFacility="システム管理"
-                onFacilityChange={handleFacilityChange}
-                userName={currentUser?.fullName || 'ユーザー'}
-                userRole={getUserRoleDisplay(currentUser)}
-                onLogout={handleLogout}
-              />
-            </div>
-          </header>
-          <main className="flex-1 overflow-y-auto overflow-x-hidden">
-            <Switch>
-              <Route path="/system-admin/companies" component={CompanyManagement} />
-              <Route component={CompanyManagement} />
-            </Switch>
-          </main>
+      <SidebarProvider style={style as React.CSSProperties}>
+        <div className="flex h-screen w-full overflow-x-hidden">
+          <AppSidebar />
+          <div className="flex flex-col flex-1 min-w-0 overflow-x-hidden">
+            <header className="border-b bg-background">
+              <div className="flex items-center justify-between px-4 py-3">
+                <SidebarTrigger />
+                <h1 className="text-lg font-semibold">システム管理</h1>
+                <Navbar
+                  currentFacility="システム管理"
+                  onFacilityChange={handleFacilityChange}
+                  userName={currentUser?.fullName || 'ユーザー'}
+                  userRole={getUserRoleDisplay(currentUser)}
+                  onLogout={handleLogout}
+                />
+              </div>
+            </header>
+            <main className="flex-1 overflow-y-auto overflow-x-hidden">
+              <Switch>
+                <Route path="/system-admin/companies" component={CompanyManagement} />
+                <Route path="/system-admin/master-data" component={MasterDataManagement} />
+                <Route component={CompanyManagement} />
+              </Switch>
+            </main>
+          </div>
         </div>
-      </div>
+      </SidebarProvider>
     );
   }
 
