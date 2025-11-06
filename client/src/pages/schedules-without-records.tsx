@@ -38,7 +38,7 @@ type ScheduleWithoutRecord = {
   nurse: {
     id: string;
     fullName: string;
-  };
+  } | null;
 };
 
 type User = {
@@ -207,7 +207,7 @@ export default function SchedulesWithoutRecords() {
                         <TableCell>
                           {schedule.patient.lastName} {schedule.patient.firstName}
                         </TableCell>
-                        <TableCell>{schedule.nurse.fullName}</TableCell>
+                        <TableCell>{schedule.nurse?.fullName || '未割当'}</TableCell>
                         <TableCell>{schedule.purpose}</TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -244,7 +244,7 @@ export default function SchedulesWithoutRecords() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground min-w-[60px]">担当:</span>
-                        <span className="truncate">{schedule.nurse.fullName}</span>
+                        <span className="truncate">{schedule.nurse?.fullName || '未割当'}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-xs text-muted-foreground min-w-[60px]">目的:</span>
