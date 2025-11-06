@@ -81,7 +81,8 @@
       "Bash(__NEW_LINE__ psql $DATABASE_URL -c \"\\d visit_location_codes\")",
       "Bash(__NEW_LINE__ psql $DATABASE_URL -c \"COPY (SELECT * FROM visit_location_codes ORDER BY location_code) TO STDOUT WITH (FORMAT CSV, HEADER true)\")",
       "Bash(node:*)",
-      "Bash(git merge-base:*)"
+      "Bash(git merge-base:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_yASiEqWs0rz5@ep-still-water-aeb6ynp2.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require\" npx tsx:*)"
     ],
     "deny": [],
     "ask": []
