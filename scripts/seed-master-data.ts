@@ -70,7 +70,7 @@ async function seedMasterData() {
       { prefectureCode: '45', prefectureName: '宮崎県', displayOrder: 45, isActive: true },
       { prefectureCode: '46', prefectureName: '鹿児島県', displayOrder: 46, isActive: true },
       { prefectureCode: '47', prefectureName: '沖縄県', displayOrder: 47, isActive: true },
-    ]);
+    ]).onConflictDoNothing();
     console.log('✓ 都道府県コード: 47件投入完了\n');
 
     // 2. 職員資格コード（別表20）
@@ -86,7 +86,7 @@ async function seedMasterData() {
       { qualificationCode: '08', qualificationName: '専門研修修了看護師', description: '特定行為研修を修了した看護師', displayOrder: 8, isActive: true },
       { qualificationCode: '09', qualificationName: '看護補助者', description: '看護補助を行う者', displayOrder: 9, isActive: true },
       { qualificationCode: '10', qualificationName: '精神保健福祉士', description: '精神保健福祉士法に基づく精神保健福祉士', displayOrder: 10, isActive: true },
-    ]);
+    ]).onConflictDoNothing();
     console.log('✓ 職員資格コード: 10件投入完了\n');
 
     // 3. 訪問場所コード（別表16）
@@ -102,7 +102,7 @@ async function seedMasterData() {
       { locationCode: '08', locationName: 'グループホーム', description: '認知症対応型共同生活介護事業所', displayOrder: 8, isActive: true },
       { locationCode: '09', locationName: 'サービス付き高齢者向け住宅', description: 'サービス付き高齢者向け住宅', displayOrder: 9, isActive: true },
       { locationCode: '99', locationName: 'その他', description: 'その他（文字データで指定）', displayOrder: 99, isActive: true },
-    ]);
+    ]).onConflictDoNothing();
     console.log('✓ 訪問場所コード: 10件投入完了\n');
 
     // 4. レセプト種別コード（別表4）
@@ -115,7 +115,7 @@ async function seedMasterData() {
       { receiptTypeCode: '3121', receiptTypeName: '訪問看護療養費（国民健康保険・公費併用）', insuranceType: 'medical', description: '国民健康保険と公費の併用', displayOrder: 5, isActive: true },
       { receiptTypeCode: '3131', receiptTypeName: '訪問看護療養費（後期高齢者医療・公費併用）', insuranceType: 'medical', description: '後期高齢者医療と公費の併用', displayOrder: 6, isActive: true },
       { receiptTypeCode: '3140', receiptTypeName: '訪問看護療養費（公費単独）', insuranceType: 'medical', description: '公費負担医療のみ', displayOrder: 7, isActive: true },
-    ]);
+    ]).onConflictDoNothing();
     console.log('✓ レセプト種別コード: 7件投入完了\n');
 
     // 5. 訪問看護サービスコード（主要なもの）
@@ -153,7 +153,7 @@ async function seedMasterData() {
 
       // ターミナルケア加算
       { serviceCode: '314000110', serviceName: 'ターミナルケア加算', points: 25000, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-    ]);
+    ]).onConflictDoNothing();
     console.log('✓ 訪問看護サービスコード: 21件投入完了\n');
 
     console.log('✅ マスターデータの投入が完了しました！');
