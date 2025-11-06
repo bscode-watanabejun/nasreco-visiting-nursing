@@ -2100,25 +2100,24 @@ export function NursingRecords() {
         {(isCreating || isEditing) ? (
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
             <TabsList className="grid w-full grid-cols-5 h-auto gap-0.5 sm:gap-1">
-              <TabsTrigger value="basic" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+              <TabsTrigger value="basic" className="text-xs sm:text-sm py-1.5 sm:py-2 px-1 sm:px-3">
                 <span className="hidden sm:inline">基本記録</span>
                 <span className="sm:hidden">基本</span>
                 <span className="ml-0.5 sm:ml-1 text-red-500">●</span>
               </TabsTrigger>
-              <TabsTrigger value="vitals-care" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+              <TabsTrigger value="vitals-care" className="text-xs sm:text-sm py-1.5 sm:py-2 px-1 sm:px-3">
                 <span className="hidden sm:inline">バイタル・ケア</span>
                 <span className="sm:hidden">バイタル</span>
               </TabsTrigger>
-              <TabsTrigger value="special" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+              <TabsTrigger value="special" className="text-xs sm:text-sm py-1.5 sm:py-2 px-1 sm:px-3">
                 <span className="hidden sm:inline">特管記録</span>
                 <span className="sm:hidden">特管</span>
               </TabsTrigger>
-              <TabsTrigger value="receipt" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+              <TabsTrigger value="receipt" className="text-xs sm:text-sm py-1.5 sm:py-2 px-1 sm:px-3">
                 <span className="hidden sm:inline">レセプト・加算</span>
                 <span className="sm:hidden">レセプト</span>
-                <Badge variant="outline" className="ml-0.5 sm:ml-1 text-[10px] sm:text-xs hidden sm:inline-flex">任意</Badge>
               </TabsTrigger>
-              <TabsTrigger value="photos" className="text-xs sm:text-sm lg:text-base py-2 sm:py-3 px-1 sm:px-3">
+              <TabsTrigger value="photos" className="text-xs sm:text-sm py-1.5 sm:py-2 px-1 sm:px-3">
                 <span className="hidden sm:inline">写真・メモ</span>
                 <span className="sm:hidden">写真</span>
               </TabsTrigger>
@@ -2199,7 +2198,6 @@ export function NursingRecords() {
                           ...prev,
                           bloodPressureSystolic: e.target.value
                         }))}
-                        className="w-24"
                       />
                       <span>/</span>
                       <Input
@@ -2211,7 +2209,6 @@ export function NursingRecords() {
                           ...prev,
                           bloodPressureDiastolic: e.target.value
                         }))}
-                        className="w-24"
                       />
                     </div>
                   </div>
