@@ -121,12 +121,13 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
   const recordId = recordData?.record?.id
 
   const handleClick = () => {
+    const currentPath = `${basePath}/schedule`
     if (hasRecord && recordId) {
-      // Navigate to view/edit existing record
-      setLocation(`${basePath}/records?recordId=${recordId}`)
+      // Navigate to view/edit existing record with returnTo parameter
+      setLocation(`${basePath}/records?recordId=${recordId}&returnTo=${encodeURIComponent(currentPath)}`)
     } else {
-      // Navigate to create new record
-      setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}`)
+      // Navigate to create new record with returnTo parameter
+      setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}&returnTo=${encodeURIComponent(currentPath)}`)
     }
   }
 

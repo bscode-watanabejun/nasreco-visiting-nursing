@@ -723,9 +723,11 @@ export function NursingRecords() {
 
   // Handle recordId from URL to open record detail view
   useEffect(() => {
-    if (recordIdFromUrl && recordFromUrl && !isCreating && processedRecordIdRef.current !== recordIdFromUrl) {
-      // Mark this recordId as processed to prevent re-processing
-      processedRecordIdRef.current = recordIdFromUrl
+    if (recordIdFromUrl && recordFromUrl && !isCreating) {
+      // If recordId changed from previous, reset the ref
+      if (processedRecordIdRef.current !== recordIdFromUrl) {
+        processedRecordIdRef.current = recordIdFromUrl
+      }
 
       // Use the fetched record from URL
       const targetRecord = recordFromUrl
@@ -753,6 +755,9 @@ export function NursingRecords() {
         const newUrl = `${basePath}/records`
         window.history.replaceState({}, '', newUrl)
       }
+    } else if (!recordIdFromUrl && !isCreating) {
+      // Reset ref when no recordId in URL
+      processedRecordIdRef.current = null
     }
   }, [recordIdFromUrl, recordFromUrl, patients, users, isCreating, returnTo, basePath])
 
@@ -1287,6 +1292,10 @@ export function NursingRecords() {
                 setSelectedRecord(null)
                 setSaveError(null)
                 setCameFromUrl(false)
+                // Reset processedRecordIdRef to allow re-opening the same record
+                processedRecordIdRef.current = null
+                // Clear URL parameters
+                setLocation(`${basePath}/records`)
               }
             }}
             className="w-full sm:w-auto flex-shrink-0"
@@ -1890,6 +1899,10 @@ export function NursingRecords() {
                   setSelectedRecord(null)
                   setSaveError(null)
                   setCameFromUrl(false)
+                  // Reset processedRecordIdRef to allow re-opening the same record
+                  processedRecordIdRef.current = null
+                  // Clear URL parameters
+                  setLocation(`${basePath}/records`)
                 }
               }}>
                 閉じる
