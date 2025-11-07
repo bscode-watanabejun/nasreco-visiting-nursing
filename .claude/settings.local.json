@@ -87,7 +87,12 @@
       "Bash(PROD_DB=\"postgresql://neondb_owner:npg_yASiEqWs0rz5@ep-still-water-aeb6ynp2.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require\")",
       "Bash(timeout 30 npm run check:*)",
       "Bash(ssh-keygen:*)",
-      "Bash(pdfgrep:*)"
+      "Bash(pdfgrep:*)",
+      "Bash(/tmp/prod_tables.txt)",
+      "Bash(/tmp/prod_nursing_records_schema.txt)",
+      "Bash(/tmp/dev_nursing_records_schema.txt)",
+      "Bash(/tmp/prod_insurance_cards.txt)",
+      "Bash(/tmp/dev_insurance_cards.txt)"
     ],
     "deny": [],
     "ask": []
