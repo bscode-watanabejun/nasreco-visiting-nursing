@@ -580,6 +580,7 @@ export function NursingRecords() {
       return response.json()
     },
     enabled: !!recordIdFromUrl,
+    staleTime: 0, // Always fetch fresh data when navigating to record detail
   })
 
   // Fetch schedules for the selected patient on the visit date
@@ -1087,16 +1088,46 @@ export function NursingRecords() {
         await uploadAttachments(savedRecord.id)
       }
 
-      // 訪問ステータスが「完了」の場合、スケジュールのステータスも更新
-      if (formData.visitStatusRecord === 'completed' && formData.selectedScheduleId && formData.selectedScheduleId !== 'none') {
+      // 訪問ステータスに応じてスケジュールのステータスも更新
+      if (formData.selectedScheduleId && formData.selectedScheduleId !== 'none') {
         try {
-          const statusResponse = await fetch(`/api/schedules/${formData.selectedScheduleId}/status`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "completed" }),
-          })
-          if (!statusResponse.ok) {
-            console.error('スケジュールステータスの更新に失敗しました')
+          let scheduleStatus: string | null = null
+
+          // 訪問ステータスに応じてスケジュールステータスを設定
+          if (formData.visitStatusRecord === 'completed') {
+            // 訪問完了 → スケジュール完了
+            scheduleStatus = 'completed'
+          }
+          else if (formData.visitStatusRecord === 'pending') {
+            // 未実施 → 予定に戻す
+            scheduleStatus = 'scheduled'
+          }
+          else if (formData.visitStatusRecord === 'no_show') {
+            // 不在 → 予定に戻す
+            scheduleStatus = 'scheduled'
+          }
+          else if (formData.visitStatusRecord === 'cancelled') {
+            // キャンセル → キャンセル
+            scheduleStatus = 'cancelled'
+          }
+          else if (formData.visitStatusRecord === 'refused') {
+            // 拒否 → キャンセル
+            scheduleStatus = 'cancelled'
+          }
+          else if (formData.visitStatusRecord === 'rescheduled') {
+            // 日程変更 → キャンセル
+            scheduleStatus = 'cancelled'
+          }
+
+          if (scheduleStatus) {
+            const statusResponse = await fetch(`/api/schedules/${formData.selectedScheduleId}/status`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: scheduleStatus }),
+            })
+            if (!statusResponse.ok) {
+              console.error('スケジュールステータスの更新に失敗しました')
+            }
           }
         } catch (error) {
           console.error('スケジュールステータス更新エラー:', error)
@@ -1169,6 +1200,52 @@ export function NursingRecords() {
       // Upload attachments if any files are selected
       if (selectedFiles.length > 0 && updatedRecord.id) {
         await uploadAttachments(updatedRecord.id)
+      }
+
+      // 訪問ステータスに応じてスケジュールのステータスも更新
+      if (formData.selectedScheduleId && formData.selectedScheduleId !== 'none') {
+        try {
+          let scheduleStatus: string | null = null
+
+          // 訪問ステータスに応じてスケジュールステータスを設定
+          if (formData.visitStatusRecord === 'completed') {
+            // 訪問完了 → スケジュール完了
+            scheduleStatus = 'completed'
+          }
+          else if (formData.visitStatusRecord === 'pending') {
+            // 未実施 → 予定に戻す
+            scheduleStatus = 'scheduled'
+          }
+          else if (formData.visitStatusRecord === 'no_show') {
+            // 不在 → 予定に戻す
+            scheduleStatus = 'scheduled'
+          }
+          else if (formData.visitStatusRecord === 'cancelled') {
+            // キャンセル → キャンセル
+            scheduleStatus = 'cancelled'
+          }
+          else if (formData.visitStatusRecord === 'refused') {
+            // 拒否 → キャンセル
+            scheduleStatus = 'cancelled'
+          }
+          else if (formData.visitStatusRecord === 'rescheduled') {
+            // 日程変更 → キャンセル
+            scheduleStatus = 'cancelled'
+          }
+
+          if (scheduleStatus) {
+            const statusResponse = await fetch(`/api/schedules/${formData.selectedScheduleId}/status`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: scheduleStatus }),
+            })
+            if (!statusResponse.ok) {
+              console.error('スケジュールステータスの更新に失敗しました')
+            }
+          }
+        } catch (error) {
+          console.error('スケジュールステータス更新エラー:', error)
+        }
       }
 
       // Success - invalidate queries and show notification
@@ -1564,11 +1641,12 @@ export function NursingRecords() {
                     <p className="text-sm text-muted-foreground mb-1">訪問ステータス</p>
                     <Badge className="text-sm">
                       {selectedRecord.visitStatusRecord === 'completed' ? '完了' :
+                       selectedRecord.visitStatusRecord === 'pending' ? '未実施' :
                        selectedRecord.visitStatusRecord === 'no_show' ? '不在' :
                        selectedRecord.visitStatusRecord === 'refused' ? '拒否' :
                        selectedRecord.visitStatusRecord === 'cancelled' ? 'キャンセル' :
                        selectedRecord.visitStatusRecord === 'rescheduled' ? '日程変更' :
-                       '保留中'}
+                       '不明'}
                     </Badge>
                   </div>
                   <div>
