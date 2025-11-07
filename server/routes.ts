@@ -9042,6 +9042,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           insurerNumber: insuranceCardsData[0]?.insurerNumber || '',
           certificateSymbol: insuranceCardsData[0]?.insuredSymbol || '',     // schema: insuredSymbol
           certificateNumber: insuranceCardsData[0]?.insuredCardNumber || '', // schema: insuredCardNumber
+          reviewOrganizationCode: insuranceCardsData[0]?.reviewOrganizationCode || null, // 審査支払機関コード
         },
         // Phase 3: 公費負担医療情報（優先順位順）
         publicExpenses: publicExpensesData.map(pe => ({

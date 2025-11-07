@@ -58,6 +58,7 @@ export interface ReceiptCsvData {
     insurerNumber: string;        // 保険者番号（8桁固定）
     certificateSymbol: string;    // 被保険者証記号
     certificateNumber: string;    // 被保険者証番号
+    reviewOrganizationCode?: string | null;  // 審査支払機関コード ('1'=社保, '2'=国保連)
   };
 
   // 公費負担医療情報（Phase 3: 動的判定用）

@@ -38,6 +38,7 @@ interface FormData {
   relationshipType: 'self' | 'preschool' | 'family' | 'elderly_general' | 'elderly_70' | ''
   ageCategory: 'preschool' | 'general' | 'elderly' | ''
   elderlyRecipientCategory: 'general_low' | 'seventy' | ''
+  reviewOrganizationCode: '1' | '2' | ''
 }
 
 const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: string): FormData => ({
@@ -55,6 +56,7 @@ const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: stri
   relationshipType: card?.relationshipType || '',
   ageCategory: card?.ageCategory || '',
   elderlyRecipientCategory: card?.elderlyRecipientCategory || '',
+  reviewOrganizationCode: (card?.reviewOrganizationCode as '1' | '2') || '',
 })
 
 // 年齢区分を計算する関数
@@ -70,6 +72,32 @@ const calculateAgeCategory = (birthDate: string | null): 'preschool' | 'general'
   if (adjustedAge < 6) return 'preschool'
   if (adjustedAge >= 75) return 'elderly'
   return 'general'
+}
+
+// 保険者番号から審査支払機関コードを判定する関数
+const determineReviewOrganizationCode = (insurerNumber: string): '1' | '2' | '' => {
+  if (!insurerNumber) return ''
+
+  const length = insurerNumber.trim().length
+  const prefix = insurerNumber.substring(0, 2)
+
+  // 6桁 → 国保連 ('2')
+  if (length === 6) {
+    return '2'
+  }
+
+  // 8桁の場合
+  if (length === 8) {
+    // 後期高齢者医療（39で始まる） → 国保連 ('2')
+    if (prefix === '39') {
+      return '2'
+    }
+    // その他の8桁 → 社保 ('1')
+    return '1'
+  }
+
+  // 判定不能
+  return ''
 }
 
 export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: InsuranceCardDialogProps) {
@@ -127,6 +155,16 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
       setFormData(prev => ({ ...prev, ageCategory }))
     }
   }, [selectedPatient?.dateOfBirth])
+
+  // 保険者番号が変更されたら審査支払機関コードを自動判定
+  useEffect(() => {
+    if (formData.insurerNumber) {
+      const reviewOrganizationCode = determineReviewOrganizationCode(formData.insurerNumber)
+      if (reviewOrganizationCode) {
+        setFormData(prev => ({ ...prev, reviewOrganizationCode }))
+      }
+    }
+  }, [formData.insurerNumber])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -198,6 +236,7 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         if (formData.relationshipType) multipartData.append('relationshipType', formData.relationshipType)
         if (formData.ageCategory) multipartData.append('ageCategory', formData.ageCategory)
         if (formData.elderlyRecipientCategory) multipartData.append('elderlyRecipientCategory', formData.elderlyRecipientCategory)
+        if (formData.reviewOrganizationCode) multipartData.append('reviewOrganizationCode', formData.reviewOrganizationCode)
         multipartData.append('file', formData.file)
 
         response = await fetch(url, {
@@ -221,6 +260,7 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
           ...(formData.relationshipType && { relationshipType: formData.relationshipType }),
           ...(formData.ageCategory && { ageCategory: formData.ageCategory }),
           ...(formData.elderlyRecipientCategory && { elderlyRecipientCategory: formData.elderlyRecipientCategory }),
+          ...(formData.reviewOrganizationCode && { reviewOrganizationCode: formData.reviewOrganizationCode }),
         }
 
         response = await fetch(url, {
@@ -336,6 +376,30 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
               required
             />
           </div>
+
+          {/* Review Organization Code (医療保険のみ) */}
+          {formData.cardType === 'medical' && (
+            <div className="space-y-2">
+              <Label htmlFor="reviewOrganizationCode">審査支払機関（自動判定）</Label>
+              <Select
+                value={formData.reviewOrganizationCode}
+                onValueChange={(value: '1' | '2') =>
+                  setFormData(prev => ({ ...prev, reviewOrganizationCode: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="保険者番号から自動判定されます" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">社会保険診療報酬支払基金</SelectItem>
+                  <SelectItem value="2">国民健康保険団体連合会</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                保険者番号から自動判定されます（6桁→国保連、8桁の'39'始まり→国保連、8桁その他→社保）
+              </p>
+            </div>
+          )}
 
           {/* Insured Number */}
           <div className="space-y-2">

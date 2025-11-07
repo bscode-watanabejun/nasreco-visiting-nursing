@@ -576,7 +576,7 @@ export default function MonthlyReceiptDetail() {
             className="gap-2"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            医療保険CSV出力
+            医療保険レセプトデータ出力
           </Button>
           <Button
             variant="outline"
@@ -1183,6 +1183,7 @@ export default function MonthlyReceiptDetail() {
             relationshipType: (receipt.insuranceCard as any).relationshipType || null, // Phase 3: 本人家族区分
             ageCategory: (receipt.insuranceCard as any).ageCategory || null, // Phase 3: 年齢区分
             elderlyRecipientCategory: (receipt.insuranceCard as any).elderlyRecipientCategory || null, // Phase 3: 高齢受給者区分
+            reviewOrganizationCode: (receipt.insuranceCard as any).reviewOrganizationCode || null, // 審査支払機関コード
             isActive: true,
             filePath: null,
             originalFileName: null,

@@ -238,6 +238,7 @@ export default function InsuranceCardManagement() {
                   <TableHead>保険種別</TableHead>
                   <TableHead>保険者番号</TableHead>
                   <TableHead>被保険者番号</TableHead>
+                  <TableHead>審査支払機関</TableHead>
                   <TableHead>負担割合</TableHead>
                   <TableHead>有効期限</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -261,6 +262,15 @@ export default function InsuranceCardManagement() {
                       </TableCell>
                       <TableCell>{card.insurerNumber}</TableCell>
                       <TableCell>{card.insuredNumber}</TableCell>
+                      <TableCell>
+                        {card.cardType === "medical" && card.reviewOrganizationCode ? (
+                          <span className="text-sm">
+                            {card.reviewOrganizationCode === '1' ? '社保' : '国保連'}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>{card.copaymentRate ? `${parseInt(card.copaymentRate) / 10}割` : "-"}</TableCell>
                       <TableCell>
                         {card.validUntil ? (
@@ -301,7 +311,7 @@ export default function InsuranceCardManagement() {
                     {/* 展開エリア */}
                     {expandedRow === card.id && (
                       <TableRow>
-                        <TableCell colSpan={7} className="bg-muted/30 p-0">
+                        <TableCell colSpan={8} className="bg-muted/30 p-0">
                           <div className="p-4 space-y-3">
                             {/* 記号・番号（医療保険のみ） */}
                             {card.cardType === "medical" && (card.insuredSymbol || card.insuredCardNumber) && (
@@ -311,6 +321,18 @@ export default function InsuranceCardManagement() {
                                   {card.insuredSymbol && `記号: ${card.insuredSymbol}`}
                                   {card.insuredSymbol && card.insuredCardNumber && " / "}
                                   {card.insuredCardNumber && `番号: ${card.insuredCardNumber}`}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* 審査支払機関（医療保険のみ） */}
+                            {card.cardType === "medical" && card.reviewOrganizationCode && (
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground">審査支払機関</p>
+                                <p className="text-sm mt-1">
+                                  {card.reviewOrganizationCode === '1'
+                                    ? '社会保険診療報酬支払基金'
+                                    : '国民健康保険団体連合会'}
                                 </p>
                               </div>
                             )}

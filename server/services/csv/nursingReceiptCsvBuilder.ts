@@ -88,11 +88,12 @@ export class NursingReceiptCsvBuilder {
    * 1. HM: 訪問看護ステーション情報レコード
    */
   private addHMRecord(data: ReceiptCsvData): void {
-    // TODO: 審査支払機関コードは将来的に保険種別に応じて動的に判定すべき
-    // 別表1: 1=社保, 2=国保 (現在は社保固定)
+    // 審査支払機関コードを動的に判定
+    const reviewOrgCode = this.determineReviewOrganizationCode(data);
+
     const fields = [
       'HM',                                                    // レコード識別
-      '1',                                                     // 審査支払機関 (1=社保)
+      reviewOrgCode,                                           // 審査支払機関 (1=社保, 2=国保連)
       data.facility.prefectureCode || '',                     // 都道府県コード
       '6',                                                     // 点数表 (6=訪問看護)
       data.facility.facilityCode || '',                       // 訪問看護ステーションコード (7桁)
@@ -102,6 +103,48 @@ export class NursingReceiptCsvBuilder {
     ];
 
     this.lines.push(buildCsvLine(fields));
+  }
+
+  /**
+   * 保険者番号から審査支払機関コードを判定
+   *
+   * 別表1（審査支払機関コード）:
+   * - '1' = 社会保険診療報酬支払基金
+   * - '2' = 国民健康保険団体連合会（国保・後期高齢者医療）
+   */
+  private determineReviewOrganizationCode(data: ReceiptCsvData): string {
+    const insuranceCard = data.insuranceCard;
+
+    // 保険証に設定されている審査支払機関コードを優先使用
+    if (insuranceCard?.reviewOrganizationCode) {
+      return insuranceCard.reviewOrganizationCode;
+    }
+
+    // 保険者番号から動的判定（フォールバック）
+    const insurerNumber = insuranceCard?.insurerNumber;
+    if (!insurerNumber) {
+      throw new Error('保険者番号が設定されていません');
+    }
+
+    const length = insurerNumber.trim().length;
+    const prefix = insurerNumber.substring(0, 2);
+
+    // 6桁 → 国保連 ('2')
+    if (length === 6) {
+      return '2';
+    }
+
+    // 8桁の場合
+    if (length === 8) {
+      // 後期高齢者医療（39で始まる） → 国保連 ('2')
+      if (prefix === '39') {
+        return '2';
+      }
+      // その他の8桁 → 社保 ('1')
+      return '1';
+    }
+
+    throw new Error(`保険者番号の形式が不正です: ${insurerNumber}`);
   }
 
   /**

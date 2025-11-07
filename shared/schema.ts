@@ -442,6 +442,9 @@ export const insuranceCards = pgTable("insurance_cards", {
   ageCategory: ageCategoryEnum("age_category"), // 年齢区分
   elderlyRecipientCategory: elderlyRecipientCategoryEnum("elderly_recipient_category"), // 高齢受給者区分
 
+  // 審査支払機関コード ('1'=社会保険診療報酬支払基金, '2'=国民健康保険団体連合会)
+  reviewOrganizationCode: varchar("review_organization_code", { length: 1 }),
+
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -1016,6 +1019,8 @@ export const insertInsuranceCardSchema = createInsertSchema(insuranceCards).omit
   facilityId: true, // Set by server from user session
   createdAt: true,
   updatedAt: true,
+}).extend({
+  reviewOrganizationCode: z.enum(['1', '2']).optional().nullable(),
 });
 
 export const insertCarePlanSchema = createInsertSchema(carePlans).omit({
