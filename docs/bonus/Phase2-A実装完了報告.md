@@ -451,3 +451,5 @@ const type = condition.pattern || condition.type;  // 両方サポート
 
 **作成者**: Claude Code
 **最終更新**: 2025-10-24
+
+

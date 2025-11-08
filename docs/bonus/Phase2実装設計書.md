@@ -539,3 +539,5 @@ function evaluateAccompanyingStaff(
 
 **作成日**: 2025年10月22日
 **対象**: Phase 2 - 20項目の加算実装
+
+
