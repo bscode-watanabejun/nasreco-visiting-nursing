@@ -18,7 +18,7 @@ import {
   Bell,
   Home
 } from "lucide-react"
-import type { Schedule, Patient, User as UserType, PaginatedResult } from "@shared/schema"
+import type { Schedule, Patient, User as UserType, PaginatedResult, NursingRecord } from "@shared/schema"
 
 interface PatientVisit {
   id: string
@@ -290,6 +290,75 @@ export function Dashboard() {
   const handleCompleteVisit = (scheduleId: string) => {
     // Navigate to nursing records page with schedule ID
     setLocation(`${basePath}/records?mode=create&scheduleId=${scheduleId}`)
+  }
+
+  // VisitRecordButton component to handle record creation/editing
+  function VisitRecordButton({ scheduleId, status, className = "" }: { scheduleId: string; status: string; className?: string }) {
+    const [, setLocation] = useLocation()
+    const basePath = useBasePath()
+    
+    const { data: recordData, isLoading } = useQuery<{ hasRecord: boolean; record?: NursingRecord }>({
+      queryKey: ["nursing-record-by-schedule", scheduleId],
+      queryFn: async () => {
+        const response = await fetch(`/api/schedules/${scheduleId}/nursing-record`)
+        if (!response.ok) {
+          return { hasRecord: false }
+        }
+        return response.json()
+      },
+      staleTime: 5000,
+    })
+
+    const hasRecord = recordData?.hasRecord ?? false
+    const recordId = recordData?.record?.id
+    const recordStatus = recordData?.record?.status
+
+    if (status !== 'in_progress') {
+      return null
+    }
+
+    if (isLoading) {
+      return (
+        <Button size="sm" disabled className={`bg-orange-500 hover:bg-orange-600 text-white border-orange-600 ${className}`}>
+          <CheckCircle className="mr-1 h-3 w-3" />
+          記録
+        </Button>
+      )
+    }
+
+    if (hasRecord && recordId) {
+      // 既存の記録がある場合
+      const currentPath = `${basePath}/dashboard`
+      return (
+        <Button
+          size="sm"
+          className={`bg-blue-500 hover:bg-blue-600 text-white border-blue-600 ${className}`}
+          data-testid={`button-edit-record-${scheduleId}`}
+          onClick={() => {
+            setLocation(`${basePath}/records?recordId=${recordId}&returnTo=${encodeURIComponent(currentPath)}`)
+          }}
+        >
+          <CheckCircle className="mr-1 h-3 w-3" />
+          {recordStatus === 'completed' ? '記録確認' : '記録詳細'}
+        </Button>
+      )
+    }
+
+    // 記録がない場合
+    return (
+      <Button
+        size="sm"
+        className={`bg-orange-500 hover:bg-orange-600 text-white border-orange-600 ${className}`}
+        data-testid={`button-complete-visit-${scheduleId}`}
+        onClick={() => {
+          const currentPath = `${basePath}/dashboard`
+          setLocation(`${basePath}/records?mode=create&scheduleId=${scheduleId}&returnTo=${encodeURIComponent(currentPath)}`)
+        }}
+      >
+        <CheckCircle className="mr-1 h-3 w-3" />
+        記録
+      </Button>
+    )
   }
 
   const handleCreateNewRecord = () => {
@@ -684,14 +753,7 @@ export function Dashboard() {
                           >
                             詳細
                           </Button>
-                          <Button
-                            size="sm"
-                            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-                            data-testid={`button-complete-visit-${visit.id}`}
-                            onClick={() => handleCompleteVisit(visit.id)}
-                          >
-                            記録
-                          </Button>
+                          <VisitRecordButton scheduleId={visit.id} status={visit.status} className="flex-1" />
                         </div>
                       )}
 
@@ -738,15 +800,7 @@ export function Dashboard() {
                       </Button>
                     )}
                     {visit.status === 'in_progress' && (
-                      <Button
-                        size="sm"
-                        className="bg-orange-500 hover:bg-orange-600 text-white border-orange-600"
-                        data-testid={`button-complete-visit-${visit.id}`}
-                        onClick={() => handleCompleteVisit(visit.id)}
-                      >
-                        <CheckCircle className="mr-1 h-3 w-3" />
-                        記録
-                      </Button>
+                      <VisitRecordButton scheduleId={visit.id} status={visit.status} />
                     )}
                   </div>
                 </div>
