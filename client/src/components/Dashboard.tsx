@@ -339,7 +339,7 @@ export function Dashboard() {
           }}
         >
           <CheckCircle className="mr-1 h-3 w-3" />
-          {recordStatus === 'completed' ? '記録確認' : '記録詳細'}
+          記録詳細
         </Button>
       )
     }

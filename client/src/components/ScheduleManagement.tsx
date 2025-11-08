@@ -163,6 +163,88 @@ function RecordActionButton({ schedule, variant = "default", size = "sm", showLa
   )
 }
 
+// Schedule Status Badge Component - shows status considering record state
+interface ScheduleStatusBadgeProps {
+  scheduleId: string
+  scheduleStatus: 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+  size?: 'xs' | 'sm' // xs: text-[10px], sm: text-xs
+  className?: string
+}
+
+function ScheduleStatusBadge({ 
+  scheduleId, 
+  scheduleStatus, 
+  size = 'sm',
+  className = '' 
+}: ScheduleStatusBadgeProps) {
+  // Fetch nursing record for this schedule
+  const { data: recordData, isLoading } = useQuery<{ hasRecord: boolean; record?: NursingRecord }>({
+    queryKey: ["nursing-record-by-schedule", scheduleId],
+    queryFn: async () => {
+      const response = await fetch(`/api/schedules/${scheduleId}/nursing-record`)
+      if (!response.ok) {
+        return { hasRecord: false }
+      }
+      return response.json()
+    },
+    staleTime: 5000, // Cache for 5 seconds
+  })
+
+  const hasRecord = recordData?.hasRecord ?? false
+  const recordStatus = recordData?.record?.status
+
+  // Determine display status and color
+  let displayStatus: 'completed' | 'in_progress' | 'scheduled' | 'cancelled'
+  let statusText: string
+  let statusClass: string
+
+  if (isLoading) {
+    // Fallback to schedule status while loading
+    displayStatus = scheduleStatus
+  } else if (hasRecord && recordStatus === 'completed') {
+    // Record is completed - always show "完了" regardless of schedule status
+    displayStatus = 'completed'
+  } else if (hasRecord && recordStatus === 'draft') {
+    // Record is draft - use schedule status
+    displayStatus = scheduleStatus
+  } else {
+    // No record - use schedule status
+    displayStatus = scheduleStatus
+  }
+
+  // Set status text and color
+  switch (displayStatus) {
+    case 'completed':
+      statusText = '完了'
+      statusClass = 'bg-green-100 text-green-800'
+      break
+    case 'in_progress':
+      statusText = '実施中'
+      statusClass = 'bg-orange-100 text-orange-800'
+      break
+    case 'scheduled':
+      statusText = '予定'
+      statusClass = 'bg-yellow-100 text-yellow-800'
+      break
+    case 'cancelled':
+      statusText = 'キャンセル'
+      statusClass = 'bg-gray-100 text-gray-800'
+      break
+    default:
+      statusText = scheduleStatus
+      statusClass = 'bg-gray-100 text-gray-800'
+  }
+
+  const sizeClass = size === 'xs' ? 'text-[10px]' : 'text-xs'
+  const paddingClass = size === 'xs' ? 'px-1.5 py-0.5' : 'px-2 py-0.5'
+
+  return (
+    <span className={`${sizeClass} ${paddingClass} ${statusClass} rounded flex-shrink-0 ${className}`}>
+      {statusText}
+    </span>
+  )
+}
+
 export function ScheduleManagement() {
   const queryClient = useQueryClient()
   const [, setLocation] = useLocation()
@@ -546,15 +628,10 @@ export function ScheduleManagement() {
                             {daySchedules.length > 0 && (
                               <div className="space-y-1">
                                 {daySchedules.slice(0, 2).map(schedule => {
-                                  const statusColors = {
-                                    completed: 'bg-green-100 text-green-800',
-                                    in_progress: 'bg-orange-100 text-orange-800',
-                                    scheduled: 'bg-yellow-100 text-yellow-800',
-                                    cancelled: 'bg-gray-100 text-gray-800'
-                                  }
                                   return (
-                                    <div key={schedule.id} className={`text-xs truncate px-1 rounded ${statusColors[schedule.status]}`}>
-                                      {formatTime(schedule.scheduledStartTime)} {patients.find(p => p.id === schedule.patientId)?.lastName || ''}
+                                    <div key={schedule.id} className="text-xs truncate px-1 rounded flex items-center gap-1">
+                                      <span>{formatTime(schedule.scheduledStartTime)} {patients.find(p => p.id === schedule.patientId)?.lastName || ''}</span>
+                                      <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="xs" />
                                     </div>
                                   )
                                 })}
@@ -595,18 +672,7 @@ export function ScheduleManagement() {
                                       <span className="text-sm font-medium">
                                         {formatTime(schedule.scheduledStartTime)} - {formatTime(schedule.scheduledEndTime)}
                                       </span>
-                                      {schedule.status === 'completed' && (
-                                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
-                                      )}
-                                      {schedule.status === 'in_progress' && (
-                                        <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
-                                      )}
-                                      {schedule.status === 'scheduled' && (
-                                        <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
-                                      )}
-                                      {schedule.status === 'cancelled' && (
-                                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
-                                      )}
+                                      <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="sm" />
                                     </div>
                                     <div className="text-sm text-muted-foreground truncate">
                                       {patient ? getFullName(patient) : '不明'} / {nurse?.fullName || schedule.demoStaffName || '未割当'}
@@ -698,18 +764,7 @@ export function ScheduleManagement() {
                                           {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
                                           <span className="text-muted-foreground">({schedule.duration}分)</span>
                                         </div>
-                                        {schedule.status === 'completed' && (
-                                          <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] flex-shrink-0">完了</span>
-                                        )}
-                                        {schedule.status === 'in_progress' && (
-                                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] flex-shrink-0">実施中</span>
-                                        )}
-                                        {schedule.status === 'scheduled' && (
-                                          <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] flex-shrink-0">予定</span>
-                                        )}
-                                        {schedule.status === 'cancelled' && (
-                                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] flex-shrink-0">キャンセル</span>
-                                        )}
+                                        <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="xs" />
                                       </div>
                                       {/* 患者名と担当者 */}
                                       <div className="space-y-0.5">
@@ -795,18 +850,7 @@ export function ScheduleManagement() {
                                       {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
                                       <span className="text-muted-foreground">({schedule.duration}分)</span>
                                     </div>
-                                    {schedule.status === 'completed' && (
-                                      <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] flex-shrink-0">完了</span>
-                                    )}
-                                    {schedule.status === 'in_progress' && (
-                                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] flex-shrink-0">実施中</span>
-                                    )}
-                                    {schedule.status === 'scheduled' && (
-                                      <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] flex-shrink-0">予定</span>
-                                    )}
-                                    {schedule.status === 'cancelled' && (
-                                      <span className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] flex-shrink-0">キャンセル</span>
-                                    )}
+                                    <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="xs" />
                                   </div>
                                   {/* 患者名と担当者 */}
                                   <div className="space-y-0.5">
@@ -847,18 +891,7 @@ export function ScheduleManagement() {
                                           繰り返し
                                         </Badge>
                                       )}
-                                      {schedule.status === 'completed' && (
-                                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded">完了</span>
-                                      )}
-                                      {schedule.status === 'in_progress' && (
-                                        <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">実施中</span>
-                                      )}
-                                      {schedule.status === 'scheduled' && (
-                                        <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">予定</span>
-                                      )}
-                                      {schedule.status === 'cancelled' && (
-                                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-800 rounded">キャンセル</span>
-                                      )}
+                                      <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="sm" />
                                     </div>
                                     <div className="text-sm text-muted-foreground truncate">
                                       {patient ? getFullName(patient) : '患者不明'} / {nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当'}
@@ -936,18 +969,7 @@ export function ScheduleManagement() {
                                 {formatTime(schedule.scheduledStartTime)}-{formatTime(schedule.scheduledEndTime)}
                                 <span className="text-muted-foreground">({schedule.duration}分)</span>
                               </div>
-                              {schedule.status === 'completed' && (
-                                <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-[10px] flex-shrink-0">完了</span>
-                              )}
-                              {schedule.status === 'in_progress' && (
-                                <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] flex-shrink-0">実施中</span>
-                              )}
-                              {schedule.status === 'scheduled' && (
-                                <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] flex-shrink-0">予定</span>
-                              )}
-                              {schedule.status === 'cancelled' && (
-                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] flex-shrink-0">キャンセル</span>
-                              )}
+                              <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="xs" />
                             </div>
                             {/* 患者名と担当者 */}
                             <div className="space-y-0.5">
@@ -990,18 +1012,7 @@ export function ScheduleManagement() {
                                       繰り返し
                                     </Badge>
                                   )}
-                                  {schedule.status === 'completed' && (
-                                    <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">完了</span>
-                                  )}
-                                  {schedule.status === 'in_progress' && (
-                                    <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">実施中</span>
-                                  )}
-                                  {schedule.status === 'scheduled' && (
-                                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">予定</span>
-                                  )}
-                                  {schedule.status === 'cancelled' && (
-                                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded">キャンセル</span>
-                                  )}
+                                  <ScheduleStatusBadge scheduleId={schedule.id} scheduleStatus={schedule.status || 'scheduled'} size="sm" />
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <User className="h-4 w-4" />
