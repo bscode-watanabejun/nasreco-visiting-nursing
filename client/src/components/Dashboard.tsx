@@ -824,7 +824,10 @@ export function Dashboard() {
                       <div
                         key={record.id}
                         className="flex items-center justify-between gap-3 p-3 border rounded-lg hover:bg-accent cursor-pointer transition-colors"
-                        onClick={() => setLocation(`${basePath}/records?id=${record.id}`)}
+                        onClick={() => {
+                          const currentPath = `${basePath}/dashboard`
+                          setLocation(`${basePath}/records?recordId=${record.id}&returnTo=${encodeURIComponent(currentPath)}`)
+                        }}
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-sm sm:text-base truncate">{patientName}</p>
