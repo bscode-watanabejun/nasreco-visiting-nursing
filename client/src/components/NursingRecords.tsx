@@ -148,13 +148,26 @@ const getFullName = (patient: Patient): string => {
 }
 
 // Helper function to convert FormData to API format (unified with VisitRecordDialog)
-const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'completed') => {
+const convertFormDataToApiFormat = (
+  formData: FormData, 
+  status: 'draft' | 'completed',
+  nursingServiceCodes: Array<{ id: string; serviceCode: string }> = []
+) => {
   const currentDateTime = new Date()
   const visitDate = formData.visitDate // Use the visit date from form
 
   // 時間をISO文字列に変換
   const startDateTime = new Date(`${visitDate}T${formData.actualStartTime}:00`)
   const endDateTime = new Date(`${visitDate}T${formData.actualEndTime}:00`)
+
+  // サービスコード（9桁文字列）からサービスコードID（UUID）に変換
+  let serviceCodeId: string | undefined = undefined
+  if (formData.nursingServiceCode) {
+    const serviceCode = nursingServiceCodes.find(code => code.serviceCode === formData.nursingServiceCode)
+    if (serviceCode) {
+      serviceCodeId = serviceCode.id
+    }
+  }
 
   const apiData: any = {
     patientId: formData.patientId,
@@ -209,10 +222,10 @@ const convertFormDataToApiFormat = (formData: FormData, status: 'draft' | 'compl
     ...(formData.demoStaffNameOverride && { demoStaffNameOverride: formData.demoStaffNameOverride }),
     ...(formData.purposeOverride && { purposeOverride: formData.purposeOverride }),
 
-    // Phase 3: レセプトCSV対応フィールド
-    ...(formData.nursingServiceCode && { nursingServiceCode: formData.nursingServiceCode }),
-    ...(formData.visitLocation && { visitLocation: formData.visitLocation }),
-    ...(formData.staffQualification && { staffQualification: formData.staffQualification }),
+    // Phase 3: レセプトCSV対応フィールド（サーバー側のスキーマに合わせてフィールド名を修正）
+    ...(serviceCodeId && { serviceCodeId }),
+    ...(formData.visitLocation && { visitLocationCode: formData.visitLocation }),
+    ...(formData.staffQualification && { staffQualificationCode: formData.staffQualification }),
   }
 
   // スケジュールIDの紐付け - always include for proper tracking
@@ -837,9 +850,12 @@ export function NursingRecords() {
       demoStaffNameOverride: record.demoStaffNameOverride || '',
       purposeOverride: record.purposeOverride || '',
       // Phase 3: レセプトCSV対応
-      nursingServiceCode: (record as any).nursingServiceCode || '',
-      visitLocation: (record as any).visitLocation || '',
-      staffQualification: (record as any).staffQualification || ''
+      // serviceCodeIdからサービスコード（9桁文字列）に変換
+      nursingServiceCode: (record as any).serviceCodeId 
+        ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
+        : '',
+      visitLocation: (record as any).visitLocationCode || '',
+      staffQualification: (record as any).staffQualificationCode || ''
     })
 
   }
@@ -897,9 +913,12 @@ export function NursingRecords() {
       demoStaffNameOverride: record.demoStaffNameOverride || '',
       purposeOverride: record.purposeOverride || '',
       // Phase 3: レセプトCSV対応
-      nursingServiceCode: (record as any).nursingServiceCode || '',
-      visitLocation: (record as any).visitLocation || '',
-      staffQualification: (record as any).staffQualification || ''
+      // serviceCodeIdからサービスコード（9桁文字列）に変換
+      nursingServiceCode: (record as any).serviceCodeId 
+        ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
+        : '',
+      visitLocation: (record as any).visitLocationCode || '',
+      staffQualification: (record as any).staffQualificationCode || ''
     })
   }
 
@@ -997,7 +1016,7 @@ export function NursingRecords() {
         return
       }
 
-      const apiData = convertFormDataToApiFormat(formData, 'draft')
+      const apiData = convertFormDataToApiFormat(formData, 'draft', nursingServiceCodes)
       console.log('🔍 DEBUG - Creating draft record, API payload:', JSON.stringify({ scheduleId: apiData.scheduleId }, null, 2));
       const response = await fetch('/api/nursing-records', {
         method: 'POST',
@@ -1040,7 +1059,7 @@ export function NursingRecords() {
       setSelectedRecord(savedRecord)
     } catch (error) {
       console.error('Save draft error:', error)
-      console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'draft'))
+      console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'draft', nursingServiceCodes))
       setSaveError(error instanceof Error ? error.message : '保存中にエラーが発生しました')
     } finally {
       setIsSaving(false)
@@ -1060,7 +1079,7 @@ export function NursingRecords() {
         return
       }
 
-      const apiData = convertFormDataToApiFormat(formData, 'completed')
+      const apiData = convertFormDataToApiFormat(formData, 'completed', nursingServiceCodes)
 
       // If editing, use PUT; if creating, use POST
       const url = isEditing && selectedRecord ? `/api/nursing-records/${selectedRecord.id}` : '/api/nursing-records'
@@ -1155,7 +1174,7 @@ export function NursingRecords() {
       setSelectedRecord(savedRecord)
     } catch (error) {
       console.error('Complete record error:', error)
-      console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'completed'))
+      console.error('Form data being sent:', convertFormDataToApiFormat(formData, 'completed', nursingServiceCodes))
       setSaveError(error instanceof Error ? error.message : '保存中にエラーが発生しました')
     } finally {
       setIsSaving(false)
@@ -1177,7 +1196,7 @@ export function NursingRecords() {
         return
       }
 
-      const apiData = convertFormDataToApiFormat(formData, status as 'draft' | 'completed')
+      const apiData = convertFormDataToApiFormat(formData, status as 'draft' | 'completed', nursingServiceCodes)
 
       console.log('🔍 DEBUG - Updating record, API payload:', JSON.stringify({ id: selectedRecord.id, scheduleId: apiData.scheduleId, status }, null, 2));
       const response = await fetch(`/api/nursing-records/${selectedRecord.id}`, {
