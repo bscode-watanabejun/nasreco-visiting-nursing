@@ -149,11 +149,13 @@ export function buildCsvLine(fields: string[]): string {
 /**
  * CSVファイル全体を生成してShift_JISバイト列に変換
  * @param lines - CSV行の配列
- * @returns Shift_JISエンコードされたBuffer
+ * @returns Shift_JISエンコードされたBuffer（EOFコード0x1A付き）
  */
 export function buildCsvFile(lines: string[]): Buffer {
   const csvContent = lines.join('');
-  return toShiftJIS(csvContent);
+  const shiftJisBuffer = toShiftJIS(csvContent);
+  // ファイル終端にEOFコード（0x1A）を1バイト追加（公式仕様）
+  return Buffer.concat([shiftJisBuffer, Buffer.from([0x1A])]);
 }
 
 /**

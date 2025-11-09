@@ -51,8 +51,8 @@ export class NursingReceiptCsvBuilder {
     // 4. HO: 保険者レコード
     this.addHORecord(data);
 
-    // 5. SN: 資格確認レコード
-    this.addSNRecord(data);
+    // 5. SN: 資格確認レコード（複数出力対応）
+    this.addSNRecords(data);
 
     // 6. JD: 受診日等レコード（複数出力対応）
     this.addJDRecords(data);
@@ -161,17 +161,12 @@ export class NursingReceiptCsvBuilder {
     // レセプト番号 (6桁連番)
     const receiptNumber = String(1).padStart(6, '0');
 
-    // Phase 3: レセプト種別コードを動的判定
-    const receiptTypeCode = determineReceiptTypeCode(
+    // Phase 3: レセプト種別コードを動的判定（4桁コードをそのまま使用）
+    const receiptType = determineReceiptTypeCode(
       data.patient,
       data.insuranceCard,
       data.publicExpenses
     );
-
-    // レセプト種別 (4桁): 点数表(1桁=6) + 保険種別(1桁) + レセプト種別コード(2桁)
-    // 例: 6112 = 訪問看護(6) + 医保(1) + 本人・訪看I(12)
-    const insuranceTypeDigit = data.receipt.insuranceType === 'medical' ? '1' : '2';
-    const receiptType = `6${insuranceTypeDigit}${receiptTypeCode}`;
 
     // 請求年月 YYYYMM
     const billingYearMonth = `${data.receipt.targetYear}${String(data.receipt.targetMonth).padStart(2, '0')}`;
@@ -236,19 +231,27 @@ export class NursingReceiptCsvBuilder {
     const certificateSymbol = data.insuranceCard.certificateSymbol || '';   // 被保険者証記号
     const certificateNumber = data.insuranceCard.certificateNumber || '';   // 被保険者証番号
 
-    // Phase 3: 本人家族区分を保険証情報から取得
-    const relationshipType = data.insuranceCard.relationshipType === 'family' ? '2' : '1';
+    // 実日数を計算（訪問記録から集計）
+    const actualDays = new Set(
+      data.nursingRecords.map(r => formatDateToYYYYMMDD(r.visitDate))
+    ).size;
 
-    const claimPoints = String(data.receipt.totalPoints || 0);  // 請求点数
+    // 合計金額（必須）
+    const totalAmount = data.receipt.totalAmount || 0;
 
     const fields = [
-      'HO',                  // レコード識別
-      insurerNumber,         // 保険者番号（8桁固定）
-      certificateSymbol,     // 被保険者証記号
-      certificateNumber,     // 被保険者証番号
-      relationshipType,      // 本人家族区分 (Phase 3: 動的判定)
-      claimPoints,           // 請求点数
-      '', '', '', '', '', '', '', '', '', '', '', '', '', '',  // その他給付情報 (15項目)
+      'HO',                                    // レコード識別情報
+      insurerNumber.padStart(8, ' '),         // 保険者番号（8桁固定、スペース埋め）
+      certificateSymbol,                       // 被保険者証記号（38バイト可変）
+      certificateNumber,                       // 被保険者証番号（38バイト可変）
+      String(actualDays).padStart(2, '0'),   // 実日数（2桁可変、必須）
+      String(totalAmount).padStart(8, '0'),   // 合計金額（8桁可変、必須）
+      '',                                      // 職務上の事由（1桁可変）
+      '',                                      // 証明書番号（3桁可変）
+      '',                                      // 一部負担金額（8桁可変）
+      '',                                      // 減免区分（1桁可変）
+      '',                                      // 減額割合（3桁可変）
+      '',                                      // 減額金額（6桁可変）
     ];
 
     this.lines.push(buildCsvLine(fields));
@@ -267,34 +270,75 @@ export class NursingReceiptCsvBuilder {
     const beneficiaryNumber = publicExpense.beneficiaryNumber || '';  // 負担者番号（8桁固定）
     const recipientNumber = publicExpense.recipientNumber || '';      // 受給者番号（7桁可変）
 
+    // 公費の実日数を計算（訪問記録から集計）
+    // 注意: 現在のデータ構造では訪問記録に公費IDが含まれていないため、
+    // 暫定的に全訪問記録から実日数を計算（将来的には公費IDでフィルタする必要がある）
+    const publicExpenseDays = new Set(
+      data.nursingRecords.map(r => formatDateToYYYYMMDD(r.visitDate))
+    ).size;
+
+    // 公費の合計金額を計算（訪問記録の点数×10の合計）
+    // 注意: 現在のデータ構造では訪問記録に公費IDが含まれていないため、
+    // 暫定的に全訪問記録から合計金額を計算（将来的には公費IDでフィルタする必要がある）
+    const publicExpenseAmount = data.nursingRecords.reduce(
+      (sum, r) => sum + (r.calculatedPoints || 0) * 10,
+      0
+    );
+
+    // 受給者番号を7桁で0埋め（医療観察法の場合は省略）
+    const formattedRecipientNumber = recipientNumber
+      ? recipientNumber.padStart(7, '0')
+      : '';
+
     // KOレコードは8フィールド構成（仕様書PDFページ11）
     const fields = [
-      'KO',                  // レコード識別
-      beneficiaryNumber,     // 負担者番号（8桁固定、法別番号2桁+都道府県・実施機関番号6桁）
-      recipientNumber,       // 受給者番号（7桁可変）
-      '',                    // 任意給付区分（国保のみ、通常は空欄）
-      '',                    // 実日数（省略可）
-      '',                    // 合計金額（省略可）
-      '',                    // 一部負担金額（省略可）
-      '',                    // 公費給付対象一部負担金（省略可）
+      'KO',                                          // レコード識別情報
+      beneficiaryNumber,                             // 負担者番号（8桁固定、法別番号2桁+都道府県・実施機関番号6桁）
+      formattedRecipientNumber,                      // 受給者番号（7桁可変、0埋め、医療観察法の場合は省略）
+      '',                                            // 任意給付区分（国保のみ、通常は空欄）
+      String(publicExpenseDays).padStart(2, '0'),  // 実日数（2桁可変、必須）
+      String(publicExpenseAmount).padStart(8, '0'), // 合計金額（8桁可変、必須）
+      '',                                            // 一部負担金額（8桁可変）
+      '',                                            // 公費給付対象一部負担金（6桁可変）
     ];
 
     this.lines.push(buildCsvLine(fields));
   }
 
   /**
-   * 5. SN: 資格確認レコード
+   * 5. SN: 資格確認レコード（複数出力対応）
+   *
+   * 保険者分（負担者種別"1"）と公費分（負担者種別"2"～"5"）のSNレコードを出力
+   * 別表23: 負担者種別コードの昇順で記録
    */
-  private addSNRecord(data: ReceiptCsvData): void {
+  private addSNRecords(data: ReceiptCsvData): void {
+    // 1. 保険者分のSNレコード（必須）
+    this.addSNRecordForPayer(data, '1');
+
+    // 2. 公費分のSNレコード（公費がある場合）
+    const publicExpenseCount = data.publicExpenses.length;
+    for (let i = 0; i < publicExpenseCount; i++) {
+      const payerType = String(2 + i); // 2=第1公費, 3=第2公費, 4=第3公費, 5=第4公費
+      this.addSNRecordForPayer(data, payerType);
+    }
+  }
+
+  /**
+   * 負担者種別ごとのSNレコードを生成
+   */
+  private addSNRecordForPayer(data: ReceiptCsvData, payerType: string): void {
+    // 保険者分（負担者種別"1"）の場合のみ枝番を記録
+    const branchNumber = payerType === '1' ? '01' : '';
+
     const fields = [
-      'SN',     // レコード識別
-      '1',      // 負担者種別 (1=保険者)
-      '01',     // 確認区分 (01=オンライン資格確認)
-      '',       // 保険者番号等（資格確認）
-      '',       // 被保険者証記号（資格確認）
-      '',       // 被保険者証番号（資格確認）
-      '01',     // 枝番
-      '',       // 受給者番号
+      'SN',     // レコード識別情報
+      payerType, // 負担者種別（別表23: 1=保険者, 2=第1公費, 3=第2公費...）
+      '01',     // 確認区分（別表24: 01=訪問時等）
+      '',       // 保険者番号等（資格確認）- 一次請求では省略
+      '',       // 被保険者証記号（資格確認）- 一次請求では省略
+      '',       // 被保険者証番号（資格確認）- 一次請求では省略
+      branchNumber, // 枝番（保険者のみ、2桁）
+      '',       // 受給者番号 - 一次請求では省略
       '',       // 予備
     ];
 
@@ -413,11 +457,24 @@ export class NursingReceiptCsvBuilder {
    * 10. JS: 心身の状態レコード
    */
   private addJSRecord(data: ReceiptCsvData): void {
+    // 最新の訪問記録の観察事項を取得（訪問日が最新のもの）
+    // 訪問記録を訪問日で降順ソートして最新のものを取得
+    const sortedRecords = [...data.nursingRecords].sort((a, b) => {
+      const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
+      const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    // 最新の訪問記録の観察事項を取得（必須フィールド）
+    const mentalPhysicalState = sortedRecords[0]?.observations || '';
+
     const fields = [
-      'JS',     // レコード識別
-      '',       // 該当する疾病等
-      '',       // GAF尺度判定値
-      '',       // GAF尺度判定年月日
+      'JS',                    // レコード識別情報
+      mentalPhysicalState,     // 心身の状態（必須、2400バイト可変）
+      '',                      // 基準告示第2の1に規定する疾病等の有無（任意）
+      '',                      // 該当する疾病等（任意）
+      '',                      // GAF尺度により判定した値（任意）
+      '',                      // GAF尺度により判定した年月日（任意）
     ];
 
     this.lines.push(buildCsvLine(fields));
@@ -427,7 +484,8 @@ export class NursingReceiptCsvBuilder {
    * 11. SY: 傷病名レコード
    */
   private addSYRecord(data: ReceiptCsvData): void {
-    const icd10Code = data.doctorOrder.icd10Code || '0000000';
+    // 未コード化傷病名の場合は"0000999"を使用（公式仕様）
+    const icd10Code = data.doctorOrder.icd10Code || '0000999';
     const diagnosis = data.doctorOrder.diagnosis || '';
 
     const fields = [
@@ -508,7 +566,13 @@ export class NursingReceiptCsvBuilder {
    */
   private addKARecord(data: ReceiptCsvData, record: ReceiptCsvData['nursingRecords'][0]): void {
     const visitDate = record.visitDate ? formatDateToYYYYMMDD(record.visitDate) : '';
-    const serviceCode = record.serviceCode || '000000000';
+    
+    // サービスコードが必須（バリデーション済み）
+    if (!record.serviceCode) {
+      throw new Error(`訪問記録ID ${record.id} にサービスコードが設定されていません`);
+    }
+    const serviceCode = record.serviceCode;
+    
     const points = record.calculatedPoints || 0;
     const amount = points * 10;  // 金額 = 点数 × 10
     const staffCode = record.staffQualificationCode || '03';  // デフォルト: 03=看護師

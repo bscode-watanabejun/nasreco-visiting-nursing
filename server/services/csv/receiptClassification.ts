@@ -34,7 +34,7 @@ interface DoctorOrderInfo {
 }
 
 /**
- * レセプト種別コードを判定 (別表4: 39パターン)
+ * レセプト種別コードを判定 (別表4: 訪問看護用4桁コード)
  *
  * 判定要素:
  * 1. 保険種別 (医保/国保/後期高齢)
@@ -42,6 +42,8 @@ interface DoctorOrderInfo {
  * 3. 本人家族区分
  * 4. 年齢区分
  * 5. 高齢受給者区分
+ *
+ * 戻り値: 4桁コード（例: 6112, 6114, 6116）
  */
 export function determineReceiptTypeCode(
   patient: PatientInfo,
@@ -51,9 +53,9 @@ export function determineReceiptTypeCode(
   const publicExpenseCount = publicExpenses.length;
   const { cardType, relationshipType, ageCategory, elderlyRecipientCategory } = insuranceCard;
 
-  // 介護保険は固定コード
+  // 介護保険は固定コード（訪問看護用ではないため、ここでは使用しない）
   if (cardType === 'long_term_care') {
-    return '72'; // 介護 第1号被保険者 介護予防含む
+    throw new Error('介護保険は訪問看護レセプトには使用できません');
   }
 
   // 医療保険の判定
@@ -61,22 +63,30 @@ export function determineReceiptTypeCode(
 
   // 公費のみのケース（医保/国保なし）
   if (!insuranceType || insuranceType === 'none') {
-    if (publicExpenseCount === 1) return '10'; // 単独公費
-    if (publicExpenseCount === 2) return '16'; // 二併公費
-    if (publicExpenseCount === 3) return '22'; // 三併公費
-    if (publicExpenseCount === 4) return '28'; // 四併公費
+    if (publicExpenseCount === 1) return '6212'; // 訪問看護・公費単独
+    if (publicExpenseCount === 2) return '6222'; // 訪問看護・２種の公費併用
+    if (publicExpenseCount === 3) return '6232'; // 訪問看護・３種の公費併用
+    if (publicExpenseCount === 4) return '6242'; // 訪問看護・４種の公費併用
     throw new Error('保険種別が設定されていません');
   }
 
   // 後期高齢者医療の場合
   if (insuranceType === 'medical_elderly' || ageCategory === 'elderly') {
+    const isSeventyPercent = elderlyRecipientCategory === 'seventy';
+    
     switch (publicExpenseCount) {
-      case 0: return '39'; // 後期 単独
-      case 1: return '13'; // 後期 公費単独分
-      case 2: return '19'; // 後期 公費二併分
-      case 3: return '25'; // 後期 公費三併分
-      case 4: return '31'; // 後期 公費四併分
-      default: return '39';
+      case 0:
+        return isSeventyPercent ? '6310' : '6318'; // 後期高齢者単独・7割 or 一般・低所得者
+      case 1:
+        return isSeventyPercent ? '6320' : '6328'; // 後期高齢者と１種の公費併用・7割 or 一般・低所得者
+      case 2:
+        return isSeventyPercent ? '6330' : '6338'; // 後期高齢者と２種の公費併用・7割 or 一般・低所得者
+      case 3:
+        return isSeventyPercent ? '6340' : '6348'; // 後期高齢者と３種の公費併用・7割 or 一般・低所得者
+      case 4:
+        return isSeventyPercent ? '6350' : '6358'; // 後期高齢者と４種の公費併用・7割 or 一般・低所得者
+      default:
+        return isSeventyPercent ? '6310' : '6318';
     }
   }
 
@@ -87,12 +97,12 @@ export function determineReceiptTypeCode(
   // 未就学者の場合
   if (relationshipType === 'preschool' || ageCategory === 'preschool') {
     switch (publicExpenseCount) {
-      case 0: return isMedical ? '36' : '37'; // 本・未就学
-      case 1: return '11'; // 本・未就学 公費単独分
-      case 2: return '17'; // 本・未就学 公費二併分
-      case 3: return '23'; // 本・未就学 公費三併分
-      case 4: return '29'; // 本・未就学 公費四併分
-      default: return isMedical ? '36' : '37';
+      case 0: return '6114'; // 訪問看護・医保単独/国保単独・未就学者
+      case 1: return '6124'; // 訪問看護・医保/国保と１種の公費併用・未就学者
+      case 2: return '6134'; // 訪問看護・医保/国保と２種の公費併用・未就学者
+      case 3: return '6144'; // 訪問看護・医保/国保と３種の公費併用・未就学者
+      case 4: return '6154'; // 訪問看護・医保/国保と４種の公費併用・未就学者
+      default: return '6114';
     }
   }
 
@@ -102,30 +112,42 @@ export function determineReceiptTypeCode(
 
     switch (publicExpenseCount) {
       case 0:
-        if (isMedical) return isSeventyPercent ? '34' : '32'; // 本・高７割 or 本・高一
-        return isSeventyPercent ? '35' : '33'; // 国・高７割 or 国・高一
-      case 1: return '12'; // 本・高 公費単独分
-      case 2: return '18'; // 本・高 公費二併分
-      case 3: return '24'; // 本・高 公費三併分
-      case 4: return '30'; // 本・高 公費四併分
+        return isSeventyPercent ? '6110' : '6118'; // 高齢受給者７割 or 高齢受給者一般・低所得者
+      case 1:
+        return isSeventyPercent ? '6120' : '6128'; // 医保/国保と１種の公費併用・高齢受給者７割 or 一般・低所得者
+      case 2:
+        return isSeventyPercent ? '6130' : '6138'; // 医保/国保と２種の公費併用・高齢受給者７割 or 一般・低所得者
+      case 3:
+        return isSeventyPercent ? '6140' : '6148'; // 医保/国保と３種の公費併用・高齢受給者７割 or 一般・低所得者
+      case 4:
+        return isSeventyPercent ? '6150' : '6158'; // 医保/国保と４種の公費併用・高齢受給者７割 or 一般・低所得者
       default:
-        return isMedical ? '32' : '33';
+        return isSeventyPercent ? '6110' : '6118';
     }
   }
 
   // 一般（本人・家族）の場合
   const isSelf = relationshipType === 'self' || relationshipType === null;
+  const isFamily = relationshipType === 'family';
 
   switch (publicExpenseCount) {
     case 0:
-      if (isMedical) return isSelf ? '01' : '03'; // 医保 本人 or 家族
-      return isSelf ? '02' : '04'; // 国保 本人 or 家族
-    case 1: return '14'; // 医保・国保 公費単独分
-    case 2: return '20'; // 医保・国保 公費二併分
-    case 3: return '26'; // 医保・国保 公費三併分
-    case 4: return '38'; // 医保・国保 公費四併分
+      if (isFamily) return '6116'; // 訪問看護・医保単独/国保単独・家族/その他
+      return '6112'; // 訪問看護・医保単独/国保単独・本人/世帯主
+    case 1:
+      if (isFamily) return '6126'; // 訪問看護・医保/国保と１種の公費併用・家族/その他
+      return '6122'; // 訪問看護・医保/国保と１種の公費併用・本人/世帯主
+    case 2:
+      if (isFamily) return '6136'; // 訪問看護・医保/国保と２種の公費併用・家族/その他
+      return '6132'; // 訪問看護・医保/国保と２種の公費併用・本人/世帯主
+    case 3:
+      if (isFamily) return '6146'; // 訪問看護・医保/国保と３種の公費併用・家族/その他
+      return '6142'; // 訪問看護・医保/国保と３種の公費併用・本人/世帯主
+    case 4:
+      if (isFamily) return '6156'; // 訪問看護・医保/国保と４種の公費併用・家族/その他
+      return '6152'; // 訪問看護・医保/国保と４種の公費併用・本人/世帯主
     default:
-      return isMedical ? '01' : '02';
+      return isFamily ? '6116' : '6112';
   }
 }
 

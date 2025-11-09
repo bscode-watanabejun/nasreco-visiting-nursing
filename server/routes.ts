@@ -8947,6 +8947,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(nursingRecords.patientId, receipt.patientId),
             eq(nursingRecords.facilityId, receipt.facilityId)
           ),
+          with: {
+            serviceCode: true, // サービスコードリレーションを含める
+          },
         }),
         db.query.doctorOrders.findMany({
           where: and(
@@ -9074,10 +9077,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           actualEndTime: record.actualEndTime instanceof Date
             ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
             : (record.actualEndTime || ''),
-          serviceCode: record.serviceCodeId || '000000000',
-          visitLocationCode: record.visitLocationCode || '00',
+          serviceCode: record.serviceCode?.serviceCode || '', // 実際の9桁サービスコードを取得
+          visitLocationCode: record.visitLocationCode || '01', // デフォルトは'01'（自宅、別表16）
           staffQualificationCode: record.staffQualificationCode || '00',
           calculatedPoints: record.calculatedPoints || 0,
+          observations: record.observations || '', // 観察事項（JSレコードの心身の状態用）
           appliedBonuses: (record.appliedBonuses as any[]) || [],
         })),
         bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],

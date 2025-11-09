@@ -89,6 +89,7 @@ export interface ReceiptCsvData {
     visitLocationCode: string; // 2桁
     staffQualificationCode: string; // 2桁
     calculatedPoints: number;
+    observations: string; // 観察事項（必須、JSレコードの心身の状態用）
     appliedBonuses: Array<{
       bonusCode: string;
       bonusName: string;

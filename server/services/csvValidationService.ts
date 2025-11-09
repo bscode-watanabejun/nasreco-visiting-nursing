@@ -404,9 +404,12 @@ async function validateNursingRecords(
 ): Promise<ValidationWarning[]> {
   const warnings: ValidationWarning[] = [];
 
-  // 対象期間の訪問記録を取得
+  // 対象期間の訪問記録を取得（サービスコードリレーションを含める）
   const records = await db.query.nursingRecords.findMany({
     where: eq(nursingRecords.patientId, patientId),
+    with: {
+      serviceCode: true, // サービスコードリレーションを含める
+    },
   });
 
   const targetRecords = records.filter(record => {
@@ -428,9 +431,15 @@ async function validateNursingRecords(
   for (const record of targetRecords) {
     const recordWarnings: string[] = [];
 
-    // サービスコードのチェック
+    // サービスコードのチェック（必須）
     if (!record.serviceCodeId) {
-      recordWarnings.push('サービスコード');
+      recordWarnings.push('サービスコードが設定されていません');
+    } else if (!record.serviceCode) {
+      // サービスコードIDは設定されているが、サービスコードマスタに存在しない
+      recordWarnings.push(`サービスコード（ID: ${record.serviceCodeId}）がサービスコードマスタに存在しません`);
+    } else if (!record.serviceCode.serviceCode) {
+      // サービスコードマスタに存在するが、実際のサービスコードが空
+      recordWarnings.push('サービスコードマスタのサービスコードが空です');
     }
 
     // 訪問場所コードのチェック
@@ -446,8 +455,8 @@ async function validateNursingRecords(
     if (recordWarnings.length > 0) {
       warnings.push({
         field: 'nursingRecord',
-        message: `訪問記録（${record.visitDate}）に未設定項目があります: ${recordWarnings.join('、')}`,
-        severity: 'warning',
+        message: `訪問記録（${record.visitDate}）: ${recordWarnings.join('、')}`,
+        severity: 'error', // サービスコードは必須のためエラー
         recordType: 'nursingRecord',
         recordId: record.id,
       });
