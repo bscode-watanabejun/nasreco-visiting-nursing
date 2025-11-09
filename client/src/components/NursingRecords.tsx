@@ -1419,7 +1419,11 @@ export function NursingRecords() {
               <div className="space-y-2">
                 <Label>担当者</Label>
                 <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
-                  <span className="text-sm">{currentUser?.fullName || 'ログインユーザー'}</span>
+                  <span className="text-sm">
+                    {isEditing && selectedRecord?.nurseName 
+                      ? selectedRecord.nurseName 
+                      : currentUser?.fullName || 'ログインユーザー'}
+                  </span>
                 </div>
               </div>
 
