@@ -1208,8 +1208,15 @@ function ScheduleDialog({ open, onOpenChange, schedule, patients, users, onSave 
 
   // Handle start time change with auto-calculation
   const handleStartTimeChange = (newStartTime: string) => {
-    const newDuration = calculateDuration(newStartTime, formData.endTime)
-    setFormData({ ...formData, startTime: newStartTime, duration: newDuration })
+    // Calculate end time as 1 hour after start time
+    let newEndTime = formData.endTime
+    if (newStartTime) {
+      const [hours, minutes] = newStartTime.split(':').map(Number)
+      const endHours = (hours + 1) % 24
+      newEndTime = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    }
+    const newDuration = calculateDuration(newStartTime, newEndTime)
+    setFormData({ ...formData, startTime: newStartTime, endTime: newEndTime, duration: newDuration })
   }
 
   // Handle end time change with auto-calculation
