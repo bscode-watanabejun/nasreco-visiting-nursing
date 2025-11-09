@@ -384,6 +384,7 @@ export function NursingRecords() {
   const [selectedRecord, setSelectedRecord] = useState<NursingRecordDisplay | null>(null)
   const [isCreating, setIsCreating] = useState(initialIsCreating)
   const [isEditing, setIsEditing] = useState(false)
+  const [isEditingFromDetail, setIsEditingFromDetail] = useState(false)
   const [activeTab, setActiveTab] = useState<'basic' | 'vitals-care' | 'special' | 'receipt' | 'photos'>('basic')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -810,6 +811,7 @@ export function NursingRecords() {
     setSelectedRecord(record)
     setIsCreating(false)
     setIsEditing(false)
+    setIsEditingFromDetail(false)
     setSaveError(null)
     setSelectedFiles([])
     setFilePreviews([])
@@ -873,6 +875,9 @@ export function NursingRecords() {
       return
     }
 
+    // 遷移元を判断: selectedRecordが既に設定されている場合は詳細画面から遷移
+    setIsEditingFromDetail(selectedRecord !== null)
+    
     setSelectedRecord(record)
     setIsCreating(false)
     setIsEditing(true)
@@ -1331,6 +1336,7 @@ export function NursingRecords() {
       setSelectedRecord(null)
       setIsCreating(false)
       setIsEditing(false)
+      setIsEditingFromDetail(false)
     } catch (error) {
       console.error('Mark as reviewed error:', error)
       toast({
@@ -1381,10 +1387,16 @@ export function NursingRecords() {
               } else if (cameFromUrl) {
                 // Came from URL (Dashboard or other page) - use browser history
                 window.history.back()
+              } else if (isEditing && isEditingFromDetail) {
+                // Came from detail view - return to detail view
+                setIsEditing(false)
+                setIsEditingFromDetail(false)
+                setSaveError(null)
               } else {
                 // Came from within this page - reset state to show list
                 setIsCreating(false)
                 setIsEditing(false)
+                setIsEditingFromDetail(false)
                 setSelectedRecord(null)
                 setSaveError(null)
                 setCameFromUrl(false)
@@ -2066,6 +2078,7 @@ export function NursingRecords() {
                   // Came from within this page (record list) - reset state to show list
                   setIsCreating(false)
                   setIsEditing(false)
+                  setIsEditingFromDetail(false)
                   setSelectedRecord(null)
                   setSaveError(null)
                   setCameFromUrl(false)
