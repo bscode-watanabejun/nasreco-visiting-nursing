@@ -1824,19 +1824,78 @@ export function NursingRecords() {
               </CardContent>
             </Card>
 
-            {/* Billing and Points Information Card */}
-            {(selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.calculatedPoints || selectedRecord.appliedBonuses) && (
+            {/* Receipt and Billing Information Card */}
+            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).staffQualificationCode || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert) && (
               <Card>
                 <CardHeader>
-                  <CardTitle>加算・算定情報</CardTitle>
+                  <CardTitle>レセプト・加算情報</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
+                  {/* レセプトCSV出力項目 */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* サービスコード */}
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">サービスコード</p>
+                        {(() => {
+                          const serviceCodeId = (selectedRecord as any).serviceCodeId;
+                          const serviceCode = serviceCodeId 
+                            ? nursingServiceCodes.find(code => code.id === serviceCodeId)
+                            : null;
+                          return serviceCode ? (
+                            <p className="text-base font-semibold">{serviceCode.serviceCode} - {serviceCode.serviceName}</p>
+                          ) : (
+                            <p className="text-base text-muted-foreground">未設定</p>
+                          );
+                        })()}
+                      </div>
+
+                      {/* 訪問場所 */}
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">訪問場所</p>
+                        {(() => {
+                          const visitLocationCode = (selectedRecord as any).visitLocationCode;
+                          const visitLocation = visitLocationCode 
+                            ? visitLocationCodes.find(code => code.locationCode === visitLocationCode)
+                            : null;
+                          return visitLocation ? (
+                            <p className="text-base font-semibold">{visitLocation.locationCode} - {visitLocation.locationName}</p>
+                          ) : (
+                            <p className="text-base text-muted-foreground">未設定</p>
+                          );
+                        })()}
+                      </div>
+
+                      {/* 職員資格 */}
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">職員資格</p>
+                        {(() => {
+                          const staffQualificationCode = (selectedRecord as any).staffQualificationCode;
+                          const staffQualification = staffQualificationCode 
+                            ? staffQualificationCodes.find(code => code.qualificationCode === staffQualificationCode)
+                            : null;
+                          return staffQualification ? (
+                            <p className="text-base font-semibold">{staffQualification.qualificationCode} - {staffQualification.qualificationName}</p>
+                          ) : (
+                            <p className="text-base text-muted-foreground">未設定</p>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 算定点数 */}
                   {selectedRecord.calculatedPoints && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                      <p className="text-sm font-medium text-blue-900 mb-1">算定点数</p>
-                      <p className="text-2xl font-bold text-blue-700">{selectedRecord.calculatedPoints} 点</p>
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground mb-2">算定点数</p>
+                      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                        <p className="text-2xl font-bold text-blue-700">{selectedRecord.calculatedPoints} 点</p>
+                      </div>
                     </div>
                   )}
+
+                  {/* 適用加算 */}
                   {(selectedRecord.appliedBonuses as any) && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">適用加算</p>
@@ -1874,6 +1933,8 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+
+                  {/* 複数回訪問加算の理由 */}
                   {selectedRecord.multipleVisitReason && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">複数回訪問加算の理由</p>
@@ -1882,6 +1943,8 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+
+                  {/* 緊急訪問看護加算の理由 */}
                   {selectedRecord.emergencyVisitReason && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">緊急訪問看護加算の理由</p>
@@ -1890,6 +1953,8 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+
+                  {/* 長時間訪問看護加算の理由 */}
                   {selectedRecord.longVisitReason && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">長時間訪問看護加算の理由</p>
@@ -1898,6 +1963,8 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+
+                  {/* 専門的ケアの種類 */}
                   {selectedRecord.specialistCareType && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">専門的ケアの種類</p>
@@ -1912,6 +1979,8 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+
+                  {/* 加算未入力アラート */}
                   {selectedRecord.hasAdditionalPaymentAlert && (
                     <div className="bg-amber-50 border border-amber-300 rounded-md p-3 flex items-start gap-2">
                       <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
