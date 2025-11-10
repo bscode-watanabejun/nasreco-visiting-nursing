@@ -1,0 +1,2082 @@
+[
+  {
+    "serviceCode": "510000110",
+    "serviceName": "訪問看護基本療養費１（保健師、助産師又は看護師による場合（ハを除く。））（週３日目まで）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000210",
+    "serviceName": "訪問看護基本療養費１（保健師、助産師又は看護師による場合（ハを除く。））（週４日目以降）",
+    "points": 6550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000310",
+    "serviceName": "訪問看護基本療養費１（准看護師による場合）（週３日目まで）",
+    "points": 5050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000410",
+    "serviceName": "訪問看護基本療養費１（准看護師による場合）（週４日目以降）",
+    "points": 6050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000510",
+    "serviceName": "訪問看護基本療養費１（悪性腫瘍の利用者に対する緩和ケア、褥瘡ケア又は人工肛門ケア及び人工膀胱ケアに係る専門の研修を受けた看護師による場合）",
+    "points": 12850,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000610",
+    "serviceName": "訪問看護基本療養費１（理学療法士、作業療法士又は言語聴覚士による場合）（週３日目まで）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004110",
+    "serviceName": "訪問看護基本療養費１（理学療法士、作業療法士又は言語聴覚士による場合）（週４日目以降）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000710",
+    "serviceName": "訪問看護基本療養費２（保健師、助産師又は看護師による場合（ハを除く。））（同一日に２人）（週３日目まで）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000810",
+    "serviceName": "訪問看護基本療養費２（保健師、助産師又は看護師による場合（ハを除く。））（同一日に２人）（週４日目以降）",
+    "points": 6550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510000910",
+    "serviceName": "訪問看護基本療養費２（保健師、助産師又は看護師による場合（ハを除く。））（同一日に３人以上）（週３日目まで）",
+    "points": 2780,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001010",
+    "serviceName": "訪問看護基本療養費２（保健師、助産師又は看護師による場合（ハを除く。））（同一日に３人以上）（週４日目以降）",
+    "points": 3280,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001110",
+    "serviceName": "訪問看護基本療養費２（准看護師による場合）（同一日に２人）（週３日目まで）",
+    "points": 5050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001210",
+    "serviceName": "訪問看護基本療養費２（准看護師による場合）（同一日に２人）（週４日目以降）",
+    "points": 6050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001310",
+    "serviceName": "訪問看護基本療養費２（准看護師による場合）（同一日に３人以上）（週３日目まで）",
+    "points": 2530,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001410",
+    "serviceName": "訪問看護基本療養費２（准看護師による場合）（同一日に３人以上）（週４日目以降）",
+    "points": 3030,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001510",
+    "serviceName": "訪問看護基本療養費２（悪性腫瘍の利用者に対する緩和ケア、褥瘡ケア又は人工肛門ケア及び人工膀胱ケアに係る専門の研修を受けた看護師による場合）",
+    "points": 12850,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001610",
+    "serviceName": "訪問看護基本療養費２（理学療法士、作業療法士又は言語聴覚士による場合）（同一日に２人）（週３日目まで）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004210",
+    "serviceName": "訪問看護基本療養費２（理学療法士、作業療法士又は言語聴覚士による場合）（同一日に２人）（週４日目以降）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001710",
+    "serviceName": "訪問看護基本療養費２（理学療法士、作業療法士又は言語聴覚士による場合）（同一日に３人以上）（週３日目まで）",
+    "points": 2780,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004310",
+    "serviceName": "訪問看護基本療養費２（理学療法士、作業療法士又は言語聴覚士による場合）（同一日に３人以上）（週４日目以降）",
+    "points": 2780,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001810",
+    "serviceName": "訪問看護基本療養費３",
+    "points": 8500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510001970",
+    "serviceName": "難病等複数回訪問加算（１日に２回の場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 4500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002070",
+    "serviceName": "難病等複数回訪問加算（１日に２回の場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 4000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002170",
+    "serviceName": "難病等複数回訪問加算（１日に３回以上の場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 8000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002270",
+    "serviceName": "難病等複数回訪問加算（１日に３回以上の場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 7200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002370",
+    "serviceName": "特別地域訪問看護加算（訪問看護基本療養費）",
+    "points": 50,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002470",
+    "serviceName": "緊急訪問看護加算（月１４日目まで）（訪問看護基本療養費）",
+    "points": 2650,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004570",
+    "serviceName": "緊急訪問看護加算（月１５日目以降）（訪問看護基本療養費）",
+    "points": 2000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002570",
+    "serviceName": "長時間訪問看護加算（訪問看護基本療養費）",
+    "points": 5200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004470",
+    "serviceName": "長時間訪問看護加算（別に厚生労働大臣が定める者）（訪問看護基本療養費）",
+    "points": 5200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002670",
+    "serviceName": "乳幼児加算（訪問看護基本療養費）",
+    "points": 1300,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004670",
+    "serviceName": "乳幼児加算（別に厚生労働大臣が定める者）（訪問看護基本療養費）",
+    "points": 1800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002770",
+    "serviceName": "複数名訪問看護加算（看護職員が他の看護師等（准看護師を除く。）と同時に指定訪問看護を行う場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 4500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002870",
+    "serviceName": "複数名訪問看護加算（看護職員が他の看護師等（准看護師を除く。）と同時に指定訪問看護を行う場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 4000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510002970",
+    "serviceName": "複数名訪問看護加算（看護職員が他の准看護師と同時に指定訪問看護を行う場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 3800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003070",
+    "serviceName": "複数名訪問看護加算（看護職員が他の准看護師と同時に指定訪問看護を行う場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 3400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003170",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合を除く。））（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 3000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003270",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合を除く。））（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 2700,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003370",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合に限る。））（１日に１回の場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 3000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003470",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合に限る。））（１日に１回の場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 2700,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003570",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合に限る。））（１日に２回の場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 6000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003670",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合に限る。））（１日に２回の場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 5400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003770",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合に限る。））（１日に３回以上の場合）（同一建物内１人又は２人）（訪問看護基本療養費）",
+    "points": 10000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003870",
+    "serviceName": "複数名訪問看護加算（看護職員がその他職員と同時に指定訪問看護を行う場合（別に厚生労働大臣が定める場合に限る。））（１日に３回以上の場合）（同一建物内３人以上）（訪問看護基本療養費）",
+    "points": 9000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510003970",
+    "serviceName": "夜間・早朝訪問看護加算（訪問看護基本療養費）",
+    "points": 2100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "510004070",
+    "serviceName": "深夜訪問看護加算（訪問看護基本療養費）",
+    "points": 4200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000110",
+    "serviceName": "精神科訪問看護基本療養費１（保健師又は看護師による場合）（週３日目まで３０分以上の場合）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000210",
+    "serviceName": "精神科訪問看護基本療養費１（保健師又は看護師による場合）（週３日目まで３０分未満の場合）",
+    "points": 4250,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000310",
+    "serviceName": "精神科訪問看護基本療養費１（保健師又は看護師による場合）（週４日目以降３０分以上の場合）",
+    "points": 6550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000410",
+    "serviceName": "精神科訪問看護基本療養費１（保健師又は看護師による場合）（週４日目以降３０分未満の場合）",
+    "points": 5100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005110",
+    "serviceName": "精神科訪問看護基本療養費１（作業療法士による場合）（週３日目まで３０分以上の場合）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005210",
+    "serviceName": "精神科訪問看護基本療養費１（作業療法士による場合）（週３日目まで３０分未満の場合）",
+    "points": 4250,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005310",
+    "serviceName": "精神科訪問看護基本療養費１（作業療法士による場合）（週４日目以降３０分以上の場合）",
+    "points": 6550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005410",
+    "serviceName": "精神科訪問看護基本療養費１（作業療法士による場合）（週４日目以降３０分未満の場合）",
+    "points": 5100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000510",
+    "serviceName": "精神科訪問看護基本療養費１（准看護師による場合）（週３日目まで３０分以上の場合）",
+    "points": 5050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000610",
+    "serviceName": "精神科訪問看護基本療養費１（准看護師による場合）（週３日目まで３０分未満の場合）",
+    "points": 3870,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000710",
+    "serviceName": "精神科訪問看護基本療養費１（准看護師による場合）（週４日目以降３０分以上の場合）",
+    "points": 6050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000810",
+    "serviceName": "精神科訪問看護基本療養費１（准看護師による場合）（週４日目以降３０分未満の場合）",
+    "points": 4720,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530000910",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に２人）（週３日目まで３０分以上の場合）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001010",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に２人）（週３日目まで３０分未満の場合）",
+    "points": 4250,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001110",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に２人）（週４日目以降３０分以上の場合）",
+    "points": 6550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001210",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に２人）（週４日目以降３０分未満の場合）",
+    "points": 5100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001310",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に３人以上）（週３日目まで３０分以上の場合）",
+    "points": 2780,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001410",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に３人以上）（週３日目まで３０分未満の場合）",
+    "points": 2130,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001510",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に３人以上）（週４日目以降３０分以上の場合）",
+    "points": 3280,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001610",
+    "serviceName": "精神科訪問看護基本療養費３（保健師又は看護師による場合）（同一日に３人以上）（週４日目以降３０分未満の場合）",
+    "points": 2550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005510",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に２人）（週３日目まで３０分以上の場合）",
+    "points": 5550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005610",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に２人）（週３日目まで３０分未満の場合）",
+    "points": 4250,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005710",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に２人）（週４日目以降３０分以上の場合）",
+    "points": 6550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005810",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に２人）（週４日目以降３０分未満の場合）",
+    "points": 5100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005910",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に３人以上）（週３日目まで３０分以上の場合）",
+    "points": 2780,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530006010",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に３人以上）（週３日目まで３０分未満の場合）",
+    "points": 2130,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530006110",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に３人以上）（週４日目以降３０分以上の場合）",
+    "points": 3280,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530006210",
+    "serviceName": "精神科訪問看護基本療養費３（作業療法士による場合）（同一日に３人以上）（週４日目以降３０分未満の場合）",
+    "points": 2550,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001710",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に２人）（週３日目まで３０分以上の場合）",
+    "points": 5050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001810",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に２人）（週３日目まで３０分未満の場合）",
+    "points": 3870,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530001910",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に２人）（週４日目以降３０分以上の場合）",
+    "points": 6050,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002010",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に２人）（週４日目以降３０分未満の場合）",
+    "points": 4720,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002110",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に３人以上）（週３日目まで３０分以上の場合）",
+    "points": 2530,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002210",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に３人以上）（週３日目まで３０分未満の場合）",
+    "points": 1940,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002310",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に３人以上）（週４日目以降３０分以上の場合）",
+    "points": 3030,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002410",
+    "serviceName": "精神科訪問看護基本療養費３（准看護師による場合）（同一日に３人以上）（週４日目以降３０分未満の場合）",
+    "points": 2360,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002510",
+    "serviceName": "精神科訪問看護基本療養費４",
+    "points": 8500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002670",
+    "serviceName": "特別地域訪問看護加算（精神科訪問看護基本療養費）",
+    "points": 50,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002770",
+    "serviceName": "精神科緊急訪問看護加算（月１４日目まで）（精神科訪問看護基本療養費）",
+    "points": 2650,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530005070",
+    "serviceName": "精神科緊急訪問看護加算（月１５日目以降）（精神科訪問看護基本療養費）",
+    "points": 2000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002870",
+    "serviceName": "長時間精神科訪問看護加算（精神科訪問看護基本療養費）",
+    "points": 5200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004970",
+    "serviceName": "長時間精神科訪問看護加算（別に厚生労働大臣が定める者）（精神科訪問看護基本療養費）",
+    "points": 5200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530002970",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が他の保健師、看護師又は作業療法士と同時に指定訪問看護を行う場合）（１日に１回の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 4500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003070",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が他の保健師、看護師又は作業療法士と同時に指定訪問看護を行う場合）（１日に１回の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 4000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003170",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が他の保健師、看護師又は作業療法士と同時に指定訪問看護を行う場合）（１日に２回の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 9000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003270",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が他の保健師、看護師又は作業療法士と同時に指定訪問看護を行う場合）（１日に２回の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 8100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003370",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が他の保健師、看護師又は作業療法士と同時に指定訪問看護を行う場合）（１日に３回以上の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 14500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003470",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が他の保健師、看護師又は作業療法士と同時に指定訪問看護を行う場合）（１日に３回以上の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 13000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003570",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が准看護師と同時に指定訪問看護を行う場合）（１日に１回の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 3800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003670",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が准看護師と同時に指定訪問看護を行う場合）（１日に１回の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 3400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003770",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が准看護師と同時に指定訪問看護を行う場合）（１日に２回の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 7600,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003870",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が准看護師と同時に指定訪問看護を行う場合）（１日に２回の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 6800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530003970",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が准看護師と同時に指定訪問看護を行う場合）（１日に３回以上の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 12400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004070",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が准看護師と同時に指定訪問看護を行う場合）（１日に３回以上の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 11200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004170",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が看護補助者又は精神保健福祉士と同時に指定訪問看護を行う場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 3000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004270",
+    "serviceName": "複数名精神科訪問看護加算（保健師又は看護師が看護補助者又は精神保健福祉士と同時に指定訪問看護を行う場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 2700,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004370",
+    "serviceName": "夜間・早朝訪問看護加算（精神科訪問看護基本療養費）",
+    "points": 2100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004470",
+    "serviceName": "深夜訪問看護加算（精神科訪問看護基本療養費）",
+    "points": 4200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004570",
+    "serviceName": "精神科複数回訪問加算（１日に２回の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 4500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004670",
+    "serviceName": "精神科複数回訪問加算（１日に２回の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 4000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004770",
+    "serviceName": "精神科複数回訪問加算（１日に３回以上の場合）（同一建物内１人又は２人）（精神科訪問看護基本療養費）",
+    "points": 8000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "530004870",
+    "serviceName": "精神科複数回訪問加算（１日に３回以上の場合）（同一建物内３人以上）（精神科訪問看護基本療養費）",
+    "points": 7200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000110",
+    "serviceName": "訪問看護管理療養費（月の初日の訪問の場合）（機能強化型訪問看護管理療養費１）",
+    "points": 13230,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000210",
+    "serviceName": "訪問看護管理療養費（月の初日の訪問の場合）（機能強化型訪問看護管理療養費２）",
+    "points": 10030,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000310",
+    "serviceName": "訪問看護管理療養費（月の初日の訪問の場合）（機能強化型訪問看護管理療養費３）",
+    "points": 8700,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000410",
+    "serviceName": "訪問看護管理療養費（月の初日の訪問の場合）（イからハまで以外の場合）",
+    "points": 7670,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000510",
+    "serviceName": "訪問看護管理療養費（月の２日目以降の訪問の場合）（訪問看護管理療養費１）（１日につき）",
+    "points": 3000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550002010",
+    "serviceName": "訪問看護管理療養費（月の２日目以降の訪問の場合）（訪問看護管理療養費２）（１日につき）",
+    "points": 2500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550002170",
+    "serviceName": "２４時間対応体制加算（看護業務の負担軽減の取組を行っている場合）（訪問看護管理療養費）",
+    "points": 6800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000670",
+    "serviceName": "２４時間対応体制加算（イ以外の場合）（訪問看護管理療養費）",
+    "points": 6520,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000770",
+    "serviceName": "特別管理加算（訪問看護管理療養費）",
+    "points": 2500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000870",
+    "serviceName": "特別管理加算（特別な管理を必要とする利用者のうち重症度等の高いものとして別に厚生労働大臣が定める状態等にある利用者）（訪問看護管理療養費）",
+    "points": 5000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550000970",
+    "serviceName": "退院時共同指導加算（訪問看護管理療養費）",
+    "points": 8000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001070",
+    "serviceName": "特別管理指導加算（訪問看護管理療養費）",
+    "points": 2000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001170",
+    "serviceName": "退院支援指導加算（訪問看護管理療養費）",
+    "points": 6000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001270",
+    "serviceName": "退院支援指導加算（別に厚生労働大臣が定める長時間の訪問を要する者）（訪問看護管理療養費）",
+    "points": 8400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001370",
+    "serviceName": "在宅患者連携指導加算（訪問看護管理療養費）",
+    "points": 3000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001470",
+    "serviceName": "在宅患者緊急時等カンファレンス加算（訪問看護管理療養費）",
+    "points": 2000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001570",
+    "serviceName": "精神科重症患者支援管理連携加算（精神科在宅患者支援管理料２のイを算定する利用者に定期的な訪問看護を行う場合）（訪問看護管理療養費）",
+    "points": 8400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001670",
+    "serviceName": "精神科重症患者支援管理連携加算（精神科在宅患者支援管理料２のロを算定する利用者に定期的な訪問看護を行う場合）（訪問看護管理療養費）",
+    "points": 5800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001770",
+    "serviceName": "看護・介護職員連携強化加算（２４時間対応体制加算（イ以外の場合））（訪問看護管理療養費）",
+    "points": 2500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "5",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550002370",
+    "serviceName": "看護・介護職員連携強化加算（２４時間対応体制加算（看護業務の負担軽減の取組を行っている場合））（訪問看護管理療養費）",
+    "points": 2500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "3",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001870",
+    "serviceName": "専門管理加算（緩和ケア、褥瘡ケア又は人工肛門ケア及び人工膀胱ケアに係る専門の研修を受けた看護師が計画的な管理を行った場合）（訪問看護管理療養費）",
+    "points": 2500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550001970",
+    "serviceName": "専門管理加算（特定行為研修を修了した看護師が計画的な管理を行った場合）（訪問看護管理療養費）",
+    "points": 2500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "550002270",
+    "serviceName": "訪問看護医療ＤＸ情報活用加算（訪問看護管理療養費）",
+    "points": 50,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "570000110",
+    "serviceName": "訪問看護情報提供療養費１",
+    "points": 1500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "570000210",
+    "serviceName": "訪問看護情報提供療養費２",
+    "points": 1500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "570000310",
+    "serviceName": "訪問看護情報提供療養費３",
+    "points": 1500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "580000110",
+    "serviceName": "訪問看護ターミナルケア療養費１",
+    "points": 25000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "580000210",
+    "serviceName": "訪問看護ターミナルケア療養費２",
+    "points": 10000,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "580000370",
+    "serviceName": "遠隔死亡診断補助加算（訪問看護ターミナルケア療養費）",
+    "points": 1500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000110",
+    "serviceName": "医療観察訪問看護基本料１（保健師又は看護師による場合）（週３日目まで３０分以上の場合）",
+    "points": 555,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000210",
+    "serviceName": "医療観察訪問看護基本料１（保健師又は看護師による場合）（週３日目まで３０分未満の場合）",
+    "points": 425,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000310",
+    "serviceName": "医療観察訪問看護基本料１（保健師又は看護師による場合）（週４日目以降３０分以上の場合）",
+    "points": 655,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000410",
+    "serviceName": "医療観察訪問看護基本料１（保健師又は看護師による場合）（週４日目以降３０分未満の場合）",
+    "points": 510,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004110",
+    "serviceName": "医療観察訪問看護基本料１（作業療法士による場合）（週３日目まで３０分以上の場合）",
+    "points": 555,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004210",
+    "serviceName": "医療観察訪問看護基本料１（作業療法士による場合）（週３日目まで３０分未満の場合）",
+    "points": 425,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004310",
+    "serviceName": "医療観察訪問看護基本料１（作業療法士による場合）（週４日目以降３０分以上の場合）",
+    "points": 655,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004410",
+    "serviceName": "医療観察訪問看護基本料１（作業療法士による場合）（週４日目以降３０分未満の場合）",
+    "points": 510,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000510",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に２人）（週３日目まで３０分以上の場合）",
+    "points": 555,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000610",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に２人）（週３日目まで３０分未満の場合）",
+    "points": 425,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000710",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に２人）（週４日目以降３０分以上の場合）",
+    "points": 655,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000810",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に２人）（週４日目以降３０分未満の場合）",
+    "points": 510,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588000910",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に３人以上）（週３日目まで３０分以上の場合）",
+    "points": 278,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001010",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に３人以上）（週３日目まで３０分未満の場合）",
+    "points": 213,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001110",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に３人以上）（週４日目以降３０分以上の場合）",
+    "points": 328,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001210",
+    "serviceName": "医療観察訪問看護基本料３（保健師又は看護師による場合）（同一日に３人以上）（週４日目以降３０分未満の場合）",
+    "points": 255,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004510",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に２人）（週３日目まで３０分以上の場合）",
+    "points": 555,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004610",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に２人）（週３日目まで３０分未満の場合）",
+    "points": 425,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004710",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に２人）（週４日目以降３０分以上の場合）",
+    "points": 655,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004810",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に２人）（週４日目以降３０分未満の場合）",
+    "points": 510,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004910",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に３人以上）（週３日目まで３０分以上の場合）",
+    "points": 278,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588005010",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に３人以上）（週３日目まで３０分未満の場合）",
+    "points": 213,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588005110",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に３人以上）（週４日目以降３０分以上の場合）",
+    "points": 328,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588005270",
+    "serviceName": "医療観察訪問看護基本料３（作業療法士による場合）（同一日に３人以上）（週４日目以降３０分未満の場合）",
+    "points": 255,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001370",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が他の看護師等と同時に医療観察訪問看護を行った場合）（１日に１回の場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 450,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001470",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が他の看護師等と同時に医療観察訪問看護を行った場合）（１日に１回の場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001570",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が他の看護師等と同時に医療観察訪問看護を行った場合）（１日に２回の場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 900,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001670",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が他の看護師等と同時に医療観察訪問看護を行った場合）（１日に２回の場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 810,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001770",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が他の看護師等と同時に医療観察訪問看護を行った場合）（１日に３回以上の場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 1450,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001870",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が他の看護師等と同時に医療観察訪問看護を行った場合）（１日に３回以上の場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 1300,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588001970",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が准看護師と同時に医療観察訪問看護を行った場合）（１日に１回の場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 380,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002070",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が准看護師と同時に医療観察訪問看護を行った場合）（１日に１回の場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 340,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002170",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が准看護師と同時に医療観察訪問看護を行った場合）（１日に２回の場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 760,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002270",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が准看護師と同時に医療観察訪問看護を行った場合）（１日に２回の場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 680,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002370",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が准看護師と同時に医療観察訪問看護を行った場合）（１日に３回以上の場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 1240,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002470",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が准看護師と同時に医療観察訪問看護を行った場合）（１日に３回以上の場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 1120,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002570",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が看護補助者又は精神保健福祉士と同時に医療観察訪問看護を行った場合）（同一建物内１人又は２人）（医療観察訪問看護基本料）",
+    "points": 300,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002670",
+    "serviceName": "医療観察複数名訪問看護加算（看護師等が看護補助者又は精神保健福祉士と同時に医療観察訪問看護を行った場合）（同一建物内３人以上）（医療観察訪問看護基本料）",
+    "points": 270,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002770",
+    "serviceName": "医療観察特別地域訪問看護加算（医療観察訪問看護基本料）",
+    "points": 50,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002870",
+    "serviceName": "医療観察精神科緊急訪問看護加算（医療観察訪問看護基本料）",
+    "points": 265,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588002970",
+    "serviceName": "医療観察長時間訪問看護加算（医療観察訪問看護基本料）",
+    "points": 520,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003070",
+    "serviceName": "医療観察夜間・早朝訪問看護加算（医療観察訪問看護基本料）",
+    "points": 210,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003170",
+    "serviceName": "医療観察深夜訪問看護加算（医療観察訪問看護基本料）",
+    "points": 420,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003210",
+    "serviceName": "医療観察訪問看護管理料（月の初日の訪問の場合）",
+    "points": 767,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003310",
+    "serviceName": "医療観察訪問看護管理料（月の２日目以降の訪問の場合）（１日につき）",
+    "points": 300,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588004010",
+    "serviceName": "医療観察２４時間対応体制加算（看護業務の負担軽減の取組を行っている場合）（医療観察訪問看護管理料）",
+    "points": 680,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003470",
+    "serviceName": "医療観察２４時間対応体制加算（イ以外の場合）（医療観察訪問看護管理料）",
+    "points": 652,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003570",
+    "serviceName": "医療観察退院時共同指導加算（医療観察訪問看護管理料）",
+    "points": 800,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003670",
+    "serviceName": "医療観察在宅患者連携指導加算（医療観察訪問看護管理料）",
+    "points": 300,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003770",
+    "serviceName": "医療観察在宅患者緊急時等カンファレンス加算（医療観察訪問看護管理料）",
+    "points": 200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003810",
+    "serviceName": "医療観察訪問看護情報提供料１",
+    "points": 200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "588003910",
+    "serviceName": "医療観察訪問看護情報提供料２",
+    "points": 150,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000110",
+    "serviceName": "訪問看護ベースアップ評価料（１）",
+    "points": 780,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000210",
+    "serviceName": "訪問看護ベースアップ評価料（２）１",
+    "points": 10,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000310",
+    "serviceName": "訪問看護ベースアップ評価料（２）２",
+    "points": 20,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000410",
+    "serviceName": "訪問看護ベースアップ評価料（２）３",
+    "points": 30,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000510",
+    "serviceName": "訪問看護ベースアップ評価料（２）４",
+    "points": 40,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000610",
+    "serviceName": "訪問看護ベースアップ評価料（２）５",
+    "points": 50,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000710",
+    "serviceName": "訪問看護ベースアップ評価料（２）６",
+    "points": 60,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000810",
+    "serviceName": "訪問看護ベースアップ評価料（２）７",
+    "points": 70,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590000910",
+    "serviceName": "訪問看護ベースアップ評価料（２）８",
+    "points": 80,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001010",
+    "serviceName": "訪問看護ベースアップ評価料（２）９",
+    "points": 90,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001110",
+    "serviceName": "訪問看護ベースアップ評価料（２）１０",
+    "points": 100,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001210",
+    "serviceName": "訪問看護ベースアップ評価料（２）１１",
+    "points": 150,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001310",
+    "serviceName": "訪問看護ベースアップ評価料（２）１２",
+    "points": 200,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001410",
+    "serviceName": "訪問看護ベースアップ評価料（２）１３",
+    "points": 250,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001510",
+    "serviceName": "訪問看護ベースアップ評価料（２）１４",
+    "points": 300,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001610",
+    "serviceName": "訪問看護ベースアップ評価料（２）１５",
+    "points": 350,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001710",
+    "serviceName": "訪問看護ベースアップ評価料（２）１６",
+    "points": 400,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001810",
+    "serviceName": "訪問看護ベースアップ評価料（２）１７",
+    "points": 450,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  },
+  {
+    "serviceCode": "590001910",
+    "serviceName": "訪問看護ベースアップ評価料（２）１８",
+    "points": 500,
+    "insuranceType": "medical",
+    "validFrom": "2024-06-01",
+    "validTo": null,
+    "changeType": "0",
+    "masterType": "R"
+  }
+]
