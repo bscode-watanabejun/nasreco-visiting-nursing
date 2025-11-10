@@ -14,10 +14,12 @@ import {
   bonusCalculationHistory,
   nursingRecords,
   patients,
+  nursingServiceCodes,
   BonusMaster,
   InsertBonusCalculationHistory,
 } from "@shared/schema";
-import { eq, and, lte, or, isNull, gte, isNotNull, ne } from "drizzle-orm";
+import { eq, and, lte, or, isNull, gte, isNotNull, ne, like } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 // ========== Type Definitions ==========
 
@@ -1490,23 +1492,344 @@ export async function calculateBonuses(
 }
 
 /**
+ * 加算に対応するサービスコードを自動選択
+ * Phase 1: 完全自動選択可能な加算のみ実装
+ */
+export async function selectServiceCodeForBonus(
+  bonusCode: string,
+  bonusMaster: BonusMaster,
+  context: BonusCalculationContext
+): Promise<string | null> {
+  const visitDate = context.visitDate;
+  const visitDateStr = visitDate.toISOString().split('T')[0];
+  const insuranceType = context.insuranceType;
+
+  try {
+    // 保険種別と有効期間でフィルタ
+    const baseConditions = [
+      eq(nursingServiceCodes.insuranceType, insuranceType),
+      eq(nursingServiceCodes.isActive, true),
+      lte(nursingServiceCodes.validFrom, visitDateStr),
+      or(
+        isNull(nursingServiceCodes.validTo),
+        gte(nursingServiceCodes.validTo, visitDateStr)
+      ),
+    ];
+
+    // Phase 1: 完全自動選択可能な加算
+    switch (bonusCode) {
+      case 'medical_emergency_visit': {
+        // 緊急訪問看護加算: 月14日目まで/以降で判定
+        const dayOfMonth = visitDate.getDate();
+        const serviceCode = dayOfMonth <= 14 ? '510002470' : '510004570';
+        
+        const codes = await db
+          .select()
+          .from(nursingServiceCodes)
+          .where(and(...baseConditions, eq(nursingServiceCodes.serviceCode, serviceCode)));
+        
+        return codes.length > 0 ? codes[0].id : null;
+      }
+
+      case 'medical_night_early_morning':
+      case 'medical_late_night': {
+        // 時間帯別加算: 訪問開始時刻から判定
+        if (!context.visitStartTime) return null;
+        
+        const hour = context.visitStartTime.getHours();
+        let serviceCode: string;
+        
+        if (bonusCode === 'medical_late_night') {
+          // 深夜（22:00-6:00）
+          serviceCode = '510004070';
+        } else {
+          // 夜間・早朝（18:00-22:00 または 6:00-8:00）
+          serviceCode = '510003970';
+        }
+        
+        const codes = await db
+          .select()
+          .from(nursingServiceCodes)
+          .where(and(...baseConditions, eq(nursingServiceCodes.serviceCode, serviceCode)));
+        
+        return codes.length > 0 ? codes[0].id : null;
+      }
+
+      case 'discharge_support_guidance_basic':
+      case 'discharge_support_guidance_long': {
+        // 退院支援加算: 退院日フラグと訪問時間から判定
+        if (!context.isDischargeDate) return null;
+        
+        let serviceCode: string;
+        if (bonusCode === 'discharge_support_guidance_long') {
+          // 長時間（90分超）
+          if (!context.visitStartTime || !context.visitEndTime) return null;
+          const durationMinutes = (context.visitEndTime.getTime() - context.visitStartTime.getTime()) / (1000 * 60);
+          if (durationMinutes <= 90) return null;
+          serviceCode = '550001270';
+        } else {
+          serviceCode = '550001170';
+        }
+        
+        const codes = await db
+          .select()
+          .from(nursingServiceCodes)
+          .where(and(...baseConditions, eq(nursingServiceCodes.serviceCode, serviceCode)));
+        
+        return codes.length > 0 ? codes[0].id : null;
+      }
+
+      case '24h_response_system_basic':
+      case '24h_response_system_enhanced': {
+        // 24時間対応体制加算: 施設の体制フラグから判定
+        // 注意: 施設情報が必要だが、現状はcontextに含まれていない
+        // 暫定的にサービスコード名から判定
+        let serviceCode: string;
+        if (bonusCode === '24h_response_system_enhanced') {
+          serviceCode = '550002170';
+        } else {
+          serviceCode = '550000670';
+        }
+        
+        const codes = await db
+          .select()
+          .from(nursingServiceCodes)
+          .where(and(...baseConditions, eq(nursingServiceCodes.serviceCode, serviceCode)));
+        
+        return codes.length > 0 ? codes[0].id : null;
+      }
+
+      default:
+        // Phase 1以外の加算は自動選択しない
+        return null;
+    }
+  } catch (error) {
+    console.error(`[selectServiceCodeForBonus] Error selecting service code for ${bonusCode}:`, error);
+    return null;
+  }
+}
+
+/**
  * 加算計算結果をデータベースに保存
+ * 既存の加算履歴を削除してから新しい履歴を保存（重複を防ぐ）
  */
 export async function saveBonusCalculationHistory(
   nursingRecordId: string,
   results: BonusCalculationResult[],
   userId?: string
 ): Promise<void> {
-  for (const result of results) {
-    const historyRecord: InsertBonusCalculationHistory = {
+  // トランザクションで処理
+  await db.transaction(async (tx) => {
+    // 既存の加算履歴を取得（削除前にserviceCodeIdを保存）
+    const existingHistory = await tx.query.bonusCalculationHistory.findMany({
+      where: eq(bonusCalculationHistory.nursingRecordId, nursingRecordId),
+    });
+
+    // bonusMasterId -> serviceCodeId のマッピングを作成（手動選択したサービスコードを保持）
+    const existingServiceCodes = new Map<string, string>();
+    existingHistory.forEach(h => {
+      if (h.serviceCodeId) {
+        existingServiceCodes.set(h.bonusMasterId, h.serviceCodeId);
+      }
+    });
+
+    // 既存の加算履歴を削除（該当のnursingRecordIdに紐づくもののみ）
+    await tx.delete(bonusCalculationHistory)
+      .where(eq(bonusCalculationHistory.nursingRecordId, nursingRecordId));
+
+    // 訪問記録情報を取得してコンテキストを構築
+    const nursingRecord = await tx.query.nursingRecords.findFirst({
+      where: eq(nursingRecords.id, nursingRecordId),
+    });
+
+    if (!nursingRecord) {
+      console.error(`[saveBonusCalculationHistory] Nursing record not found: ${nursingRecordId}`);
+      return;
+    }
+
+    // 患者情報を取得して保険種別を判定
+    const patient = await tx.query.patients.findFirst({
+      where: eq(patients.id, nursingRecord.patientId),
+    });
+
+    const insuranceType = (patient?.insuranceType as "medical" | "care") || "medical";
+
+    // 同じbonusMasterIdの重複を防ぐためのMap
+    const processedBonusMasterIds = new Set<string>();
+
+    // 日付型の変換（string | Date の可能性があるため）
+    const visitDate = typeof nursingRecord.visitDate === 'string'
+      ? new Date(nursingRecord.visitDate)
+      : nursingRecord.visitDate;
+    
+    const visitStartTime = nursingRecord.actualStartTime 
+      ? (typeof nursingRecord.actualStartTime === 'string'
+        ? new Date(nursingRecord.actualStartTime)
+        : nursingRecord.actualStartTime)
+      : null;
+    
+    const visitEndTime = nursingRecord.actualEndTime 
+      ? (typeof nursingRecord.actualEndTime === 'string'
+        ? new Date(nursingRecord.actualEndTime)
+        : nursingRecord.actualEndTime)
+      : null;
+
+    const terminalCareDeathDate = nursingRecord.terminalCareDeathDate 
+      ? (typeof nursingRecord.terminalCareDeathDate === 'string'
+        ? new Date(nursingRecord.terminalCareDeathDate)
+        : nursingRecord.terminalCareDeathDate)
+      : null;
+
+    const context: BonusCalculationContext = {
       nursingRecordId,
-      bonusMasterId: result.bonusMasterId,
-      calculatedPoints: result.calculatedPoints,
-      appliedVersion: result.appliedVersion,
-      calculationDetails: result.calculationDetails,
-      isManuallyAdjusted: false,
+      patientId: nursingRecord.patientId,
+      facilityId: nursingRecord.facilityId,
+      visitDate,
+      visitStartTime,
+      visitEndTime,
+      isSecondVisit: nursingRecord.isSecondVisit,
+      emergencyVisitReason: nursingRecord.emergencyVisitReason || null,
+      multipleVisitReason: nursingRecord.multipleVisitReason || null,
+      longVisitReason: nursingRecord.longVisitReason || null,
+      isDischargeDate: nursingRecord.isDischargeDate || false,
+      isFirstVisitOfPlan: nursingRecord.isFirstVisitOfPlan || false,
+      hasCollaborationRecord: nursingRecord.hasCollaborationRecord || false,
+      isTerminalCare: nursingRecord.isTerminalCare || false,
+      terminalCareDeathDate,
+      specialistCareType: nursingRecord.specialistCareType || null,
+      insuranceType,
     };
 
-    await db.insert(bonusCalculationHistory).values(historyRecord);
+    for (const result of results) {
+      // 同じbonusMasterIdの重複をチェック
+      if (processedBonusMasterIds.has(result.bonusMasterId)) {
+        console.warn(`[saveBonusCalculationHistory] Duplicate bonusMasterId detected: ${result.bonusMasterId}, skipping`);
+        continue;
+      }
+      processedBonusMasterIds.add(result.bonusMasterId);
+
+      // 既存のserviceCodeIdがあれば使用（手動選択したサービスコードを保持）
+      let serviceCodeId: string | null = null;
+      if (existingServiceCodes.has(result.bonusMasterId)) {
+        serviceCodeId = existingServiceCodes.get(result.bonusMasterId)!;
+        console.log(`[saveBonusCalculationHistory] Preserving manual service code for bonus: ${result.bonusMasterId}`);
+      } else {
+        // 既存のserviceCodeIdがない場合のみ自動選択を試みる
+        // 加算マスタを取得してサービスコードを自動選択
+        const bonusMasterRecord = await tx.query.bonusMaster.findFirst({
+          where: eq(bonusMaster.id, result.bonusMasterId),
+        });
+
+        if (bonusMasterRecord) {
+          serviceCodeId = await selectServiceCodeForBonus(
+            bonusMasterRecord.bonusCode,
+            bonusMasterRecord,
+            context
+          );
+
+          if (!serviceCodeId) {
+            console.log(`[saveBonusCalculationHistory] Service code not selected for bonus: ${bonusMasterRecord.bonusCode}`);
+          }
+        }
+      }
+
+      const historyRecord: InsertBonusCalculationHistory = {
+        nursingRecordId,
+        bonusMasterId: result.bonusMasterId,
+        calculatedPoints: result.calculatedPoints,
+        appliedVersion: result.appliedVersion,
+        calculationDetails: result.calculationDetails,
+        serviceCodeId,
+        isManuallyAdjusted: false,
+      };
+
+      await tx.insert(bonusCalculationHistory).values(historyRecord);
+    }
+  });
+}
+
+/**
+ * 月次レセプトに紐づく訪問記録の加算を一括再計算
+ */
+export async function recalculateBonusesForReceipt(
+  receipt: {
+    id: string
+    patientId: string
+    facilityId: string
+    targetYear: number
+    targetMonth: number
+    insuranceType: 'medical' | 'care'
+  }
+): Promise<void> {
+  // 対象月の訪問記録を取得
+  const startDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 1);
+  const endDate = new Date(receipt.targetYear, receipt.targetMonth, 0);
+
+  const targetRecords = await db.query.nursingRecords.findMany({
+    where: and(
+      eq(nursingRecords.patientId, receipt.patientId),
+      eq(nursingRecords.facilityId, receipt.facilityId),
+      gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+      lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0])
+    ),
+  });
+
+  // 患者情報を取得して保険種別を判定
+  const patient = await db.query.patients.findFirst({
+    where: eq(patients.id, receipt.patientId),
+  });
+
+  const insuranceType = (patient?.insuranceType as "medical" | "care") || receipt.insuranceType;
+
+  // 各訪問記録の加算を再計算
+  for (const record of targetRecords) {
+    // 日付型の変換
+    const visitDate = typeof record.visitDate === 'string'
+      ? new Date(record.visitDate)
+      : record.visitDate;
+    
+    const visitStartTime = record.actualStartTime 
+      ? (typeof record.actualStartTime === 'string'
+        ? new Date(record.actualStartTime)
+        : record.actualStartTime)
+      : null;
+    
+    const visitEndTime = record.actualEndTime 
+      ? (typeof record.actualEndTime === 'string'
+        ? new Date(record.actualEndTime)
+        : record.actualEndTime)
+      : null;
+
+    const terminalCareDeathDate = record.terminalCareDeathDate 
+      ? (typeof record.terminalCareDeathDate === 'string'
+        ? new Date(record.terminalCareDeathDate)
+        : record.terminalCareDeathDate)
+      : null;
+
+    const context: BonusCalculationContext = {
+      nursingRecordId: record.id,
+      patientId: record.patientId,
+      facilityId: record.facilityId,
+      visitDate,
+      visitStartTime,
+      visitEndTime,
+      isSecondVisit: record.isSecondVisit,
+      emergencyVisitReason: record.emergencyVisitReason || null,
+      multipleVisitReason: record.multipleVisitReason || null,
+      longVisitReason: record.longVisitReason || null,
+      isDischargeDate: record.isDischargeDate || false,
+      isFirstVisitOfPlan: record.isFirstVisitOfPlan || false,
+      hasCollaborationRecord: record.hasCollaborationRecord || false,
+      isTerminalCare: record.isTerminalCare || false,
+      terminalCareDeathDate,
+      specialistCareType: record.specialistCareType || null,
+      insuranceType,
+    };
+
+    // 加算を計算
+    const results = await calculateBonuses(context);
+
+    // 加算履歴を保存（既存の履歴は削除される）
+    await saveBonusCalculationHistory(record.id, results);
   }
 }

@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Combobox } from "@/components/ui/combobox"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
@@ -2625,24 +2626,24 @@ export function NursingRecords() {
                 <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* 訪問看護サービスコード */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="nursing-service-code">サービスコード</Label>
-                    <Select
-                      value={formData.nursingServiceCode || "none"}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, nursingServiceCode: value === "none" ? "" : value }))}
-                    >
-                      <SelectTrigger id="nursing-service-code">
-                        <SelectValue placeholder="選択してください" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">未選択</SelectItem>
-                        {nursingServiceCodes.map((code) => (
-                          <SelectItem key={code.serviceCode} value={code.serviceCode}>
-                            {code.serviceCode} - {code.serviceName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      options={[
+                        { value: "", label: "未選択" },
+                        ...nursingServiceCodes.map((code) => ({
+                          value: code.serviceCode,
+                          label: `${code.serviceCode} - ${code.serviceName}`,
+                        })),
+                      ]}
+                      value={formData.nursingServiceCode || ""}
+                      onValueChange={(value) => {
+                        setFormData(prev => ({ ...prev, nursingServiceCode: value }))
+                      }}
+                      placeholder="選択してください"
+                      searchPlaceholder="サービスコードまたは名称で検索..."
+                      emptyText="該当するサービスコードが見つかりませんでした"
+                    />
                     <p className="text-xs text-muted-foreground">
                       訪問看護サービスの種類
                     </p>
@@ -2673,7 +2674,7 @@ export function NursingRecords() {
                   </div>
 
                   {/* 職員資格コード */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-3">
                     <Label htmlFor="staff-qualification">職員資格</Label>
                     <Select
                       value={formData.staffQualification || "none"}

@@ -52,6 +52,7 @@ interface BonusCalculation {
   bonusCode: string;
   bonusName: string;
   calculatedPoints: number;
+  serviceCodeId?: string | null; // サービスコード選択済みかどうかを判定するため
 }
 
 interface ReceiptValidationInput {
@@ -455,7 +456,12 @@ export function detectMissingBonuses(
   appliedBonuses: BonusCalculation[]
 ): ValidationError[] {
   const suggestions: ValidationError[] = [];
-  const appliedBonusCodes = new Set(appliedBonuses.map((b) => b.bonusCode));
+  // サービスコードが選択済みの加算コードをセットに追加
+  const appliedBonusCodesWithServiceCode = new Set(
+    appliedBonuses
+      .filter((b) => b.serviceCodeId != null) // サービスコード選択済みのもののみ
+      .map((b) => b.bonusCode)
+  );
 
   nursingRecords.forEach((record) => {
     // Check for long visit bonus (90 minutes or more)
@@ -463,7 +469,13 @@ export function detectMissingBonuses(
       const durationMinutes =
         (new Date(record.actualEndTime).getTime() - new Date(record.actualStartTime).getTime()) / 1000 / 60;
 
-      if (durationMinutes >= 90 && !appliedBonusCodes.has('long_visit_care') && !appliedBonusCodes.has('long_visit_medical')) {
+      // 医療保険: medical_long_visit, 介護保険: care_long_visit をチェック
+      const hasLongVisitBonus = appliedBonusCodesWithServiceCode.has('medical_long_visit') || 
+                                 appliedBonusCodesWithServiceCode.has('care_long_visit') ||
+                                 appliedBonusCodesWithServiceCode.has('long_visit_care') || 
+                                 appliedBonusCodesWithServiceCode.has('long_visit_medical');
+
+      if (durationMinutes >= 90 && !hasLongVisitBonus) {
         suggestions.push({
           code: 'MISSING_LONG_VISIT_BONUS',
           message: `訪問日 ${record.visitDate}: 訪問時間が90分以上ですが、長時間訪問看護加算が未算定です`,
@@ -475,7 +487,12 @@ export function detectMissingBonuses(
 
     // Check for emergency visit bonus
     if (record.emergencyVisitReason && record.emergencyVisitReason.trim().length > 0) {
-      if (!appliedBonusCodes.has('emergency_visit')) {
+      // 医療保険: medical_emergency_visit, 介護保険: care_emergency_visit をチェック
+      const hasEmergencyVisitBonus = appliedBonusCodesWithServiceCode.has('medical_emergency_visit') || 
+                                      appliedBonusCodesWithServiceCode.has('care_emergency_visit') ||
+                                      appliedBonusCodesWithServiceCode.has('emergency_visit');
+
+      if (!hasEmergencyVisitBonus) {
         suggestions.push({
           code: 'MISSING_EMERGENCY_VISIT_BONUS',
           message: `訪問日 ${record.visitDate}: 緊急訪問理由が記載されていますが、緊急訪問看護加算が未算定です`,
@@ -487,7 +504,12 @@ export function detectMissingBonuses(
 
     // Check for multiple visit bonus
     if (record.isSecondVisit && record.multipleVisitReason && record.multipleVisitReason.trim().length > 0) {
-      if (!appliedBonusCodes.has('multiple_visit_1') && !appliedBonusCodes.has('multiple_visit_2')) {
+      const hasMultipleVisitBonus = appliedBonusCodesWithServiceCode.has('medical_multiple_visit_2times_1-2') ||
+                                     appliedBonusCodesWithServiceCode.has('medical_multiple_visit_3times') ||
+                                     appliedBonusCodesWithServiceCode.has('care_multiple_visit') ||
+                                     appliedBonusCodesWithServiceCode.has('multiple_visit_1') ||
+                                     appliedBonusCodesWithServiceCode.has('multiple_visit_2');
+      if (!hasMultipleVisitBonus) {
         suggestions.push({
           code: 'MISSING_MULTIPLE_VISIT_BONUS',
           message: `訪問日 ${record.visitDate}: 複数回訪問理由が記載されていますが、複数回訪問加算が未算定です`,
@@ -500,7 +522,9 @@ export function detectMissingBonuses(
 
   // Check for special management bonus based on care level
   if (patient.careLevel && (patient.careLevel === 'care4' || patient.careLevel === 'care5')) {
-    if (!appliedBonusCodes.has('special_management_1') && !appliedBonusCodes.has('special_management_2')) {
+    const hasSpecialManagementBonus = appliedBonusCodesWithServiceCode.has('special_management_1') ||
+                                       appliedBonusCodesWithServiceCode.has('special_management_2');
+    if (!hasSpecialManagementBonus) {
       suggestions.push({
         code: 'MISSING_SPECIAL_MANAGEMENT_BONUS',
         message: '要介護4または5の患者ですが、特別管理加算が未算定の可能性があります',

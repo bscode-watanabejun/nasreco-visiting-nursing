@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum, json } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum, json, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -764,6 +764,9 @@ export const bonusCalculationHistory = pgTable("bonus_calculation_history", {
   }
   */
 
+  // サービスコード（レセプトCSV出力用）
+  serviceCodeId: varchar("service_code_id").references(() => nursingServiceCodes.id), // nullの場合は未選択
+
   // 手動調整
   isManuallyAdjusted: boolean("is_manually_adjusted").default(false),
   manualAdjustmentReason: text("manual_adjustment_reason"),
@@ -771,7 +774,13 @@ export const bonusCalculationHistory = pgTable("bonus_calculation_history", {
   adjustedAt: timestamp("adjusted_at", { withTimezone: true }),
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  // 同じ訪問記録に対して同じ加算マスタが重複しないようにユニーク制約を追加
+  uniqueNursingRecordBonusMaster: uniqueIndex("unique_nursing_record_bonus_master").on(
+    table.nursingRecordId,
+    table.bonusMasterId
+  ),
+}));
 
 // Monthly Receipts Table (月次レセプトサマリ)
 export const monthlyReceipts = pgTable("monthly_receipts", {
@@ -1592,6 +1601,10 @@ export const bonusCalculationHistoryRelations = relations(bonusCalculationHistor
   bonusMaster: one(bonusMaster, {
     fields: [bonusCalculationHistory.bonusMasterId],
     references: [bonusMaster.id],
+  }),
+  serviceCode: one(nursingServiceCodes, {
+    fields: [bonusCalculationHistory.serviceCodeId],
+    references: [nursingServiceCodes.id],
   }),
   adjustedBy: one(users, {
     fields: [bonusCalculationHistory.adjustedBy],

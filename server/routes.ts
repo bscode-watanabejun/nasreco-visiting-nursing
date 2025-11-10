@@ -6684,6 +6684,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== Bonus Calculation History Management ====================
+
+  // Update service code for bonus calculation history
+  app.patch("/api/bonus-calculation-history/:id/service-code", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { serviceCodeId } = req.body;
+
+      // serviceCodeIdがnullまたは空文字列の場合は選択解除を許可
+      if (serviceCodeId !== null && serviceCodeId !== '' && typeof serviceCodeId !== 'string') {
+        return res.status(400).json({ error: "サービスコードIDが不正です" });
+      }
+
+      // nullまたは空文字列の場合は未選択状態にする
+      const finalServiceCodeId = (serviceCodeId === null || serviceCodeId === '') ? null : serviceCodeId;
+
+      // 加算履歴を取得
+      const history = await db.query.bonusCalculationHistory.findFirst({
+        where: eq(bonusCalculationHistory.id, id),
+        with: {
+          nursingRecord: true,
+        },
+      });
+
+      if (!history) {
+        return res.status(404).json({ error: "加算履歴が見つかりません" });
+      }
+
+      // 訪問記録の施設IDを確認（テナントチェック）
+      if (history.nursingRecord.facilityId !== req.user.facilityId) {
+        return res.status(403).json({ error: "この加算履歴にアクセスする権限がありません" });
+      }
+
+      // サービスコードが指定されている場合のみ存在確認と点数チェック
+      if (finalServiceCodeId) {
+        const serviceCode = await db.query.nursingServiceCodes.findFirst({
+          where: eq(nursingServiceCodes.id, finalServiceCodeId),
+        });
+
+        if (!serviceCode) {
+          return res.status(404).json({ error: "サービスコードが見つかりません" });
+        }
+
+        // 加算マスタを取得して点数を確認
+        const bonusMasterRecord = await db.query.bonusMaster.findFirst({
+          where: eq(bonusMaster.id, history.bonusMasterId),
+        });
+
+        if (bonusMasterRecord) {
+          // 点数整合性チェック（警告のみ、エラーにはしない）
+          const bonusPoints = bonusMasterRecord.fixedPoints || 0;
+          const serviceCodePoints = serviceCode.points;
+          
+          // 加算マスタの点数は10円単位で保存されている可能性があるため、10倍して比較
+          const bonusPointsInYen = bonusPoints * 10;
+          if (bonusPointsInYen !== serviceCodePoints && bonusPoints !== serviceCodePoints) {
+            console.warn(`[Update service code] Points mismatch: bonus=${bonusPointsInYen} or ${bonusPoints}, serviceCode=${serviceCodePoints}`);
+          }
+        }
+      }
+
+      // サービスコードを更新（nullの場合は選択解除）
+      await db.update(bonusCalculationHistory)
+        .set({
+          serviceCodeId: finalServiceCodeId,
+        })
+        .where(eq(bonusCalculationHistory.id, id));
+
+      // 更新後のデータを取得
+      const updatedHistory = await db.query.bonusCalculationHistory.findFirst({
+        where: eq(bonusCalculationHistory.id, id),
+        with: {
+          bonusMaster: true,
+          serviceCode: true,
+        },
+      });
+
+      res.json(updatedHistory);
+    } catch (error: any) {
+      console.error("Update bonus calculation history service code error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ==================== Bonus Master Management ====================
 
   // Get all bonus masters (global + facility-specific)
@@ -7013,9 +7097,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusHistory = await db.select({
           history: bonusCalculationHistory,
           bonus: bonusMaster,
+          serviceCode: nursingServiceCodes,
         })
           .from(bonusCalculationHistory)
           .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
           .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
       }
 
@@ -7158,7 +7244,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
           .from(bonusCalculationHistory)
           .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
-          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+          .where(and(
+            inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+            isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコード選択済みのもののみ
+          ));
 
         // Aggregate bonus points
         for (const item of bonusHistoryForRecords) {
@@ -7585,6 +7674,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const receipt = existing[0];
       const { targetYear, targetMonth, patientId, insuranceType } = receipt;
 
+      // 加算を再計算（最新の加算マスタ設定で再計算）
+      const { recalculateBonusesForReceipt } = await import("./bonus-engine");
+      await recalculateBonusesForReceipt({
+        id: receipt.id,
+        patientId: receipt.patientId,
+        facilityId: receipt.facilityId,
+        targetYear: receipt.targetYear,
+        targetMonth: receipt.targetMonth,
+        insuranceType: receipt.insuranceType,
+      });
+
       // Re-fetch nursing records and recalculate
       const startDate = new Date(targetYear, targetMonth - 1, 1);
       const endDate = new Date(targetYear, targetMonth, 0);
@@ -7614,7 +7714,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
           .from(bonusCalculationHistory)
           .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
-          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+          .where(and(
+            inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+            isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコード選択済みのもののみ
+          ));
       }
 
       for (const item of bonusHistoryForRecords) {
@@ -7962,6 +8065,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusCode: bc.bonus?.bonusCode || '',
         bonusName: bc.bonus?.bonusName || '',
         calculatedPoints: bc.history.calculatedPoints,
+        serviceCodeId: bc.history.serviceCodeId || null, // サービスコード選択済みかどうかを判定するため
       }));
 
       // Run validation
@@ -9005,6 +9109,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: "医療機関情報が見つかりません" });
       }
 
+      // 加算履歴を取得（サービスコード選択済みのもののみ）
+      const recordIds = targetRecords.map(r => r.id);
+      let bonusHistoryData: Array<{
+        history: typeof bonusCalculationHistory.$inferSelect;
+        bonus: typeof bonusMaster.$inferSelect | null;
+        serviceCode: typeof nursingServiceCodes.$inferSelect | null;
+      }> = [];
+
+      if (recordIds.length > 0) {
+        bonusHistoryData = await db.select({
+          history: bonusCalculationHistory,
+          bonus: bonusMaster,
+          serviceCode: nursingServiceCodes,
+        })
+          .from(bonusCalculationHistory)
+          .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
+          .where(
+            and(
+              inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+              isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコード選択済みのもののみ
+            )
+          );
+      }
+
       // CSVデータを構築
       const csvData: ReceiptCsvData = {
         receipt: {
@@ -9085,6 +9214,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           appliedBonuses: (record.appliedBonuses as any[]) || [],
         })),
         bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],
+        bonusHistory: bonusHistoryData
+          .filter(item => item.bonus && item.serviceCode) // 加算マスタとサービスコードが存在するもののみ
+          .map(item => ({
+            id: item.history.id,
+            nursingRecordId: item.history.nursingRecordId,
+            visitDate: targetRecords.find(r => r.id === item.history.nursingRecordId)?.visitDate || new Date(),
+            bonusCode: item.bonus!.bonusCode,
+            bonusName: item.bonus!.bonusName,
+            serviceCode: item.serviceCode!.serviceCode,
+            points: item.serviceCode!.points,
+          })),
       };
 
       // 訪問看護療養費CSV生成

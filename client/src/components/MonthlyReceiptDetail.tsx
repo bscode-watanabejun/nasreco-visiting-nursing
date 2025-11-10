@@ -49,6 +49,9 @@ import {
 } from "lucide-react"
 import { pdf } from "@react-pdf/renderer"
 import { ReceiptPDF } from "@/components/ReceiptPDF"
+import { Combobox } from "@/components/ui/combobox"
+import { Label } from "@/components/ui/label"
+import { masterDataApi, type NursingServiceCode } from "@/lib/api"
 
 interface MonthlyReceiptDetail {
   id: string
@@ -154,6 +157,7 @@ interface MonthlyReceiptDetail {
       calculatedPoints: number
       appliedAt: string
       calculationDetails: any
+      serviceCodeId: string | null
     }
     bonus: {
       id: string
@@ -161,6 +165,12 @@ interface MonthlyReceiptDetail {
       bonusName: string
       bonusCategory: string
       insuranceType: string
+    } | null
+    serviceCode: {
+      id: string
+      serviceCode: string
+      serviceName: string
+      points: number
     } | null
   }>
 }
@@ -960,55 +970,46 @@ export default function MonthlyReceiptDetail() {
                 <div className="text-2xl font-bold">¥{receipt.totalAmount.toLocaleString()}</div>
               </div>
             </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">加算内訳</div>
-              {(() => {
-                // Aggregate bonus points by bonus type
-                const bonusSummary = new Map<string, { name: string; points: number; count: number }>()
-
-                receipt.bonusHistory.forEach((item) => {
-                  if (item.bonus) {
-                    const key = item.bonus.bonusCode
-                    const existing = bonusSummary.get(key)
-                    if (existing) {
-                      existing.points += item.history.calculatedPoints
-                      existing.count += 1
-                    } else {
-                      bonusSummary.set(key, {
-                        name: item.bonus.bonusName,
-                        points: item.history.calculatedPoints,
-                        count: 1,
-                      })
-                    }
-                  }
-                })
-
-                // Convert to array and sort by points (descending)
-                const bonusArray = Array.from(bonusSummary.values()).sort((a, b) => b.points - a.points)
-
-                return bonusArray.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {bonusArray.map((bonus, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {bonus.name}
-                          {bonus.count > 1 && <span className="ml-1 text-xs">×{bonus.count}</span>}
-                        </span>
-                        <span className="font-medium">{bonus.points.toLocaleString()}点</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground">加算なし</div>
-                )
-              })()}
-            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* サービスコード選択セクション（未選択・選択済み両方） */}
+      {(() => {
+        const allBonuses = receipt.bonusHistory.filter(item => item.bonus);
+        const unselectedBonuses = allBonuses.filter(item => !item.history.serviceCodeId);
+        const selectedBonuses = allBonuses.filter(item => item.history.serviceCodeId);
+
+        if (allBonuses.length === 0) return null;
+
+        return (
+          <>
+            {/* 選択済みのサービスコードセクション */}
+            {selectedBonuses.length > 0 && (
+              <SelectedBonusServiceCodeSection
+                bonuses={selectedBonuses}
+                receiptId={receipt.id}
+                insuranceType={receipt.insuranceType}
+                onUpdate={() => {
+                  queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+                }}
+              />
+            )}
+
+            {/* サービスコード未選択の加算セクション */}
+            {unselectedBonuses.length > 0 && (
+              <UnselectedBonusServiceCodeSection
+                bonuses={unselectedBonuses}
+                receiptId={receipt.id}
+                insuranceType={receipt.insuranceType}
+                onUpdate={() => {
+                  queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+                }}
+              />
+            )}
+          </>
+        );
+      })()}
 
       {/* Related Nursing Records */}
       <Card>
@@ -1338,5 +1339,471 @@ export default function MonthlyReceiptDetail() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// サービスコード選択済みの加算セクションコンポーネント
+function SelectedBonusServiceCodeSection({
+  bonuses,
+  receiptId,
+  insuranceType,
+  onUpdate,
+}: {
+  bonuses: Array<{
+    history: {
+      id: string
+      nursingRecordId: string
+      bonusMasterId: string
+      calculatedPoints: number
+      appliedAt: string
+      calculationDetails: any
+      serviceCodeId: string | null
+    }
+    bonus: {
+      id: string
+      bonusCode: string
+      bonusName: string
+      bonusCategory: string
+      insuranceType: string
+    } | null
+    serviceCode: {
+      id: string
+      serviceCode: string
+      serviceName: string
+      points: number
+    } | null
+  }>
+  receiptId: string
+  insuranceType: 'medical' | 'care'
+  onUpdate: () => void
+}) {
+  const { toast } = useToast()
+  const [selectedServiceCodes, setSelectedServiceCodes] = useState<Record<string, string>>({})
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [clearingIds, setClearingIds] = useState<Set<string>>(new Set())
+
+  // サービスコード一覧を取得
+  const { data: serviceCodes = [] } = useQuery<NursingServiceCode[]>({
+    queryKey: ['/api/master/nursing-service-codes', insuranceType],
+    queryFn: () => masterDataApi.getNursingServiceCodes({
+      isActive: true,
+      insuranceType,
+    }),
+  })
+
+  // 加算に対応するサービスコードをフィルタ（加算コード名から推測）
+  const getAvailableServiceCodes = (bonusCode: string): NursingServiceCode[] => {
+    return serviceCodes.filter(code => {
+      if (bonusCode === 'medical_emergency_visit') {
+        return code.serviceCode.startsWith('510002') || code.serviceCode.startsWith('510004')
+      }
+      if (bonusCode === 'medical_night_early_morning' || bonusCode === 'medical_late_night') {
+        return code.serviceCode.startsWith('510003') || code.serviceCode.startsWith('510004')
+      }
+      if (bonusCode.startsWith('discharge_support_guidance')) {
+        return code.serviceCode.startsWith('550001')
+      }
+      if (bonusCode.startsWith('24h_response_system')) {
+        return code.serviceCode.startsWith('550000') || code.serviceCode.startsWith('550002')
+      }
+      if (bonusCode.startsWith('terminal_care')) {
+        return code.serviceCode.startsWith('580000')
+      }
+      if (bonusCode.startsWith('special_management')) {
+        return code.serviceCode.startsWith('550000')
+      }
+      if (bonusCode === 'specialist_management') {
+        return code.serviceCode.startsWith('550001')
+      }
+      if (bonusCode === 'medical_long_visit') {
+        return code.serviceCode.startsWith('510002') || code.serviceCode.startsWith('510004')
+      }
+      return true
+    })
+  }
+
+  const handleSave = async (historyId: string, serviceCodeId: string) => {
+    if (!serviceCodeId) {
+      toast({
+        title: "エラー",
+        description: "サービスコードを選択してください",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSavingIds(prev => new Set(prev).add(historyId))
+
+    try {
+      const response = await fetch(`/api/bonus-calculation-history/${historyId}/service-code`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ serviceCodeId }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'サービスコードの保存に失敗しました')
+      }
+
+      toast({
+        title: "保存完了",
+        description: "サービスコードを保存しました",
+      })
+
+      onUpdate()
+      setSelectedServiceCodes(prev => {
+        const next = { ...prev }
+        delete next[historyId]
+        return next
+      })
+    } catch (error: any) {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setSavingIds(prev => {
+        const next = new Set(prev)
+        next.delete(historyId)
+        return next
+      })
+    }
+  }
+
+  const handleClear = async (historyId: string) => {
+    setClearingIds(prev => new Set(prev).add(historyId))
+
+    try {
+      const response = await fetch(`/api/bonus-calculation-history/${historyId}/service-code`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ serviceCodeId: null }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'サービスコードの解除に失敗しました')
+      }
+
+      toast({
+        title: "解除完了",
+        description: "サービスコードの選択を解除しました",
+      })
+
+      onUpdate()
+    } catch (error: any) {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setClearingIds(prev => {
+        const next = new Set(prev)
+        next.delete(historyId)
+        return next
+      })
+    }
+  }
+
+  return (
+    <Card className="border-green-200 bg-green-50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-green-800">
+          <CheckCircle className="w-5 h-5" />
+          サービスコード選択済みの加算
+        </CardTitle>
+        <CardDescription>
+          以下の加算はサービスコードが選択済みです。変更または解除できます。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {bonuses.map((bonus) => {
+          if (!bonus.bonus || !bonus.serviceCode) return null
+
+          const availableCodes = getAvailableServiceCodes(bonus.bonus.bonusCode)
+          const selectedCodeId = selectedServiceCodes[bonus.history.id] || bonus.history.serviceCodeId || ''
+          const isSaving = savingIds.has(bonus.history.id)
+          const isClearing = clearingIds.has(bonus.history.id)
+
+          return (
+            <div key={bonus.history.id} className="border rounded-md p-4 bg-white">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">加算名</div>
+                  <div className="font-medium">{bonus.bonus.bonusName}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">点数</div>
+                  <div className="font-medium">{bonus.history.calculatedPoints.toLocaleString()}点</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">選択済みサービスコード</div>
+                  <div className="font-medium text-sm">
+                    {bonus.serviceCode.serviceCode} - {bonus.serviceCode.serviceName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    ({bonus.serviceCode.points.toLocaleString()}点)
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>サービスコード変更</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Combobox
+                      options={[
+                        { value: '', label: '選択してください' },
+                        ...availableCodes.map(code => ({
+                          value: code.id,
+                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}点)`,
+                        })),
+                      ]}
+                      value={selectedCodeId}
+                      onValueChange={(value) => {
+                        setSelectedServiceCodes(prev => ({
+                          ...prev,
+                          [bonus.history.id]: value,
+                        }))
+                      }}
+                      placeholder="選択してください"
+                      searchPlaceholder="サービスコードまたは名称で検索..."
+                      emptyText="該当するサービスコードが見つかりませんでした"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => handleSave(bonus.history.id, selectedCodeId)}
+                    disabled={!selectedCodeId || selectedCodeId === bonus.history.serviceCodeId || isSaving}
+                    variant="default"
+                  >
+                    {isSaving ? '保存中...' : '変更'}
+                  </Button>
+                  <Button
+                    onClick={() => handleClear(bonus.history.id)}
+                    disabled={isClearing}
+                    variant="outline"
+                  >
+                    {isClearing ? '解除中...' : 'クリア'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+// サービスコード未選択の加算セクションコンポーネント
+function UnselectedBonusServiceCodeSection({
+  bonuses,
+  receiptId,
+  insuranceType,
+  onUpdate,
+}: {
+  bonuses: Array<{
+    history: {
+      id: string
+      nursingRecordId: string
+      bonusMasterId: string
+      calculatedPoints: number
+      appliedAt: string
+      calculationDetails: any
+      serviceCodeId: string | null
+    }
+    bonus: {
+      id: string
+      bonusCode: string
+      bonusName: string
+      bonusCategory: string
+      insuranceType: string
+    } | null
+    serviceCode: {
+      id: string
+      serviceCode: string
+      serviceName: string
+      points: number
+    } | null
+  }>
+  receiptId: string
+  insuranceType: 'medical' | 'care'
+  onUpdate: () => void
+}) {
+  const { toast } = useToast()
+  const [selectedServiceCodes, setSelectedServiceCodes] = useState<Record<string, string>>({})
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+
+  // サービスコード一覧を取得
+  const { data: serviceCodes = [] } = useQuery<NursingServiceCode[]>({
+    queryKey: ['/api/master/nursing-service-codes', insuranceType],
+    queryFn: () => masterDataApi.getNursingServiceCodes({
+      isActive: true,
+      insuranceType,
+    }),
+  })
+
+  // 加算に対応するサービスコードをフィルタ（加算コード名から推測）
+  const getAvailableServiceCodes = (bonusCode: string): NursingServiceCode[] => {
+    // 加算コードに基づいてサービスコードをフィルタ
+    return serviceCodes.filter(code => {
+      // 緊急訪問加算の場合
+      if (bonusCode === 'medical_emergency_visit') {
+        return code.serviceCode.startsWith('510002') || code.serviceCode.startsWith('510004')
+      }
+      // 時間帯別加算の場合
+      if (bonusCode === 'medical_night_early_morning' || bonusCode === 'medical_late_night') {
+        return code.serviceCode.startsWith('510003') || code.serviceCode.startsWith('510004')
+      }
+      // 退院支援加算の場合
+      if (bonusCode.startsWith('discharge_support_guidance')) {
+        return code.serviceCode.startsWith('550001')
+      }
+      // 24時間対応体制加算の場合
+      if (bonusCode.startsWith('24h_response_system')) {
+        return code.serviceCode.startsWith('550000') || code.serviceCode.startsWith('550002')
+      }
+      // ターミナルケア加算の場合
+      if (bonusCode.startsWith('terminal_care')) {
+        return code.serviceCode.startsWith('580000')
+      }
+      // 特別管理加算の場合
+      if (bonusCode.startsWith('special_management')) {
+        return code.serviceCode.startsWith('550000')
+      }
+      // 専門管理加算の場合
+      if (bonusCode === 'specialist_management') {
+        return code.serviceCode.startsWith('550001')
+      }
+      // その他の加算はすべてのサービスコードを表示
+      return true
+    })
+  }
+
+  const handleSave = async (historyId: string, serviceCodeId: string) => {
+    if (!serviceCodeId) {
+      toast({
+        title: "エラー",
+        description: "サービスコードを選択してください",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSavingIds(prev => new Set(prev).add(historyId))
+
+    try {
+      const response = await fetch(`/api/bonus-calculation-history/${historyId}/service-code`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ serviceCodeId }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'サービスコードの保存に失敗しました')
+      }
+
+      toast({
+        title: "保存完了",
+        description: "サービスコードを保存しました",
+      })
+
+      onUpdate()
+    } catch (error: any) {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setSavingIds(prev => {
+        const next = new Set(prev)
+        next.delete(historyId)
+        return next
+      })
+    }
+  }
+
+  return (
+    <Card className="border-yellow-200 bg-yellow-50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-yellow-800">
+          <AlertTriangle className="w-5 h-5" />
+          サービスコード未選択の加算
+        </CardTitle>
+        <CardDescription>
+          以下の加算はサービスコードが未選択のため、CSV出力に含まれません。サービスコードを選択してください。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {bonuses.map((bonus) => {
+          if (!bonus.bonus) return null
+
+          const availableCodes = getAvailableServiceCodes(bonus.bonus.bonusCode)
+          const selectedCodeId = selectedServiceCodes[bonus.history.id] || ''
+          const isSaving = savingIds.has(bonus.history.id)
+
+          return (
+            <div key={bonus.history.id} className="border rounded-md p-4 bg-white">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">加算名</div>
+                  <div className="font-medium">{bonus.bonus.bonusName}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">点数</div>
+                  <div className="font-medium">{bonus.history.calculatedPoints.toLocaleString()}点</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">加算コード</div>
+                  <div className="font-medium text-xs">{bonus.bonus.bonusCode}</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>サービスコード</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Combobox
+                      options={[
+                        { value: '', label: '選択してください' },
+                        ...availableCodes.map(code => ({
+                          value: code.id,
+                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}点)`,
+                        })),
+                      ]}
+                      value={selectedCodeId}
+                      onValueChange={(value) => {
+                        setSelectedServiceCodes(prev => ({
+                          ...prev,
+                          [bonus.history.id]: value,
+                        }))
+                      }}
+                      placeholder="選択してください"
+                      searchPlaceholder="サービスコードまたは名称で検索..."
+                      emptyText="該当するサービスコードが見つかりませんでした"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => handleSave(bonus.history.id, selectedCodeId)}
+                    disabled={!selectedCodeId || isSaving}
+                  >
+                    {isSaving ? '保存中...' : '保存'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
   )
 }

@@ -561,7 +561,7 @@ export function MasterDataManagement() {
                 <div>
                   <CardTitle>訪問看護サービスコード</CardTitle>
                   <CardDescription>
-                    訪問看護サービスのコードと単位数/金額を管理します
+                    訪問看護サービスのコードと点数を管理します
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -617,7 +617,7 @@ export function MasterDataManagement() {
                     <TableHead>コード</TableHead>
                     <TableHead>サービス名</TableHead>
                     <TableHead>保険種別</TableHead>
-                    <TableHead>単位/金額</TableHead>
+                    <TableHead>点数</TableHead>
                     <TableHead>状態</TableHead>
                     {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
@@ -1110,7 +1110,7 @@ export function MasterDataManagement() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="service-points">単位数/金額</Label>
+              <Label htmlFor="service-points">点数</Label>
               <Input
                 id="service-points"
                 type="number"

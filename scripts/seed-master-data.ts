@@ -7,6 +7,9 @@
  *   npx tsx scripts/seed-master-data.ts
  */
 
+import fs from 'fs';
+import path from 'path';
+import iconv from 'iconv-lite';
 import { db } from '../server/db';
 import {
   prefectureCodes,
@@ -15,6 +18,106 @@ import {
   receiptTypeCodes,
   nursingServiceCodes
 } from '../shared/schema';
+
+/**
+ * CSVファイルからサービスコードを読み込む
+ */
+async function loadServiceCodesFromCsv() {
+  const masterDir = path.join(process.cwd(), 'docs/recept/visiting nursing_care_expenses_master');
+  const filePath = path.join(masterDir, '訪問看護療養費マスター_基本テーブル.csv');
+  
+  if (!fs.existsSync(filePath)) {
+    console.error(`⚠️  CSVファイルが見つかりません: ${filePath}`);
+    return [];
+  }
+  
+  const buffer = fs.readFileSync(filePath);
+  const text = iconv.decode(buffer, 'shift_jis');
+  const lines = text.split('\n').filter(l => l.trim());
+  
+  const serviceCodes: Array<{
+    serviceCode: string;
+    serviceName: string;
+    points: number;
+    insuranceType: 'medical' | 'care';
+    validFrom: Date;
+    validTo: Date | null;
+    description: string | null;
+    isActive: boolean;
+  }> = [];
+  
+  for (const line of lines) {
+    // CSVパース
+    const matches = line.match(/("(?:[^"\\]|\\.)*"|[^,]+)/g);
+    if (!matches || matches.length < 72) continue;
+    
+    const values = matches.map(v => v.replace(/^"|"$/g, '').trim());
+    
+    const changeType = values[0]; // 変更区分
+    const serviceCode = values[2]; // 訪問看護療養費コード
+    
+    // サービスコードが9桁の数字であることを確認
+    if (!/^\d{9}$/.test(serviceCode)) continue;
+    
+    // 廃止されたコードは除外（変更区分が9）
+    if (changeType === '9') continue;
+    
+    // 省略名称を使用（列[8]）。省略名称が空の場合は基本名称（列[6]）を使用
+    // 注意: PDF仕様書では列[9]が省略名称だが、実際のCSVでは列[8]が省略名称
+    const serviceName = (values[8] && values[8].trim()) ? values[8] : values[6]; // 省略名称（なければ基本名称）
+    const amountTypeStr = values[14]; // 金額識別（項番15）
+    const pointsStr = values[15]; // 新又は現金額（項番16）
+    const validFromStr = values[70]; // 変更年月日
+    const validToStr = values[71]; // 廃止年月日
+    
+    // 金額識別に応じて点数を計算
+    // 1：金額 → 10で割って点数に変換（1点 = 10円）
+    // 3：点数（プラス） → そのまま使用
+    // 5：％加算 → そのまま使用（現状は未対応）
+    let points = parseFloat(pointsStr) || 0;
+    if (amountTypeStr === '1') {
+      // 金額識別が「1：金額」の場合、円単位なので10で割って点数に変換
+      points = Math.round(points / 10);
+    }
+    // 金額識別が「3：点数（プラス）」の場合はそのまま使用
+    
+    // 保険種別の判定（サービスコードの先頭2桁で判定）
+    const insuranceType: 'medical' | 'care' = 
+      (serviceCode.startsWith('51') || serviceCode.startsWith('53')) ? 'medical' : 'medical';
+    
+    // 日付の変換（YYYYMMDD形式をDateオブジェクトに）
+    let validFrom: Date;
+    if (validFromStr && /^\d{8}$/.test(validFromStr)) {
+      const year = parseInt(validFromStr.substring(0, 4));
+      const month = parseInt(validFromStr.substring(4, 6)) - 1; // 月は0ベース
+      const day = parseInt(validFromStr.substring(6, 8));
+      validFrom = new Date(year, month, day);
+    } else {
+      validFrom = new Date('2024-04-01'); // デフォルト値
+    }
+    
+    let validTo: Date | null = null;
+    if (validToStr && validToStr !== '99999999' && /^\d{8}$/.test(validToStr)) {
+      const year = parseInt(validToStr.substring(0, 4));
+      const month = parseInt(validToStr.substring(4, 6)) - 1;
+      const day = parseInt(validToStr.substring(6, 8));
+      validTo = new Date(year, month, day);
+    }
+    
+    serviceCodes.push({
+      serviceCode,
+      serviceName,
+      points,
+      insuranceType,
+      validFrom,
+      validTo,
+      description: null,
+      isActive: true,
+    });
+  }
+  
+  return serviceCodes;
+}
 
 async function seedMasterData() {
   console.log('🚀 マスターデータの投入を開始します...\n');
@@ -118,52 +221,32 @@ async function seedMasterData() {
     ]).onConflictDoNothing();
     console.log('✓ レセプト種別コード: 7件投入完了\n');
 
-    // 5. 訪問看護サービスコード（主要なもの）
+    // 5. 訪問看護サービスコード（CSVファイルから読み込み）
     console.log('💊 訪問看護サービスコードを投入中...');
-    const validFrom = new Date('2024-04-01');
+    
+    // CSVファイルからサービスコードを読み込む
+    const serviceCodesData = await loadServiceCodesFromCsv();
+    
+    if (serviceCodesData.length === 0) {
+      console.log('⚠️  CSVファイルからサービスコードを読み込めませんでした。');
+    } else {
+      // データベースに投入
+      await db.insert(nursingServiceCodes).values(serviceCodesData).onConflictDoNothing();
+      console.log(`✓ 訪問看護サービスコード: ${serviceCodesData.length}件投入完了\n`);
+    }
 
-    await db.insert(nursingServiceCodes).values([
-      // 訪問看護基本療養費
-      { serviceCode: '311000110', serviceName: '訪問看護基本療養費（Ⅰ）週3日まで', points: 5550, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311000210', serviceName: '訪問看護基本療養費（Ⅰ）週4日以降', points: 6550, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311000310', serviceName: '訪問看護基本療養費（Ⅱ）週3日まで', points: 5050, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311000410', serviceName: '訪問看護基本療養費（Ⅱ）週4日以降', points: 6050, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311000510', serviceName: '訪問看護基本療養費（Ⅲ）週3日まで', points: 4550, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311000610', serviceName: '訪問看護基本療養費（Ⅲ）週4日以降', points: 5550, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-
-      // 精神科訪問看護基本療養費
-      { serviceCode: '311001110', serviceName: '精神科訪問看護基本療養費（Ⅰ）週3日まで', points: 5750, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311001210', serviceName: '精神科訪問看護基本療養費（Ⅰ）週4日以降', points: 6750, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '311001310', serviceName: '精神科訪問看護基本療養費（Ⅱ）', points: 3000, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-
-      // 主要な加算
-      { serviceCode: '312000110', serviceName: '特別管理加算', points: 2500, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000210', serviceName: '長時間訪問看護加算', points: 5200, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000310', serviceName: '複数名訪問看護加算（看護職員等）', points: 4500, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000410', serviceName: '複数名訪問看護加算（准看護師）', points: 3800, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000510', serviceName: '複数名訪問看護加算（看護補助者）', points: 3000, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000610', serviceName: '夜間・早朝訪問看護加算', points: 2100, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000710', serviceName: '深夜訪問看護加算', points: 4200, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000810', serviceName: '緊急訪問看護加算', points: 2650, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312000910', serviceName: '24時間対応体制加算', points: 6400, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-      { serviceCode: '312001010', serviceName: '特別地域訪問看護加算', points: 0, validFrom, validTo: null, insuranceType: 'medical', description: '基本療養費の15%加算', isActive: true },
-
-      // 理学療法士・作業療法士・言語聴覚士による訪問
-      { serviceCode: '313000110', serviceName: '理学療法士等による訪問看護', points: 2970, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-
-      // ターミナルケア加算
-      { serviceCode: '314000110', serviceName: 'ターミナルケア加算', points: 25000, validFrom, validTo: null, insuranceType: 'medical', isActive: true },
-    ]).onConflictDoNothing();
-    console.log('✓ 訪問看護サービスコード: 21件投入完了\n');
-
+    // 投入件数をカウント
+    const serviceCodesCount = serviceCodesData.length;
+    const totalCount = 47 + 10 + 10 + 7 + serviceCodesCount;
+    
     console.log('✅ マスターデータの投入が完了しました！');
     console.log('\n【投入結果】');
     console.log('  - 都道府県コード: 47件');
     console.log('  - 職員資格コード: 10件');
     console.log('  - 訪問場所コード: 10件');
     console.log('  - レセプト種別コード: 7件');
-    console.log('  - 訪問看護サービスコード: 21件');
-    console.log('  合計: 95件');
+    console.log(`  - 訪問看護サービスコード: ${serviceCodesCount}件`);
+    console.log(`  合計: ${totalCount}件`);
 
   } catch (error) {
     console.error('\n❌ エラーが発生しました:', error);

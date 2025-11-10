@@ -76,8 +76,18 @@ export class NursingReceiptCsvBuilder {
     this.addRJRecord(data);
 
     // 13. KA: 訪問看護療養費レコード (複数)
-    for (const record of data.nursingRecords) {
-      this.addKARecord(data, record);
+    // 13.1 基本訪問記録のKAレコード
+    // 訪問記録を日付と時刻でソートし、同日訪問回数を計算
+    const sortedRecords = this.sortRecordsByDateAndTime(data.nursingRecords);
+    
+    for (const record of sortedRecords) {
+      const visitOrder = this.getVisitOrderForDate(sortedRecords, record);
+      this.addKARecord(data, record, visitOrder);
+    }
+
+    // 13.2 加算のKAレコード（サービスコード選択済みのもののみ）
+    for (const bonus of data.bonusHistory) {
+      this.addBonusKARecord(data, bonus);
     }
 
     // Shift_JISエンコードして返す
@@ -562,9 +572,107 @@ export class NursingReceiptCsvBuilder {
   }
 
   /**
+   * 訪問記録を日付と時刻でソート
+   */
+  private sortRecordsByDateAndTime(records: ReceiptCsvData['nursingRecords']): ReceiptCsvData['nursingRecords'] {
+    return [...records].sort((a, b) => {
+      const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
+      const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
+      
+      // 日付で比較
+      const dateDiff = dateA.getTime() - dateB.getTime();
+      if (dateDiff !== 0) return dateDiff;
+      
+      // 同じ日付の場合、時刻で比較
+      const timeA = a.actualStartTime || '';
+      const timeB = b.actualStartTime || '';
+      return timeA.localeCompare(timeB);
+    });
+  }
+
+  /**
+   * 同じ日の訪問記録の中で、この訪問記録が何回目かを取得（1から開始）
+   */
+  private getVisitOrderForDate(
+    sortedRecords: ReceiptCsvData['nursingRecords'],
+    targetRecord: ReceiptCsvData['nursingRecords'][0]
+  ): number {
+    const targetDate = targetRecord.visitDate ? formatDateToYYYYMMDD(targetRecord.visitDate) : '';
+    let order = 0;
+    
+    for (const record of sortedRecords) {
+      const recordDate = record.visitDate ? formatDateToYYYYMMDD(record.visitDate) : '';
+      if (recordDate === targetDate) {
+        order++;
+        if (record.id === targetRecord.id) {
+          return order;
+        }
+      }
+    }
+    
+    return 1; // フォールバック
+  }
+
+  /**
+   * 職種等コードを訪問回数に応じて変換
+   * 別表20に基づく:
+   * - 1回目: 01-10, 51-60
+   * - 2回目: 11-20, 61-70
+   * - 3回目以降: 21-30, 71-80
+   */
+  private adjustStaffCodeForVisitOrder(staffCode: string, visitOrder: number): string {
+    if (visitOrder === 1) {
+      return staffCode; // 1回目はそのまま
+    }
+    
+    // 職種等コードを数値として解釈
+    const baseCode = parseInt(staffCode, 10);
+    if (isNaN(baseCode)) {
+      return staffCode; // 数値でない場合はそのまま
+    }
+    
+    if (visitOrder === 2) {
+      // 2回目: +10
+      // ただし、範囲を超えないように調整
+      if (baseCode >= 1 && baseCode <= 10) {
+        return String(baseCode + 10).padStart(2, '0');
+      } else if (baseCode >= 51 && baseCode <= 60) {
+        return String(baseCode + 10).padStart(2, '0');
+      }
+    } else if (visitOrder >= 3) {
+      // 3回目以降: +20
+      if (baseCode >= 1 && baseCode <= 10) {
+        return String(baseCode + 20).padStart(2, '0');
+      } else if (baseCode >= 51 && baseCode <= 60) {
+        return String(baseCode + 20).padStart(2, '0');
+      }
+    }
+    
+    return staffCode; // フォールバック
+  }
+
+  /**
+   * 同日訪問回数コードを取得（別表19）
+   * 01=1回目, 02=2回目, 03=3回目以上
+   */
+  private getVisitCountCode(visitOrder: number): string {
+    if (visitOrder === 1) {
+      return ''; // 1回目の場合は省略
+    } else if (visitOrder === 2) {
+      return '02';
+    } else {
+      return '03'; // 3回目以降
+    }
+  }
+
+  /**
    * 13. KA: 訪問看護療養費レコード
    */
-  private addKARecord(data: ReceiptCsvData, record: ReceiptCsvData['nursingRecords'][0]): void {
+  private addKARecord(
+    data: ReceiptCsvData,
+    record: ReceiptCsvData['nursingRecords'][0],
+    visitOrder: number = 1
+  ): void {
     const visitDate = record.visitDate ? formatDateToYYYYMMDD(record.visitDate) : '';
     
     // サービスコードが必須（バリデーション済み）
@@ -575,7 +683,9 @@ export class NursingReceiptCsvBuilder {
     
     const points = record.calculatedPoints || 0;
     const amount = points * 10;  // 金額 = 点数 × 10
-    const staffCode = record.staffQualificationCode || '03';  // デフォルト: 03=看護師
+    const baseStaffCode = record.staffQualificationCode || '03';  // デフォルト: 03=看護師
+    const staffCode = this.adjustStaffCodeForVisitOrder(baseStaffCode, visitOrder);
+    const visitCountCode = this.getVisitCountCode(visitOrder);
 
     const fields = [
       'KA',                                  // レコード識別
@@ -584,9 +694,39 @@ export class NursingReceiptCsvBuilder {
       serviceCode,                           // 訪問看護療養費コード (9桁)
       '1',                                   // 数量データ (回数)
       String(amount),                        // 金額 (点数×10)
-      staffCode,                             // 職種等
-      '01',                                  // 同日訪問回数 (01=1回目)
+      staffCode,                             // 職種等（訪問回数に応じて調整）
+      visitCountCode,                        // 同日訪問回数 (01=1回目, 02=2回目, 03=3回目以上、1回目は省略)
       this.instructionTypeCodeCache,         // 指示区分 (HJレコードと同じ値を使用)
+    ];
+
+    this.lines.push(buildCsvLine(fields));
+  }
+
+  /**
+   * 13.2 加算のKAレコード
+   */
+  private addBonusKARecord(data: ReceiptCsvData, bonus: ReceiptCsvData['bonusHistory'][0]): void {
+    const visitDate = bonus.visitDate ? formatDateToYYYYMMDD(bonus.visitDate) : '';
+    
+    // サービスコードが必須
+    if (!bonus.serviceCode) {
+      console.warn(`加算履歴ID ${bonus.id} にサービスコードが設定されていません。スキップします。`);
+      return;
+    }
+    
+    const serviceCode = bonus.serviceCode;
+    const amount = bonus.points * 10;  // 金額 = 点数 × 10
+
+    const fields = [
+      'KA',                                  // レコード識別
+      visitDate,                             // 算定年月日 YYYYMMDD
+      this.burdenClassificationCodeCache,    // 負担区分 (別表22)
+      serviceCode,                           // 訪問看護療養費コード (9桁)
+      '1',                                   // 数量データ (回数)
+      String(amount),                        // 金額 (点数×10)
+      '',                                    // 職種等（加算は省略）
+      '',                                    // 同日訪問回数（加算は省略）
+      '',                                    // 指示区分（加算は省略）
     ];
 
     this.lines.push(buildCsvLine(fields));

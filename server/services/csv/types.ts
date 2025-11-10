@@ -104,6 +104,17 @@ export interface ReceiptCsvData {
     count: number;
     points: number;
   }>;
+
+  // 加算履歴（サービスコード選択済みのもののみ）
+  bonusHistory: Array<{
+    id: string;
+    nursingRecordId: string;
+    visitDate: Date | string;
+    bonusCode: string;
+    bonusName: string;
+    serviceCode: string; // 9桁のサービスコード
+    points: number; // サービスコードの点数
+  }>;
 }
 
 /**
