@@ -82,7 +82,7 @@ export default function MonthlyReceiptsManagement() {
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
-  const [selectedInsuranceType, setSelectedInsuranceType] = useState<'medical' | 'care'>('care')
+  const [selectedInsuranceType, setSelectedInsuranceType] = useState<'medical' | 'care'>('medical')
 
   // Filters
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString())
@@ -693,8 +693,8 @@ export default function MonthlyReceiptsManagement() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="care">介護保険</SelectItem>
                   <SelectItem value="medical">医療保険</SelectItem>
+                  <SelectItem value="care">介護保険</SelectItem>
                 </SelectContent>
               </Select>
             </div>
