@@ -2112,10 +2112,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const facilityId = req.facility?.id || req.user.facilityId;
       const { startDate, endDate, nurseId } = req.query;
 
-      console.log("=== 記録未作成スケジュール検索 ===");
-      console.log("検索期間:", startDate, "～", endDate);
-      console.log("担当看護師ID:", nurseId);
-
       // Build query conditions
       const whereConditions = [
         eq(schedules.facilityId, facilityId),
@@ -2169,11 +2165,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderBy: (schedules, { desc }) => [desc(schedules.scheduledDate)]
       });
 
-      console.log(`過去のスケジュール数（キャンセル等除く）: ${allSchedules.length}`);
-      allSchedules.forEach(s => {
-        console.log(`  - ID: ${s.id}, 日付: ${s.scheduledDate}, ステータス: ${s.status}`);
-      });
-
       // Get all nursing records with scheduleId
       const schedulesWithRecords = await db.query.nursingRecords.findMany({
         where: and(
@@ -2185,11 +2176,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
-      console.log(`記録が紐づいているスケジュール数: ${schedulesWithRecords.length}`);
-      schedulesWithRecords.forEach(r => {
-        console.log(`  - scheduleId: ${r.scheduleId}`);
-      });
-
       // Create a Set of schedule IDs that have records
       const recordedScheduleIds = new Set(
         schedulesWithRecords.map(record => record.scheduleId).filter(Boolean)
@@ -2199,9 +2185,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const schedulesWithoutRecords = allSchedules.filter(
         schedule => !recordedScheduleIds.has(schedule.id)
       );
-
-      console.log(`記録未作成のスケジュール数: ${schedulesWithoutRecords.length}`);
-      console.log("===============================");
 
       res.json(schedulesWithoutRecords);
     } catch (error) {
@@ -2263,11 +2246,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create schedule
   app.post("/api/schedules", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      console.log("受信データ:", req.body); // デバッグ用
       const validatedData = insertScheduleSchema.parse(req.body);
       // Determine facility ID: use URL context facility if available, otherwise user's facility
       const facilityId = req.facility?.id || req.user.facilityId;
-      console.log("バリデーション成功、facilityId:", facilityId); // デバッグ用
 
       const newSchedule = await storage.createSchedule({
         ...validatedData,
@@ -2799,10 +2780,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const appliedBonuses: any[] = [];
     let calculatedPoints = 0;
 
-    // Base visit points (訪問看護基本療養費) - simplified, needs actual tariff table
-    // NOTE: In Phase 4-4/4-5, this will also come from bonus_master as a separate bonus type
-    const basePoints = 500;
-    calculatedPoints += basePoints;
+    // サービスコードから点数を取得
+    let serviceCodeId = recordData.serviceCodeId;
+    let serviceCodePoints = 0;
+
+    // サービスコードが選択されていない場合、デフォルトで510000110を設定
+    if (!serviceCodeId) {
+      const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+        where: and(
+          eq(nursingServiceCodes.serviceCode, '510000110'),
+          eq(nursingServiceCodes.isActive, true)
+        ),
+      });
+      if (defaultServiceCode) {
+        serviceCodeId = defaultServiceCode.id;
+        serviceCodePoints = defaultServiceCode.points;
+        // 訪問記録にデフォルトサービスコードを設定
+        if (nursingRecordId) {
+          await db.update(nursingRecords)
+            .set({ serviceCodeId: defaultServiceCode.id })
+            .where(eq(nursingRecords.id, nursingRecordId));
+        }
+        // recordDataにも設定（後続処理で使用）
+        recordData.serviceCodeId = defaultServiceCode.id;
+      }
+    } else {
+      // 選択されたサービスコードの点数を取得
+      const selectedServiceCode = await db.query.nursingServiceCodes.findFirst({
+        where: eq(nursingServiceCodes.id, serviceCodeId),
+      });
+      if (selectedServiceCode) {
+        serviceCodePoints = selectedServiceCode.points;
+      }
+    }
+
+    // 基本点数としてサービスコードの点数を使用
+    calculatedPoints += serviceCodePoints;
 
     // Get patient information for context
     const patient = await db.query.patients.findFirst({
@@ -2936,11 +2949,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const recordData = insertNursingRecordSchema.parse(req.body);
 
-      // DEBUG: Log scheduleId before and after parsing
-      console.log('🔍 DEBUG - POST /api/nursing-records');
-      console.log('  - req.body.scheduleId:', req.body.scheduleId);
-      console.log('  - recordData.scheduleId (after parse):', recordData.scheduleId);
-
       // If scheduleId is provided, auto-fill schedule information
       if (recordData.scheduleId) {
         const schedule = await storage.getScheduleById(recordData.scheduleId);
@@ -2958,6 +2966,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // サービスコードが未選択の場合、デフォルトで510000110を設定
+      if (!recordData.serviceCodeId) {
+        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+          where: and(
+            eq(nursingServiceCodes.serviceCode, '510000110'),
+            eq(nursingServiceCodes.isActive, true)
+          ),
+        });
+        if (defaultServiceCode) {
+          recordData.serviceCodeId = defaultServiceCode.id;
+        }
+      }
+
       // Add nurseId to recordData for bonus calculation
       const recordDataWithNurseId = { ...recordData, nurseId: req.user.id };
 
@@ -2966,15 +2987,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       recordData.calculatedPoints = calculatedPoints;
       recordData.appliedBonuses = appliedBonuses;
 
-      // DEBUG: Log before saving to database
-      console.log('  - recordData before save (scheduleId):', recordData.scheduleId);
-
       // Pass facility ID and nurse ID separately
       const record = await storage.createNursingRecord(recordData, req.user.facilityId, req.user.id);
-
-      // DEBUG: Log after saving to database
-      console.log('  - record saved (scheduleId):', record.scheduleId);
-      console.log('  - record saved (id):', record.id);
 
       // Recalculate and save bonus history with record ID (Phase 4)
       await calculateBonusesAndPoints(recordDataWithNurseId, req.user.facilityId, record.id);
@@ -3044,16 +3058,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // DEBUG: Log scheduleId before and after parsing
-      console.log('🔍 DEBUG - PUT /api/nursing-records/:id');
-      console.log('  - record id:', id);
-      console.log('  - existingRecord.scheduleId (before):', existingRecord.scheduleId);
-      console.log('  - req.body.scheduleId:', req.body.scheduleId);
-
       // Validate update data with Zod schema
       const validatedData = updateNursingRecordSchema.parse(req.body);
-
-      console.log('  - validatedData.scheduleId (after parse):', validatedData.scheduleId);
 
       // Cross-tenant reference validation
       if (validatedData.patientId) {
@@ -3076,20 +3082,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validatedData
       };
 
+      // サービスコードが未選択の場合、デフォルトで510000110を設定
+      if (!mergedData.serviceCodeId) {
+        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+          where: and(
+            eq(nursingServiceCodes.serviceCode, '510000110'),
+            eq(nursingServiceCodes.isActive, true)
+          ),
+        });
+        if (defaultServiceCode) {
+          mergedData.serviceCodeId = defaultServiceCode.id;
+          validatedData.serviceCodeId = defaultServiceCode.id;
+        }
+      }
+
       // Recalculate bonuses and points
       const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(mergedData, req.user.facilityId);
       validatedData.calculatedPoints = calculatedPoints;
       validatedData.appliedBonuses = appliedBonuses;
-
-      console.log('  - validatedData before update (scheduleId):', validatedData.scheduleId);
 
       // Phase 3: 編集履歴用に既存データを保存
       const record = await storage.updateNursingRecord(id, validatedData, req.user.id, existingRecord);
       if (!record) {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
-
-      console.log('  - record after update (scheduleId):', record.scheduleId);
 
       // Recalculate and save bonus history with record ID (Phase 4)
       await calculateBonusesAndPoints(mergedData, req.user.facilityId, id);
@@ -5370,7 +5386,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "認証情報が見つかりません" });
       }
 
-      console.log("Received care plan data:", req.body);
       const validatedData = insertCarePlanSchema.parse(req.body);
 
       const planData: any = {
@@ -5670,7 +5685,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "認証情報が見つかりません" });
       }
 
-      console.log("Received service care plan data:", req.body);
       const validatedData = insertServiceCarePlanSchema.parse(req.body);
 
       const planData: any = {
@@ -5715,7 +5729,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "認証情報が見つかりません" });
       }
 
-      console.log("Updating service care plan:", id, req.body);
       const validatedData = updateServiceCarePlanSchema.parse(req.body);
 
       const updateData: any = {
@@ -7276,9 +7289,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        // Calculate base visit points (simplified - should be based on actual visit types)
-        const basePointsPerVisit = insuranceType === 'medical' ? 555 : 467; // Medical: 5550円/10, Care: 467 units
-        totalVisitPoints = records.length * basePointsPerVisit;
+        // 各訪問記録のサービスコードから点数を取得
+        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+          where: and(
+            eq(nursingServiceCodes.serviceCode, '510000110'),
+            eq(nursingServiceCodes.isActive, true)
+          ),
+        });
+
+        for (const recordItem of records) {
+          const record = recordItem.record;
+          let recordPoints = 0;
+
+          if (record.serviceCodeId) {
+            const serviceCode = await db.query.nursingServiceCodes.findFirst({
+              where: eq(nursingServiceCodes.id, record.serviceCodeId),
+            });
+            if (serviceCode) {
+              recordPoints = serviceCode.points;
+            }
+          } else {
+            // サービスコードが選択されていない場合、デフォルトで510000110を使用
+            if (defaultServiceCode) {
+              recordPoints = defaultServiceCode.points;
+            }
+          }
+
+          totalVisitPoints += recordPoints;
+        }
 
         const bonusBreakdown = Array.from(bonusMap.values());
         const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
@@ -7745,8 +7783,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const basePointsPerVisit = insuranceType === 'medical' ? 555 : 467;
-      totalVisitPoints = records.length * basePointsPerVisit;
+      // 各訪問記録のサービスコードから点数を取得
+      const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+        where: and(
+          eq(nursingServiceCodes.serviceCode, '510000110'),
+          eq(nursingServiceCodes.isActive, true)
+        ),
+      });
+
+      for (const record of records) {
+        let recordPoints = 0;
+
+        if (record.serviceCodeId) {
+          const serviceCode = await db.query.nursingServiceCodes.findFirst({
+            where: eq(nursingServiceCodes.id, record.serviceCodeId),
+          });
+          if (serviceCode) {
+            recordPoints = serviceCode.points;
+          }
+        } else {
+          // サービスコードが選択されていない場合、デフォルトで510000110を使用
+          if (defaultServiceCode) {
+            recordPoints = defaultServiceCode.points;
+          }
+        }
+
+        totalVisitPoints += recordPoints;
+      }
 
       const bonusBreakdown = Array.from(bonusMap.values());
       const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);

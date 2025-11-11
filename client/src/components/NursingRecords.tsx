@@ -250,11 +250,6 @@ const convertFormDataToApiFormat = (
     apiData.scheduleId = formData.selectedScheduleId;
   }
 
-  // DEBUG: Log scheduleId in API data
-  console.log('🔍 DEBUG - convertFormDataToApiFormat');
-  console.log('  - formData.selectedScheduleId:', formData.selectedScheduleId);
-  console.log('  - apiData.scheduleId:', apiData.scheduleId);
-
   return apiData
 }
 
@@ -470,7 +465,7 @@ export function NursingRecords() {
   // Phase 3: レセプトCSV対応 - マスターデータフェッチ
   const { data: nursingServiceCodes = [] } = useQuery({
     queryKey: ["nursing-service-codes"],
-    queryFn: () => masterDataApi.getNursingServiceCodes(),
+    queryFn: () => masterDataApi.getNursingServiceCodes({ isActive: true }),
   })
 
   const { data: visitLocationCodes = [] } = useQuery({
@@ -934,14 +929,36 @@ export function NursingRecords() {
       demoStaffNameOverride: record.demoStaffNameOverride || '',
       purposeOverride: record.purposeOverride || '',
       // Phase 3: レセプトCSV対応
-      // serviceCodeIdからサービスコード（9桁文字列）に変換
-      nursingServiceCode: (record as any).serviceCodeId 
+      // serviceCodeIdからサービスコード（9桁文字列）に変換（nursingServiceCodesが読み込まれている場合のみ）
+      nursingServiceCode: (record as any).serviceCodeId && nursingServiceCodes.length > 0
         ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
         : '',
       visitLocation: (record as any).visitLocationCode || '',
       staffQualification: (record as any).staffQualificationCode || ''
     })
   }
+
+  // 編集画面でnursingServiceCodesが読み込まれた後に、serviceCodeIdからserviceCodeを取得
+  useEffect(() => {
+    if (isEditing && selectedRecord && nursingServiceCodes.length > 0) {
+      const serviceCodeId = (selectedRecord as any).serviceCodeId;
+      if (serviceCodeId) {
+        const serviceCode = nursingServiceCodes.find(code => code.id === serviceCodeId);
+        if (serviceCode) {
+          setFormData(prev => {
+            // 既に正しいサービスコードが設定されている場合は更新しない
+            if (prev.nursingServiceCode === serviceCode.serviceCode) {
+              return prev;
+            }
+            return {
+              ...prev,
+              nursingServiceCode: serviceCode.serviceCode
+            };
+          });
+        }
+      }
+    }
+  }, [isEditing, selectedRecord, nursingServiceCodes])
 
   // Delete record function
   const handleDeleteRecord = async () => {
@@ -1038,7 +1055,6 @@ export function NursingRecords() {
       }
 
       const apiData = convertFormDataToApiFormat(formData, 'draft', nursingServiceCodes)
-      console.log('🔍 DEBUG - Creating draft record, API payload:', JSON.stringify({ scheduleId: apiData.scheduleId }, null, 2));
       const response = await fetch('/api/nursing-records', {
         method: 'POST',
         headers: {
@@ -1219,7 +1235,6 @@ export function NursingRecords() {
 
       const apiData = convertFormDataToApiFormat(formData, status as 'draft' | 'completed', nursingServiceCodes)
 
-      console.log('🔍 DEBUG - Updating record, API payload:', JSON.stringify({ id: selectedRecord.id, scheduleId: apiData.scheduleId, status }, null, 2));
       const response = await fetch(`/api/nursing-records/${selectedRecord.id}`, {
         method: 'PUT',
         headers: {
@@ -1862,8 +1877,8 @@ export function NursingRecords() {
                   {/* レセプトCSV出力項目 */}
                   <div>
                     <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* サービスコード */}
+                    <div className="space-y-4">
+                      {/* サービスコード（1行目） */}
                       <div>
                         <p className="text-sm font-medium text-muted-foreground mb-1">サービスコード</p>
                         {(() => {
@@ -1872,43 +1887,48 @@ export function NursingRecords() {
                             ? nursingServiceCodes.find(code => code.id === serviceCodeId)
                             : null;
                           return serviceCode ? (
-                            <p className="text-base font-semibold">{serviceCode.serviceCode} - {serviceCode.serviceName}</p>
+                            <p className="text-base font-semibold">
+                              {serviceCode.serviceCode} - {serviceCode.serviceName} ({serviceCode.points.toLocaleString()}点)
+                            </p>
                           ) : (
                             <p className="text-base text-muted-foreground">未設定</p>
                           );
                         })()}
                       </div>
 
-                      {/* 訪問場所 */}
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">訪問場所</p>
-                        {(() => {
-                          const visitLocationCode = (selectedRecord as any).visitLocationCode;
-                          const visitLocation = visitLocationCode 
-                            ? visitLocationCodes.find(code => code.locationCode === visitLocationCode)
-                            : null;
-                          return visitLocation ? (
-                            <p className="text-base font-semibold">{visitLocation.locationCode} - {visitLocation.locationName}</p>
-                          ) : (
-                            <p className="text-base text-muted-foreground">未設定</p>
-                          );
-                        })()}
-                      </div>
+                      {/* 訪問場所と職員資格（2行目） */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* 訪問場所 */}
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">訪問場所</p>
+                          {(() => {
+                            const visitLocationCode = (selectedRecord as any).visitLocationCode;
+                            const visitLocation = visitLocationCode 
+                              ? visitLocationCodes.find(code => code.locationCode === visitLocationCode)
+                              : null;
+                            return visitLocation ? (
+                              <p className="text-base font-semibold">{visitLocation.locationCode} - {visitLocation.locationName}</p>
+                            ) : (
+                              <p className="text-base text-muted-foreground">未設定</p>
+                            );
+                          })()}
+                        </div>
 
-                      {/* 職員資格 */}
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">職員資格</p>
-                        {(() => {
-                          const staffQualificationCode = (selectedRecord as any).staffQualificationCode;
-                          const staffQualification = staffQualificationCode 
-                            ? staffQualificationCodes.find(code => code.qualificationCode === staffQualificationCode)
-                            : null;
-                          return staffQualification ? (
-                            <p className="text-base font-semibold">{staffQualification.qualificationCode} - {staffQualification.qualificationName}</p>
-                          ) : (
-                            <p className="text-base text-muted-foreground">未設定</p>
-                          );
-                        })()}
+                        {/* 職員資格 */}
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">職員資格</p>
+                          {(() => {
+                            const staffQualificationCode = (selectedRecord as any).staffQualificationCode;
+                            const staffQualification = staffQualificationCode 
+                              ? staffQualificationCodes.find(code => code.qualificationCode === staffQualificationCode)
+                              : null;
+                            return staffQualification ? (
+                              <p className="text-base font-semibold">{staffQualification.qualificationCode} - {staffQualification.qualificationName}</p>
+                            ) : (
+                              <p className="text-base text-muted-foreground">未設定</p>
+                            );
+                          })()}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2651,13 +2671,62 @@ export function NursingRecords() {
                           const selectedPatient = patientsData?.data?.find((p: Patient) => p.id === formData.patientId);
                           const patientInsuranceType = selectedPatient?.insuranceType || null;
                           
+                          // 編集モードかどうかを判定（selectedRecordが存在する場合は編集モード）
+                          const isEditMode = selectedRecord !== null;
+                          
                           // 基本のサービスコードのみをフィルタリング
-                          return nursingServiceCodes
-                            .filter(code => isBasicServiceCode(code, patientInsuranceType))
+                          // まず、基本療養費のサービスコードを全て取得
+                          let filteredCodes = nursingServiceCodes
+                            .filter(code => {
+                              // 基本療養費のサービスコードのみ
+                              return code.serviceName.includes('基本療養費');
+                            })
                             .map((code) => ({
                               value: code.serviceCode,
                               label: `${code.serviceCode} - ${code.serviceName}`,
+                              insuranceType: code.insuranceType,
                             }));
+                          
+                          // 編集時は全ての基本療養費を表示（保険種別が異なる場合でも選択可能にする）
+                          // 新規作成時のみ、患者の保険種別が取得できている場合、その保険種別に一致するものを表示
+                          if (patientInsuranceType && !isEditMode) {
+                            // 新規作成時のみ保険種別でフィルタリング
+                            filteredCodes = filteredCodes.filter(code => {
+                              // 現在選択されているサービスコードは常に含める
+                              if (formData.nursingServiceCode && code.value === formData.nursingServiceCode) {
+                                return true;
+                              }
+                              return code.insuranceType === patientInsuranceType;
+                            });
+                          }
+                          // 編集時は全ての基本療養費を表示（フィルタリングしない）
+                          
+                          // 編集時：現在選択されているサービスコードがフィルタリングで除外されている場合、選択肢に追加
+                          if (formData.nursingServiceCode) {
+                            const currentCodeInFiltered = filteredCodes.find(c => c.value === formData.nursingServiceCode);
+                            if (!currentCodeInFiltered) {
+                              // フィルタリングで除外されている場合、全サービスコードから検索
+                              const currentCode = nursingServiceCodes.find(code => code.serviceCode === formData.nursingServiceCode);
+                              if (currentCode) {
+                                filteredCodes.unshift({
+                                  value: currentCode.serviceCode,
+                                  label: `${currentCode.serviceCode} - ${currentCode.serviceName}`,
+                                  insuranceType: currentCode.insuranceType,
+                                });
+                              }
+                            }
+                          }
+                          
+                          // 重複を除去（valueで重複チェック）
+                          const uniqueCodes = new Map<string, { value: string; label: string; insuranceType: string }>();
+                          filteredCodes.forEach(code => {
+                            if (!uniqueCodes.has(code.value)) {
+                              uniqueCodes.set(code.value, code);
+                            }
+                          });
+                          
+                          // insuranceTypeを除去して返す
+                          return Array.from(uniqueCodes.values()).map(({ insuranceType, ...rest }) => rest);
                         })(),
                       ]}
                       value={formData.nursingServiceCode || ""}
