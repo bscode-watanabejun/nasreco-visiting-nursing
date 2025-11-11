@@ -65,7 +65,7 @@ import {
 } from "@/components/ui/accordion"
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useToast } from "@/hooks/use-toast"
-import { masterDataApi } from "@/lib/api"
+import { masterDataApi, type NursingServiceCode } from "@/lib/api"
 
 import type { Patient, NursingRecord, PaginatedResult, NursingRecordAttachment, DoctorOrder, ServiceCarePlan, NursingRecordSearchResult } from "@shared/schema"
 
@@ -146,6 +146,21 @@ interface FormData {
 // Helper function to get full name
 const getFullName = (patient: Patient): string => {
   return `${patient.lastName} ${patient.firstName}`
+}
+
+// Helper function to check if a service code is a basic service code
+function isBasicServiceCode(serviceCode: NursingServiceCode, insuranceType: 'medical' | 'care' | null): boolean {
+  // サービスコード名に「基本療養費」が含まれるかで判定
+  if (!serviceCode.serviceName.includes('基本療養費')) {
+    return false;
+  }
+  
+  // 保険種別が指定されている場合、一致するもののみ
+  if (insuranceType && serviceCode.insuranceType !== insuranceType) {
+    return false;
+  }
+  
+  return true;
 }
 
 // Helper function to convert FormData to API format (unified with VisitRecordDialog)
@@ -2627,14 +2642,23 @@ export function NursingRecords() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* 訪問看護サービスコード */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="nursing-service-code">サービスコード</Label>
+                    <Label htmlFor="nursing-service-code">サービスコード（基本療養費）</Label>
                     <Combobox
                       options={[
                         { value: "", label: "未選択" },
-                        ...nursingServiceCodes.map((code) => ({
-                          value: code.serviceCode,
-                          label: `${code.serviceCode} - ${code.serviceName}`,
-                        })),
+                        ...(() => {
+                          // 選択された患者の保険種別を取得
+                          const selectedPatient = patientsData?.data?.find((p: Patient) => p.id === formData.patientId);
+                          const patientInsuranceType = selectedPatient?.insuranceType || null;
+                          
+                          // 基本のサービスコードのみをフィルタリング
+                          return nursingServiceCodes
+                            .filter(code => isBasicServiceCode(code, patientInsuranceType))
+                            .map((code) => ({
+                              value: code.serviceCode,
+                              label: `${code.serviceCode} - ${code.serviceName}`,
+                            }));
+                        })(),
                       ]}
                       value={formData.nursingServiceCode || ""}
                       onValueChange={(value) => {
@@ -2645,7 +2669,7 @@ export function NursingRecords() {
                       emptyText="該当するサービスコードが見つかりませんでした"
                     />
                     <p className="text-xs text-muted-foreground">
-                      訪問看護サービスの種類
+                      基本療養費のサービスコードを選択してください。加算のサービスコードは訪問記録の内容に基づいて自動選択されます。自動選択されなかった加算は、月次レセプト詳細画面で手動選択できます。
                     </p>
                   </div>
 
