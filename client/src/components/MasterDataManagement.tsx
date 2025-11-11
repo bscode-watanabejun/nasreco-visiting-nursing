@@ -79,12 +79,53 @@ export function MasterDataManagement() {
   const [qualificationFilter, setQualificationFilter] = useState<StatusFilter>('active')
   const [locationFilter, setLocationFilter] = useState<StatusFilter>('active')
   const [receiptTypeFilter, setReceiptTypeFilter] = useState<StatusFilter>('active')
+  
+  // Service code filters
+  const [serviceCodeFilter, setServiceCodeFilter] = useState<string>('')
+  const [serviceNameFilter, setServiceNameFilter] = useState<string>('')
+  const [serviceInsuranceTypeFilter, setServiceInsuranceTypeFilter] = useState<'medical' | 'care'>('medical')
 
   // Filter function
   const filterByStatus = <T extends { isActive: boolean }>(items: T[], filter: StatusFilter): T[] => {
     if (filter === 'all') return items
     if (filter === 'active') return items.filter(item => item.isActive)
     return items.filter(item => !item.isActive)
+  }
+  
+  // Service code filter function
+  const filterServiceCodes = (codes: NursingServiceCode[]): NursingServiceCode[] => {
+    let filtered = filterByStatus(codes, serviceFilter)
+    
+    // コードでフィルタ（部分一致）
+    if (serviceCodeFilter.trim()) {
+      const codeFilterLower = serviceCodeFilter.trim().toLowerCase()
+      filtered = filtered.filter(code => 
+        code.serviceCode.toLowerCase().includes(codeFilterLower)
+      )
+    }
+    
+    // サービス名でフィルタ（部分一致）
+    if (serviceNameFilter.trim()) {
+      const nameFilterLower = serviceNameFilter.trim().toLowerCase()
+      filtered = filtered.filter(code => 
+        code.serviceName.toLowerCase().includes(nameFilterLower)
+      )
+    }
+    
+    // 保険種別でフィルタ
+    filtered = filtered.filter(code => 
+      code.insuranceType === serviceInsuranceTypeFilter
+    )
+    
+    // ソート: 医療保険を上に、介護保険を下に
+    filtered.sort((a, b) => {
+      if (a.insuranceType === 'medical' && b.insuranceType === 'care') return -1
+      if (a.insuranceType === 'care' && b.insuranceType === 'medical') return 1
+      // 同じ保険種別の場合はサービスコードでソート
+      return a.serviceCode.localeCompare(b.serviceCode)
+    })
+    
+    return filtered
   }
 
   // Prefecture Codes
@@ -609,6 +650,44 @@ export function MasterDataManagement() {
                   )}
                 </div>
               </div>
+              {/* フィルタセクション */}
+              <div className="mt-4 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="service-code-filter">コード</Label>
+                    <Input
+                      id="service-code-filter"
+                      placeholder="コードで検索..."
+                      value={serviceCodeFilter}
+                      onChange={(e) => setServiceCodeFilter(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="service-name-filter">サービス名</Label>
+                    <Input
+                      id="service-name-filter"
+                      placeholder="サービス名で検索..."
+                      value={serviceNameFilter}
+                      onChange={(e) => setServiceNameFilter(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="service-insurance-filter">保険種別</Label>
+                    <Select
+                      value={serviceInsuranceTypeFilter}
+                      onValueChange={(value: 'medical' | 'care') => setServiceInsuranceTypeFilter(value)}
+                    >
+                      <SelectTrigger id="service-insurance-filter">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="medical">医療保険</SelectItem>
+                        <SelectItem value="care">介護保険</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -617,22 +696,31 @@ export function MasterDataManagement() {
                     <TableHead>コード</TableHead>
                     <TableHead>サービス名</TableHead>
                     <TableHead>保険種別</TableHead>
-                    <TableHead>点数</TableHead>
+                    <TableHead>点数/単位</TableHead>
                     <TableHead>状態</TableHead>
                     {isSystemAdmin && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filterByStatus(serviceCodes, serviceFilter).map((code) => (
+                  {filterServiceCodes(serviceCodes).map((code) => (
                     <TableRow key={code.id}>
                       <TableCell className="font-mono">{code.serviceCode}</TableCell>
                       <TableCell>{code.serviceName}</TableCell>
                       <TableCell>
-                        <Badge variant={code.insuranceType === "medical" ? "default" : "outline"}>
+                        <Badge variant={code.insuranceType === "medical" ? "medical" : "care"}>
                           {code.insuranceType === "medical" ? "医療保険" : "介護保険"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{code.points || "-"}</TableCell>
+                      <TableCell>
+                        {code.points ? (
+                          <>
+                            {code.points.toLocaleString()}
+                            {code.insuranceType === "medical" ? "点" : "単位"}
+                          </>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={code.isActive ? "default" : "secondary"}>
                           {code.isActive ? "有効" : "無効"}
@@ -943,7 +1031,7 @@ export function MasterDataManagement() {
                       <TableCell className="font-mono">{code.receiptTypeCode}</TableCell>
                       <TableCell>{code.receiptTypeName}</TableCell>
                       <TableCell>
-                        <Badge variant={code.insuranceType === "medical" ? "default" : "outline"}>
+                        <Badge variant={code.insuranceType === "medical" ? "medical" : "care"}>
                           {code.insuranceType === "medical" ? "医療保険" : "介護保険"}
                         </Badge>
                       </TableCell>
@@ -1110,7 +1198,9 @@ export function MasterDataManagement() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="service-points">点数</Label>
+              <Label htmlFor="service-points">
+                {serviceForm.insuranceType === "medical" ? "点数" : "単位"}
+              </Label>
               <Input
                 id="service-points"
                 type="number"
@@ -1118,7 +1208,7 @@ export function MasterDataManagement() {
                 onChange={(e) =>
                   setServiceForm((prev) => ({ ...prev, points: e.target.value }))
                 }
-                placeholder="例: 5550"
+                placeholder={serviceForm.insuranceType === "medical" ? "例: 5550" : "例: 314"}
               />
             </div>
             <div className="space-y-2">
