@@ -1394,6 +1394,11 @@ function SelectedBonusServiceCodeSection({
   // 加算に対応するサービスコードをフィルタ（加算コード名から推測）
   const getAvailableServiceCodes = (bonusCode: string): NursingServiceCode[] => {
     return serviceCodes.filter(code => {
+      // 基本療養費のサービスコードを除外
+      if (code.serviceName.includes('基本療養費')) {
+        return false;
+      }
+      
       if (bonusCode === 'medical_emergency_visit') {
         return code.serviceCode.startsWith('510002') || code.serviceCode.startsWith('510004')
       }
@@ -1418,6 +1423,7 @@ function SelectedBonusServiceCodeSection({
       if (bonusCode === 'medical_long_visit') {
         return code.serviceCode.startsWith('510002') || code.serviceCode.startsWith('510004')
       }
+      // その他の加算は全てのサービスコードを表示（基本療養費は既に除外済み）
       return true
     })
   }
@@ -1653,6 +1659,11 @@ function UnselectedBonusServiceCodeSection({
   const getAvailableServiceCodes = (bonusCode: string): NursingServiceCode[] => {
     // 加算コードに基づいてサービスコードをフィルタ
     return serviceCodes.filter(code => {
+      // 基本療養費のサービスコードを除外
+      if (code.serviceName.includes('基本療養費')) {
+        return false;
+      }
+      
       // 緊急訪問加算の場合
       if (bonusCode === 'medical_emergency_visit') {
         return code.serviceCode.startsWith('510002') || code.serviceCode.startsWith('510004')
@@ -1681,7 +1692,7 @@ function UnselectedBonusServiceCodeSection({
       if (bonusCode === 'specialist_management') {
         return code.serviceCode.startsWith('550001')
       }
-      // その他の加算はすべてのサービスコードを表示
+      // その他の加算は全てのサービスコードを表示（基本療養費は既に除外済み）
       return true
     })
   }
