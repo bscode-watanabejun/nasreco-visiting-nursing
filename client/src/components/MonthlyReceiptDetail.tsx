@@ -1091,7 +1091,7 @@ export default function MonthlyReceiptDetail() {
                             <div className="flex flex-wrap gap-1">
                               {recordBonuses.map((b) => (
                                 <Badge key={b.history.id} variant="outline" className="text-xs">
-                                  {b.bonus?.bonusName} ({b.history.calculatedPoints}点)
+                                  {b.bonus?.bonusName} ({b.history.calculatedPoints}{receipt.insuranceType === "medical" ? "点" : "単位"})
                                 </Badge>
                               ))}
                             </div>
@@ -1603,8 +1603,8 @@ function SelectedBonusServiceCodeSection({
                   <div className="font-medium">{bonus.bonus.bonusName}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-muted-foreground">点数</div>
-                  <div className="font-medium">{bonus.history.calculatedPoints.toLocaleString()}点</div>
+                  <div className="text-sm text-muted-foreground">{insuranceType === "medical" ? "点数" : "単位"}</div>
+                  <div className="font-medium">{bonus.history.calculatedPoints.toLocaleString()}{insuranceType === "medical" ? "点" : "単位"}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">選択済みサービスコード</div>
@@ -1612,7 +1612,7 @@ function SelectedBonusServiceCodeSection({
                     {bonus.serviceCode.serviceCode} - {bonus.serviceCode.serviceName}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    ({bonus.serviceCode.points.toLocaleString()}点)
+                    ({bonus.serviceCode.points.toLocaleString()}{insuranceType === "medical" ? "点" : "単位"})
                   </div>
                 </div>
               </div>
@@ -1625,7 +1625,7 @@ function SelectedBonusServiceCodeSection({
                         { value: '', label: '選択してください' },
                         ...availableCodes.map(code => ({
                           value: code.id,
-                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}点)`,
+                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}${insuranceType === "medical" ? "点" : "単位"})`,
                         })),
                       ]}
                       value={selectedCodeId}
@@ -1883,8 +1883,8 @@ function UnselectedBonusServiceCodeSection({
                   <div className="font-medium">{bonus.bonus.bonusName}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-muted-foreground">点数</div>
-                  <div className="font-medium">{bonus.history.calculatedPoints.toLocaleString()}点</div>
+                  <div className="text-sm text-muted-foreground">{insuranceType === "medical" ? "点数" : "単位"}</div>
+                  <div className="font-medium">{bonus.history.calculatedPoints.toLocaleString()}{insuranceType === "medical" ? "点" : "単位"}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">加算コード</div>
@@ -1900,7 +1900,7 @@ function UnselectedBonusServiceCodeSection({
                         { value: '', label: '選択してください' },
                         ...availableCodes.map(code => ({
                           value: code.id,
-                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}点)`,
+                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}${insuranceType === "medical" ? "点" : "単位"})`,
                         })),
                       ]}
                       value={selectedCodeId}

@@ -1888,7 +1888,7 @@ export function NursingRecords() {
                             : null;
                           return serviceCode ? (
                             <p className="text-base font-semibold">
-                              {serviceCode.serviceCode} - {serviceCode.serviceName} ({serviceCode.points.toLocaleString()}点)
+                              {serviceCode.serviceCode} - {serviceCode.serviceName} ({serviceCode.points.toLocaleString()}{serviceCode.insuranceType === "medical" ? "点" : "単位"})
                             </p>
                           ) : (
                             <p className="text-base text-muted-foreground">未設定</p>
