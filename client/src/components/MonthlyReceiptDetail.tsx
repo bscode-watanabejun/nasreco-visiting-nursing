@@ -990,6 +990,7 @@ export default function MonthlyReceiptDetail() {
                 bonuses={selectedBonuses}
                 receiptId={receipt.id}
                 insuranceType={receipt.insuranceType}
+                relatedRecords={receipt.relatedRecords}
                 onUpdate={() => {
                   queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
                 }}
@@ -1002,6 +1003,7 @@ export default function MonthlyReceiptDetail() {
                 bonuses={unselectedBonuses}
                 receiptId={receipt.id}
                 insuranceType={receipt.insuranceType}
+                relatedRecords={receipt.relatedRecords}
                 onUpdate={() => {
                   queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
                 }}
@@ -1347,6 +1349,7 @@ function SelectedBonusServiceCodeSection({
   bonuses,
   receiptId,
   insuranceType,
+  relatedRecords,
   onUpdate,
 }: {
   bonuses: Array<{
@@ -1375,6 +1378,16 @@ function SelectedBonusServiceCodeSection({
   }>
   receiptId: string
   insuranceType: 'medical' | 'care'
+  relatedRecords: Array<{
+    id: string
+    visitDate: string
+    actualStartTime: string | null
+    actualEndTime: string | null
+    schedule: {
+      startTime: string
+      endTime: string
+    } | null
+  }>
   onUpdate: () => void
 }) {
   const { toast } = useToast()
@@ -1518,6 +1531,31 @@ function SelectedBonusServiceCodeSection({
     }
   }
 
+  // 訪問時間のフォーマット関数
+  const formatTime = (timestamp: string | null) => {
+    if (!timestamp) return null
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  // 訪問日時でソート（古い順）
+  const sortedBonuses = [...bonuses].sort((a, b) => {
+    const recordA = relatedRecords.find(r => r.id === a.history.nursingRecordId)
+    const recordB = relatedRecords.find(r => r.id === b.history.nursingRecordId)
+    
+    // 訪問日で比較
+    const dateA = recordA?.visitDate || ''
+    const dateB = recordB?.visitDate || ''
+    if (dateA !== dateB) {
+      return dateA.localeCompare(dateB)
+    }
+    
+    // 同じ日付の場合は開始時間で比較
+    const timeA = recordA?.actualStartTime || recordA?.schedule?.startTime || ''
+    const timeB = recordB?.actualStartTime || recordB?.schedule?.startTime || ''
+    return timeA.localeCompare(timeB)
+  })
+
   return (
     <Card className="border-green-200 bg-green-50">
       <CardHeader>
@@ -1530,7 +1568,7 @@ function SelectedBonusServiceCodeSection({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {bonuses.map((bonus) => {
+        {sortedBonuses.map((bonus) => {
           if (!bonus.bonus || !bonus.serviceCode) return null
 
           const availableCodes = getAvailableServiceCodes(bonus.bonus.bonusCode)
@@ -1538,9 +1576,28 @@ function SelectedBonusServiceCodeSection({
           const isSaving = savingIds.has(bonus.history.id)
           const isClearing = clearingIds.has(bonus.history.id)
 
+          // 訪問記録を検索
+          const record = relatedRecords.find(r => r.id === bonus.history.nursingRecordId)
+          const visitDate = record?.visitDate || '-'
+          const startTime = record?.actualStartTime
+            ? formatTime(record.actualStartTime)
+            : record?.schedule?.startTime || '-'
+          const endTime = record?.actualEndTime
+            ? formatTime(record.actualEndTime)
+            : record?.schedule?.endTime || '-'
+          const visitTime = `${startTime} - ${endTime}`
+
           return (
             <div key={bonus.history.id} className="border rounded-md p-4 bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">訪問日</div>
+                  <div className="font-medium">{visitDate}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">訪問時間</div>
+                  <div className="font-medium">{visitTime}</div>
+                </div>
                 <div>
                   <div className="text-sm text-muted-foreground">加算名</div>
                   <div className="font-medium">{bonus.bonus.bonusName}</div>
@@ -1612,6 +1669,7 @@ function UnselectedBonusServiceCodeSection({
   bonuses,
   receiptId,
   insuranceType,
+  relatedRecords,
   onUpdate,
 }: {
   bonuses: Array<{
@@ -1640,6 +1698,16 @@ function UnselectedBonusServiceCodeSection({
   }>
   receiptId: string
   insuranceType: 'medical' | 'care'
+  relatedRecords: Array<{
+    id: string
+    visitDate: string
+    actualStartTime: string | null
+    actualEndTime: string | null
+    schedule: {
+      startTime: string
+      endTime: string
+    } | null
+  }>
   onUpdate: () => void
 }) {
   const { toast } = useToast()
@@ -1744,6 +1812,31 @@ function UnselectedBonusServiceCodeSection({
     }
   }
 
+  // 訪問時間のフォーマット関数
+  const formatTime = (timestamp: string | null) => {
+    if (!timestamp) return null
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  // 訪問日時でソート（古い順）
+  const sortedBonuses = [...bonuses].sort((a, b) => {
+    const recordA = relatedRecords.find(r => r.id === a.history.nursingRecordId)
+    const recordB = relatedRecords.find(r => r.id === b.history.nursingRecordId)
+    
+    // 訪問日で比較
+    const dateA = recordA?.visitDate || ''
+    const dateB = recordB?.visitDate || ''
+    if (dateA !== dateB) {
+      return dateA.localeCompare(dateB)
+    }
+    
+    // 同じ日付の場合は開始時間で比較
+    const timeA = recordA?.actualStartTime || recordA?.schedule?.startTime || ''
+    const timeB = recordB?.actualStartTime || recordB?.schedule?.startTime || ''
+    return timeA.localeCompare(timeB)
+  })
+
   return (
     <Card className="border-yellow-200 bg-yellow-50">
       <CardHeader>
@@ -1756,16 +1849,35 @@ function UnselectedBonusServiceCodeSection({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {bonuses.map((bonus) => {
+        {sortedBonuses.map((bonus) => {
           if (!bonus.bonus) return null
 
           const availableCodes = getAvailableServiceCodes(bonus.bonus.bonusCode)
           const selectedCodeId = selectedServiceCodes[bonus.history.id] || ''
           const isSaving = savingIds.has(bonus.history.id)
 
+          // 訪問記録を検索
+          const record = relatedRecords.find(r => r.id === bonus.history.nursingRecordId)
+          const visitDate = record?.visitDate || '-'
+          const startTime = record?.actualStartTime
+            ? formatTime(record.actualStartTime)
+            : record?.schedule?.startTime || '-'
+          const endTime = record?.actualEndTime
+            ? formatTime(record.actualEndTime)
+            : record?.schedule?.endTime || '-'
+          const visitTime = `${startTime} - ${endTime}`
+
           return (
             <div key={bonus.history.id} className="border rounded-md p-4 bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">訪問日</div>
+                  <div className="font-medium">{visitDate}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">訪問時間</div>
+                  <div className="font-medium">{visitTime}</div>
+                </div>
                 <div>
                   <div className="text-sm text-muted-foreground">加算名</div>
                   <div className="font-medium">{bonus.bonus.bonusName}</div>
