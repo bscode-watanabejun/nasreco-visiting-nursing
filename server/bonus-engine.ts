@@ -15,6 +15,8 @@ import {
   nursingRecords,
   patients,
   nursingServiceCodes,
+  facilities,
+  users,
   BonusMaster,
   InsertBonusCalculationHistory,
 } from "@shared/schema";
@@ -1761,7 +1763,7 @@ export async function recalculateBonusesForReceipt(
     insuranceType: 'medical' | 'care'
   }
 ): Promise<void> {
-  // 対象月の訪問記録を取得
+  // 対象月の訪問記録を取得（completedのみ）
   const startDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 1);
   const endDate = new Date(receipt.targetYear, receipt.targetMonth, 0);
 
@@ -1770,7 +1772,8 @@ export async function recalculateBonusesForReceipt(
       eq(nursingRecords.patientId, receipt.patientId),
       eq(nursingRecords.facilityId, receipt.facilityId),
       gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
-      lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0])
+      lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+      eq(nursingRecords.status, 'completed')
     ),
   });
 
@@ -1779,7 +1782,17 @@ export async function recalculateBonusesForReceipt(
     where: eq(patients.id, receipt.patientId),
   });
 
-  const insuranceType = (patient?.insuranceType as "medical" | "care") || receipt.insuranceType;
+  if (!patient) {
+    console.error(`[recalculateBonusesForReceipt] Patient not found: ${receipt.patientId}`);
+    return;
+  }
+
+  const insuranceType = (patient.insuranceType as "medical" | "care") || receipt.insuranceType;
+
+  // 施設情報を取得
+  const facility = await db.query.facilities.findFirst({
+    where: eq(facilities.id, receipt.facilityId),
+  });
 
   // 各訪問記録の加算を再計算
   for (const record of targetRecords) {
@@ -1806,11 +1819,51 @@ export async function recalculateBonusesForReceipt(
         : record.terminalCareDeathDate)
       : null;
 
+    // 患者年齢を計算
+    let patientAge: number | undefined;
+    if (patient.dateOfBirth) {
+      const birthDate = new Date(patient.dateOfBirth);
+      const visitDateObj = visitDate instanceof Date ? visitDate : new Date(visitDate);
+      patientAge = visitDateObj.getFullYear() - birthDate.getFullYear();
+      const monthDiff = visitDateObj.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && visitDateObj.getDate() < birthDate.getDate())) {
+        patientAge--;
+      }
+    }
+
+    // 同日訪問回数を計算
+    const visitDateStr = visitDate instanceof Date 
+      ? visitDate.toISOString().split('T')[0]
+      : typeof visitDate === 'string' 
+        ? visitDate 
+        : new Date(visitDate).toISOString().split('T')[0];
+    
+    const sameDayVisits = await db.query.nursingRecords.findMany({
+      where: and(
+        eq(nursingRecords.facilityId, receipt.facilityId),
+        eq(nursingRecords.patientId, receipt.patientId),
+        eq(nursingRecords.visitDate, visitDateStr),
+        isNull(nursingRecords.deletedAt)
+      )
+    });
+
+    const dailyVisitCount = sameDayVisits.length;
+
+    // 担当看護師情報を取得（専門管理加算用）
+    const assignedNurse = record.nurseId ? await db.query.users.findFirst({
+      where: eq(users.id, record.nurseId),
+      columns: {
+        id: true,
+        fullName: true,
+        specialistCertifications: true,
+      }
+    }) : undefined;
+
     const context: BonusCalculationContext = {
       nursingRecordId: record.id,
       patientId: record.patientId,
       facilityId: record.facilityId,
-      visitDate,
+      visitDate: visitDate instanceof Date ? visitDate : new Date(visitDate),
       visitStartTime,
       visitEndTime,
       isSecondVisit: record.isSecondVisit,
@@ -1823,7 +1876,29 @@ export async function recalculateBonusesForReceipt(
       isTerminalCare: record.isTerminalCare || false,
       terminalCareDeathDate,
       specialistCareType: record.specialistCareType || null,
+      patientAge,
+      buildingId: patient.buildingId || null,
       insuranceType,
+      dailyVisitCount,
+      // Phase2-1: 施設体制フラグ
+      has24hSupportSystem: facility?.has24hSupportSystem || false,
+      has24hSupportSystemEnhanced: facility?.has24hSupportSystemEnhanced || false,
+      hasEmergencySupportSystem: facility?.hasEmergencySupportSystem || false,
+      hasEmergencySupportSystemEnhanced: facility?.hasEmergencySupportSystemEnhanced || false,
+      burdenReductionMeasures: facility?.burdenReductionMeasures || [],
+      // Phase 2-A: 患者情報（日付フィールド）
+      lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate) : null,
+      lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate) : null,
+      deathDate: patient.deathDate ? new Date(patient.deathDate) : null,
+      deathLocation: patient.deathLocation || null,
+      // Phase 4: 特別管理情報
+      specialManagementTypes: patient.specialManagementTypes || [],
+      // Week 3: 専門管理加算用フィールド
+      assignedNurse: assignedNurse ? {
+        id: assignedNurse.id,
+        fullName: assignedNurse.fullName,
+        specialistCertifications: assignedNurse.specialistCertifications as string[] | null,
+      } : undefined,
     };
 
     // 加算を計算
