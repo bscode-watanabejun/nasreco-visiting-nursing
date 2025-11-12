@@ -230,9 +230,34 @@ export function evaluatePredefinedCondition(
       result = evaluateCareLateNightTime(context);
       break;
 
+    // Phase 2-A: 医療保険の時間帯条件
+    case "medical_early_morning_time":
+      result = evaluateMedicalEarlyMorningTime(context);
+      break;
+
+    case "medical_night_time":
+      result = evaluateMedicalNightTime(context);
+      break;
+
+    case "medical_late_night_time":
+      result = evaluateMedicalLateNightTime(context);
+      break;
+
     case "care_visit_duration_90plus":
       result = evaluateCareVisitDuration90Plus(context);
       break;
+
+    case "time_based":
+      // time_basedパターンの場合、evaluateTimeBased関数を使用して評価
+      // ただし、この関数はpointsConfigが必要なので、conditionから取得できない場合は評価できない
+      // 実際の評価はconditionalPatternとして行われるため、ここでは常にtrueを返す
+      // （conditionalPatternで評価される）
+      if (!context.visitStartTime) {
+        return { passed: false, reason: "訪問開始時刻が未設定" };
+      }
+      // time_basedパターンはconditionalPatternとして評価されるため、ここでは常にtrueを返す
+      // 実際の時間帯判定はevaluateTimeBased関数で行われる
+      return { passed: true, reason: "時間帯別パターン（conditionalPatternで評価）" };
 
     default:
       return { passed: false, reason: `Unknown condition type: ${type}` };
@@ -785,6 +810,72 @@ function evaluateCareNightTime(context: BonusCalculationContext): ConditionEvalu
     reason: passed
       ? `夜間時間帯（18:00-22:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
       : `夜間時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
+  };
+}
+
+/**
+ * Phase 2-A: 医療保険の時間帯判定（早朝：6:00-8:00）
+ */
+function evaluateMedicalEarlyMorningTime(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime) {
+    return { passed: false, reason: "訪問開始時刻が未設定" };
+  }
+
+  // UTC時刻をJST（日本標準時）に変換して時刻を取得
+  const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+  const hours = jstDate.getUTCHours();
+  const minutes = jstDate.getUTCMinutes();
+  const passed = hours >= 6 && hours < 8;
+
+  return {
+    passed,
+    reason: passed
+      ? `早朝時間帯（6:00-8:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
+      : `早朝時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
+  };
+}
+
+/**
+ * Phase 2-A: 医療保険の時間帯判定（夜間：18:00-22:00）
+ */
+function evaluateMedicalNightTime(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime) {
+    return { passed: false, reason: "訪問開始時刻が未設定" };
+  }
+
+  // UTC時刻をJST（日本標準時）に変換して時刻を取得
+  const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+  const hours = jstDate.getUTCHours();
+  const minutes = jstDate.getUTCMinutes();
+  const passed = hours >= 18 && hours < 22;
+
+  return {
+    passed,
+    reason: passed
+      ? `夜間時間帯（18:00-22:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
+      : `夜間時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
+  };
+}
+
+/**
+ * Phase 2-A: 医療保険の時間帯判定（深夜：22:00-6:00）
+ */
+function evaluateMedicalLateNightTime(context: BonusCalculationContext): ConditionEvaluationResult {
+  if (!context.visitStartTime) {
+    return { passed: false, reason: "訪問開始時刻が未設定" };
+  }
+
+  // UTC時刻をJST（日本標準時）に変換して時刻を取得
+  const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+  const hours = jstDate.getUTCHours();
+  const minutes = jstDate.getUTCMinutes();
+  const passed = hours >= 22 || hours < 6;
+
+  return {
+    passed,
+    reason: passed
+      ? `深夜時間帯（22:00-6:00）の訪問（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`
+      : `深夜時間帯外（開始時刻: ${hours}:${minutes.toString().padStart(2, '0')}）`,
   };
 }
 
@@ -1538,7 +1629,9 @@ export async function selectServiceCodeForBonus(
         // 時間帯別加算: 訪問開始時刻から判定
         if (!context.visitStartTime) return null;
         
-        const hour = context.visitStartTime.getHours();
+        // UTC時刻をJST（日本標準時）に変換して時刻を取得
+        const jstDate = new Date(context.visitStartTime.getTime() + 9 * 60 * 60 * 1000);
+        const hour = jstDate.getUTCHours();
         let serviceCode: string;
         
         if (bonusCode === 'medical_late_night') {
