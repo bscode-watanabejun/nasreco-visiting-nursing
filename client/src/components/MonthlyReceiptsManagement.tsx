@@ -87,7 +87,7 @@ export default function MonthlyReceiptsManagement() {
   // Filters
   const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString())
   const [filterMonth, setFilterMonth] = useState<string>((new Date().getMonth() + 1).toString())
-  const [filterInsuranceType, setFilterInsuranceType] = useState<string>('all')
+  const [filterInsuranceType, setFilterInsuranceType] = useState<string>('medical')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [filterPatientId, setFilterPatientId] = useState<string>('all')
 
@@ -106,7 +106,7 @@ export default function MonthlyReceiptsManagement() {
       const params = new URLSearchParams()
       if (filterYear !== 'all') params.append("year", filterYear)
       if (filterMonth !== 'all') params.append("month", filterMonth)
-      if (filterInsuranceType !== 'all') params.append("insuranceType", filterInsuranceType)
+      params.append("insuranceType", filterInsuranceType)
 
       const response = await fetch(`/api/monthly-receipts?${params}`)
       if (!response.ok) throw new Error("レセプトの取得に失敗しました")
@@ -451,9 +451,8 @@ export default function MonthlyReceiptsManagement() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">すべて</SelectItem>
-                  <SelectItem value="care">介護保険</SelectItem>
                   <SelectItem value="medical">医療保険</SelectItem>
+                  <SelectItem value="care">介護保険</SelectItem>
                 </SelectContent>
               </Select>
             </div>
