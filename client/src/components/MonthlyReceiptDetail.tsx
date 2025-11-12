@@ -205,6 +205,8 @@ export default function MonthlyReceiptDetail() {
       return response.json()
     },
     enabled: !!receiptId,
+    staleTime: 0,              // データを常に古いものとして扱う
+    refetchOnMount: 'always',  // マウント時に常に再取得（キャッシュがあっても最新情報を取得）
   })
 
   // Validate receipt mutation
