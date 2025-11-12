@@ -228,7 +228,7 @@ export default function MonthlyReceiptDetail() {
 
       // バリデーションエラー・警告の処理（レセプト詳細画面に表示されるためダイアログは不要）
       const totalErrors = (data.errors?.length || 0) + (data.validation?.errors?.length || 0)
-      const totalWarnings = (data.warnings?.length || 0) + (data.validation?.warnings?.length || 0)
+      const totalWarnings = (data.warnings?.length || 0) + (data.validation?.warnings?.length || 0) + (data.missingSuggestions?.length || 0)
 
       if (totalErrors > 0) {
         toast({
@@ -1088,6 +1088,13 @@ export default function MonthlyReceiptDetail() {
                               <CheckCircle className="w-3 h-3" />
                               完了
                             </Badge>
+                          ) : record.status === 'reviewed' ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <CheckCircle className="w-3 h-3" />
+                              確認済み
+                            </Badge>
+                          ) : record.status === 'draft' ? (
+                            <Badge variant="outline">下書き</Badge>
                           ) : (
                             <Badge variant="outline">{record.status}</Badge>
                           )}
