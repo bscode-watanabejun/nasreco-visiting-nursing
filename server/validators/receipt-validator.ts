@@ -414,6 +414,7 @@ function checkConcurrentBonusRestrictions(
 
 /**
  * Check building classification consistency
+ * 注意: 同一建物減算は実装されていないため、警告チェックを無効化
  */
 function checkBuildingClassification(
   patient: Patient,
@@ -422,6 +423,9 @@ function checkBuildingClassification(
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
 
+  // 同一建物減算は実装されていない（加算マスタに存在しない）ため、警告チェックを無効化
+  // 将来的に実装される場合は、以下のコードを有効化する
+  /*
   const hasBuildingReduction = bonusCalculations.some((b) =>
     b.bonusCode.includes('same_building_reduction')
   );
@@ -443,6 +447,7 @@ function checkBuildingClassification(
       field: 'building',
     });
   }
+  */
 
   return { errors, warnings };
 }
