@@ -2754,11 +2754,13 @@ export function NursingRecords() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">未選択</SelectItem>
-                        {visitLocationCodes.map((code) => (
-                          <SelectItem key={code.locationCode} value={code.locationCode}>
-                            {code.locationCode} - {code.locationName}
-                          </SelectItem>
-                        ))}
+                        {[...visitLocationCodes]
+                          .sort((a, b) => a.locationCode.localeCompare(b.locationCode))
+                          .map((code) => (
+                            <SelectItem key={code.locationCode} value={code.locationCode}>
+                              {code.locationCode} - {code.locationName}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
