@@ -453,9 +453,57 @@ async function validateNursingRecords(
     }
 
     if (recordWarnings.length > 0) {
+      // 日付と時間をフォーマット
+      let dateTimeStr: string;
+      try {
+        // visitDateはdate型なので文字列として扱う
+        const dateStr = typeof record.visitDate === 'string' 
+          ? record.visitDate 
+          : String(record.visitDate);
+        
+        // 開始時間と終了時間をフォーマット
+        const formatTime = (time: Date | string | null): string | null => {
+          if (!time) return null;
+          
+          let date: Date;
+          if (time instanceof Date) {
+            date = time;
+          } else if (typeof time === 'string') {
+            date = new Date(time);
+          } else {
+            date = new Date(String(time));
+          }
+          
+          if (isNaN(date.getTime())) return null;
+          
+          // 日本時間（JST）で時刻をフォーマット（HH:MM形式）
+          return date.toLocaleTimeString('ja-JP', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Tokyo'
+          });
+        };
+        
+        const startTime = formatTime(record.actualStartTime);
+        const endTime = formatTime(record.actualEndTime);
+        
+        if (startTime && endTime) {
+          dateTimeStr = `${dateStr} ${startTime}～${endTime}`;
+        } else if (startTime) {
+          dateTimeStr = `${dateStr} ${startTime}`;
+        } else {
+          dateTimeStr = dateStr;
+        }
+      } catch (error) {
+        // エラーが発生した場合は日付のみを返す
+        dateTimeStr = typeof record.visitDate === 'string' 
+          ? record.visitDate 
+          : String(record.visitDate);
+      }
+
       warnings.push({
         field: 'nursingRecord',
-        message: `訪問記録（${record.visitDate}）: ${recordWarnings.join('、')}`,
+        message: `訪問記録（${dateTimeStr}）: ${recordWarnings.join('、')}`,
         severity: 'error', // サービスコードは必須のためエラー
         recordType: 'nursingRecord',
         recordId: record.id,

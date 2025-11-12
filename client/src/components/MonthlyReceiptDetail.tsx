@@ -226,16 +226,20 @@ export default function MonthlyReceiptDetail() {
       queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
       queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"] })
 
-      if (data.errors && data.errors.length > 0) {
+      // バリデーションエラー・警告の処理（レセプト詳細画面に表示されるためダイアログは不要）
+      const totalErrors = (data.errors?.length || 0) + (data.validation?.errors?.length || 0)
+      const totalWarnings = (data.warnings?.length || 0) + (data.validation?.warnings?.length || 0)
+
+      if (totalErrors > 0) {
         toast({
           title: "検証完了 - エラーあり",
-          description: `${data.errors.length}件のエラーが見つかりました`,
+          description: `${totalErrors}件のエラーが見つかりました`,
           variant: "destructive",
         })
-      } else if (data.warnings && data.warnings.length > 0) {
+      } else if (totalWarnings > 0) {
         toast({
           title: "検証完了 - 警告あり",
-          description: `${data.warnings.length}件の警告があります`,
+          description: `${totalWarnings}件の警告があります`,
         })
       } else {
         toast({

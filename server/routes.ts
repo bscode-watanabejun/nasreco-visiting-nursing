@@ -8186,30 +8186,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusCalculations
       );
 
+      // Run CSV export validation
+      const csvValidationResult = await validateMonthlyReceiptData(
+        facilityId,
+        patientId,
+        targetYear,
+        targetMonth
+      );
+
       // Update receipt with validation results
-      const hasErrors = validationResult.errors.length > 0;
-      const hasWarnings = validationResult.warnings.length > 0 || missingSuggestions.length > 0;
+      const hasErrors = validationResult.errors.length > 0 || csvValidationResult.errors.length > 0;
+      const hasWarnings = validationResult.warnings.length > 0 || missingSuggestions.length > 0 || csvValidationResult.warnings.length > 0;
 
       await db.update(monthlyReceipts)
         .set({
           hasErrors,
           hasWarnings,
-          errorMessages: validationResult.errors.map(e => e.message),
+          errorMessages: [
+            ...validationResult.errors.map(e => e.message),
+            ...csvValidationResult.errors.map(e => e.message),
+          ],
           warningMessages: [
             ...validationResult.warnings.map(w => w.message),
             ...missingSuggestions.map(s => s.message),
+            ...csvValidationResult.warnings.map(w => w.message),
           ],
           updatedAt: new Date(),
         })
         .where(eq(monthlyReceipts.id, id));
 
       res.json({
-        isValid: validationResult.isValid,
+        isValid: validationResult.isValid && csvValidationResult.isValid,
         hasErrors,
         hasWarnings,
         errors: validationResult.errors,
         warnings: validationResult.warnings,
         missingSuggestions,
+        validation: {
+          isValid: csvValidationResult.isValid,
+          canExportCsv: csvValidationResult.canExportCsv,
+          errors: csvValidationResult.errors,
+          warnings: csvValidationResult.warnings,
+        },
       });
     } catch (error) {
       console.error("Validate receipt error:", error);

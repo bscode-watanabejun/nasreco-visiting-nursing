@@ -463,7 +463,46 @@ export function detectMissingBonuses(
       .map((b) => b.bonusCode)
   );
 
+  // 時刻をフォーマットする関数
+  const formatTime = (time: Date | string | null): string | null => {
+    if (!time) return null;
+    
+    let date: Date;
+    if (time instanceof Date) {
+      date = time;
+    } else if (typeof time === 'string') {
+      date = new Date(time);
+    } else {
+      date = new Date(String(time));
+    }
+    
+    if (isNaN(date.getTime())) return null;
+    
+    // 日本時間（JST）で時刻をフォーマット（HH:MM形式）
+    return date.toLocaleTimeString('ja-JP', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Tokyo'
+    });
+  };
+
+  // 日付と時刻をフォーマットする関数
+  const formatDateTime = (visitDate: string, startTime: Date | string | null, endTime: Date | string | null): string => {
+    const startTimeStr = formatTime(startTime);
+    const endTimeStr = formatTime(endTime);
+    
+    if (startTimeStr && endTimeStr) {
+      return `${visitDate} ${startTimeStr}～${endTimeStr}`;
+    } else if (startTimeStr) {
+      return `${visitDate} ${startTimeStr}`;
+    } else {
+      return visitDate;
+    }
+  };
+
   nursingRecords.forEach((record) => {
+    const dateTimeStr = formatDateTime(record.visitDate, record.actualStartTime || null, record.actualEndTime || null);
+
     // Check for long visit bonus (90 minutes or more)
     if (record.actualStartTime && record.actualEndTime) {
       const durationMinutes =
@@ -478,7 +517,7 @@ export function detectMissingBonuses(
       if (durationMinutes >= 90 && !hasLongVisitBonus) {
         suggestions.push({
           code: 'MISSING_LONG_VISIT_BONUS',
-          message: `訪問日 ${record.visitDate}: 訪問時間が90分以上ですが、長時間訪問看護加算が未算定です`,
+          message: `訪問日 ${dateTimeStr}: 訪問時間が90分以上ですが、長時間訪問看護加算が未算定です`,
           severity: 'warning',
           field: 'bonusCalculations',
         });
@@ -495,7 +534,7 @@ export function detectMissingBonuses(
       if (!hasEmergencyVisitBonus) {
         suggestions.push({
           code: 'MISSING_EMERGENCY_VISIT_BONUS',
-          message: `訪問日 ${record.visitDate}: 緊急訪問理由が記載されていますが、緊急訪問看護加算が未算定です`,
+          message: `訪問日 ${dateTimeStr}: 緊急訪問理由が記載されていますが、緊急訪問看護加算が未算定です`,
           severity: 'warning',
           field: 'bonusCalculations',
         });
@@ -512,7 +551,7 @@ export function detectMissingBonuses(
       if (!hasMultipleVisitBonus) {
         suggestions.push({
           code: 'MISSING_MULTIPLE_VISIT_BONUS',
-          message: `訪問日 ${record.visitDate}: 複数回訪問理由が記載されていますが、複数回訪問加算が未算定です`,
+          message: `訪問日 ${dateTimeStr}: 複数回訪問理由が記載されていますが、複数回訪問加算が未算定です`,
           severity: 'warning',
           field: 'bonusCalculations',
         });
