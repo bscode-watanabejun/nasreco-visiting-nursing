@@ -983,8 +983,9 @@ export default function MonthlyReceiptDetail() {
       {/* サービスコード選択セクション（未選択・選択済み両方） */}
       {(() => {
         const allBonuses = receipt.bonusHistory.filter(item => item.bonus);
-        const unselectedBonuses = allBonuses.filter(item => !item.history.serviceCodeId);
-        const selectedBonuses = allBonuses.filter(item => item.history.serviceCodeId);
+        // serviceCodeIdが存在し、かつserviceCodeオブジェクトも存在する場合のみ選択済みとする
+        const selectedBonuses = allBonuses.filter(item => item.history.serviceCodeId && item.serviceCode);
+        const unselectedBonuses = allBonuses.filter(item => !item.history.serviceCodeId || !item.serviceCode);
 
         if (allBonuses.length === 0) return null;
 
@@ -1603,6 +1604,24 @@ function SelectedBonusServiceCodeSection({
           const isSaving = savingIds.has(bonus.history.id)
           const isClearing = clearingIds.has(bonus.history.id)
 
+          // 選択済みのサービスコードがavailableCodesに含まれていない場合、追加する
+          const selectedServiceCodeInList = availableCodes.find(code => code.id === bonus.history.serviceCodeId)
+          const optionsForCombobox = [
+            { value: '', label: '選択してください' },
+            ...availableCodes.map(code => ({
+              value: code.id,
+              label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}${insuranceType === "medical" ? "点" : "単位"})`,
+            })),
+          ]
+          
+          // 選択済みのサービスコードがavailableCodesに含まれていない場合、オプションに追加
+          if (bonus.history.serviceCodeId && bonus.serviceCode && !selectedServiceCodeInList) {
+            optionsForCombobox.push({
+              value: bonus.history.serviceCodeId,
+              label: `${bonus.serviceCode.serviceCode} - ${bonus.serviceCode.serviceName} (${bonus.serviceCode.points.toLocaleString()}${insuranceType === "medical" ? "点" : "単位"})`,
+            })
+          }
+
           // 訪問記録を検索
           const record = relatedRecords.find(r => r.id === bonus.history.nursingRecordId)
           const visitDate = record?.visitDate || '-'
@@ -1648,13 +1667,7 @@ function SelectedBonusServiceCodeSection({
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Combobox
-                      options={[
-                        { value: '', label: '選択してください' },
-                        ...availableCodes.map(code => ({
-                          value: code.id,
-                          label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}${insuranceType === "medical" ? "点" : "単位"})`,
-                        })),
-                      ]}
+                      options={optionsForCombobox}
                       value={selectedCodeId}
                       onValueChange={(value) => {
                         setSelectedServiceCodes(prev => ({
