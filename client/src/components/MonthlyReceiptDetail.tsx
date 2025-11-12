@@ -1048,7 +1048,21 @@ export default function MonthlyReceiptDetail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {receipt.relatedRecords.map((record) => {
+                  {[...receipt.relatedRecords]
+                    .sort((a, b) => {
+                      // 訪問日で比較
+                      const dateA = a.visitDate || ''
+                      const dateB = b.visitDate || ''
+                      if (dateA !== dateB) {
+                        return dateA.localeCompare(dateB)
+                      }
+                      
+                      // 同じ日付の場合は開始時間で比較
+                      const timeA = a.actualStartTime || a.schedule?.startTime || ''
+                      const timeB = b.actualStartTime || b.schedule?.startTime || ''
+                      return timeA.localeCompare(timeB)
+                    })
+                    .map((record) => {
                     const recordBonuses = receipt.bonusHistory.filter(
                       (b) => b.history.nursingRecordId === record.id
                     )
