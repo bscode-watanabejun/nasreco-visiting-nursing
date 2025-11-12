@@ -150,9 +150,22 @@ const getFullName = (patient: Patient): string => {
 
 // Helper function to check if a service code is a basic service code
 function isBasicServiceCode(serviceCode: NursingServiceCode, insuranceType: 'medical' | 'care' | null): boolean {
-  // サービスコード名に「基本療養費」が含まれるかで判定
-  if (!serviceCode.serviceName.includes('基本療養費')) {
-    return false;
+  // 医療保険: サービスコード名に「基本療養費」が含まれるかで判定
+  if (serviceCode.insuranceType === 'medical') {
+    if (!serviceCode.serviceName.includes('基本療養費')) {
+      return false;
+    }
+  }
+  
+  // 介護保険: 「訪看」で始まり、「・」（中点）を含まないものを基本療養費とする
+  if (serviceCode.insuranceType === 'care') {
+    if (!serviceCode.serviceName.startsWith('訪看')) {
+      return false;
+    }
+    // 「・」を含むものは加算なので除外
+    if (serviceCode.serviceName.includes('・')) {
+      return false;
+    }
   }
   
   // 保険種別が指定されている場合、一致するもののみ
@@ -2659,9 +2672,9 @@ export function NursingRecords() {
               {/* Phase 3: レセプトCSV対応フィールド */}
               <div className="border rounded-lg p-4">
                 <h3 className="text-sm font-semibold mb-3">レセプトCSV出力項目</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-4">
                   {/* 訪問看護サービスコード */}
-                  <div className="space-y-2 md:col-span-2">
+                  <div className="space-y-2">
                     <Label htmlFor="nursing-service-code">サービスコード（基本療養費）</Label>
                     <Combobox
                       options={[
@@ -2678,19 +2691,35 @@ export function NursingRecords() {
                           // まず、基本療養費のサービスコードを全て取得
                           let filteredCodes = nursingServiceCodes
                             .filter(code => {
-                              // 基本療養費のサービスコードのみ
-                              return code.serviceName.includes('基本療養費');
+                              // 医療保険: 「基本療養費」を含む
+                              if (code.insuranceType === 'medical') {
+                                return code.serviceName.includes('基本療養費');
+                              }
+                              
+                              // 介護保険: 「訪看」で始まり、「・」（中点）を含まないものを基本療養費とする
+                              if (code.insuranceType === 'care') {
+                                // 「訪看」で始まることを確認
+                                if (!code.serviceName.startsWith('訪看')) {
+                                  return false;
+                                }
+                                // 「・」を含むものは加算なので除外
+                                if (code.serviceName.includes('・')) {
+                                  return false;
+                                }
+                                return true;
+                              }
+                              
+                              return false;
                             })
                             .map((code) => ({
                               value: code.serviceCode,
-                              label: `${code.serviceCode} - ${code.serviceName}`,
+                              label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}${code.insuranceType === "medical" ? "点" : "単位"})`,
                               insuranceType: code.insuranceType,
                             }));
                           
-                          // 編集時は全ての基本療養費を表示（保険種別が異なる場合でも選択可能にする）
-                          // 新規作成時のみ、患者の保険種別が取得できている場合、その保険種別に一致するものを表示
-                          if (patientInsuranceType && !isEditMode) {
-                            // 新規作成時のみ保険種別でフィルタリング
+                          // 患者の保険種別が取得できている場合、その保険種別に一致するものを表示
+                          // 編集時も新規作成時も同じロジックでフィルタリング
+                          if (patientInsuranceType) {
                             filteredCodes = filteredCodes.filter(code => {
                               // 現在選択されているサービスコードは常に含める
                               if (formData.nursingServiceCode && code.value === formData.nursingServiceCode) {
@@ -2699,7 +2728,6 @@ export function NursingRecords() {
                               return code.insuranceType === patientInsuranceType;
                             });
                           }
-                          // 編集時は全ての基本療養費を表示（フィルタリングしない）
                           
                           // 編集時：現在選択されているサービスコードがフィルタリングで除外されている場合、選択肢に追加
                           if (formData.nursingServiceCode) {
@@ -2710,7 +2738,7 @@ export function NursingRecords() {
                               if (currentCode) {
                                 filteredCodes.unshift({
                                   value: currentCode.serviceCode,
-                                  label: `${currentCode.serviceCode} - ${currentCode.serviceName}`,
+                                  label: `${currentCode.serviceCode} - ${currentCode.serviceName} (${currentCode.points.toLocaleString()}${currentCode.insuranceType === "medical" ? "点" : "単位"})`,
                                   insuranceType: currentCode.insuranceType,
                                 });
                               }
@@ -2742,54 +2770,57 @@ export function NursingRecords() {
                     </p>
                   </div>
 
-                  {/* 訪問場所コード */}
-                  <div className="space-y-2">
-                    <Label htmlFor="visit-location">訪問場所</Label>
-                    <Select
-                      value={formData.visitLocation || "none"}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, visitLocation: value === "none" ? "" : value }))}
-                    >
-                      <SelectTrigger id="visit-location">
-                        <SelectValue placeholder="選択してください" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">未選択</SelectItem>
-                        {[...visitLocationCodes]
-                          .sort((a, b) => a.locationCode.localeCompare(b.locationCode))
-                          .map((code) => (
-                            <SelectItem key={code.locationCode} value={code.locationCode}>
-                              {code.locationCode} - {code.locationName}
+                  {/* 訪問場所と職員資格を横並びに配置 */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 訪問場所コード */}
+                    <div className="space-y-2">
+                      <Label htmlFor="visit-location">訪問場所</Label>
+                      <Select
+                        value={formData.visitLocation || "none"}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, visitLocation: value === "none" ? "" : value }))}
+                      >
+                        <SelectTrigger id="visit-location">
+                          <SelectValue placeholder="選択してください" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">未選択</SelectItem>
+                          {[...visitLocationCodes]
+                            .sort((a, b) => a.locationCode.localeCompare(b.locationCode))
+                            .map((code) => (
+                              <SelectItem key={code.locationCode} value={code.locationCode}>
+                                {code.locationCode} - {code.locationName}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        訪問を実施した場所
+                      </p>
+                    </div>
+
+                    {/* 職員資格コード */}
+                    <div className="space-y-2">
+                      <Label htmlFor="staff-qualification">職員資格</Label>
+                      <Select
+                        value={formData.staffQualification || "none"}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, staffQualification: value === "none" ? "" : value }))}
+                      >
+                        <SelectTrigger id="staff-qualification">
+                          <SelectValue placeholder="選択してください" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">未選択</SelectItem>
+                          {staffQualificationCodes.map((code) => (
+                            <SelectItem key={code.qualificationCode} value={code.qualificationCode}>
+                              {code.qualificationCode} - {code.qualificationName}
                             </SelectItem>
                           ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      訪問を実施した場所
-                    </p>
-                  </div>
-
-                  {/* 職員資格コード */}
-                  <div className="space-y-2 md:col-span-3">
-                    <Label htmlFor="staff-qualification">職員資格</Label>
-                    <Select
-                      value={formData.staffQualification || "none"}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, staffQualification: value === "none" ? "" : value }))}
-                    >
-                      <SelectTrigger id="staff-qualification">
-                        <SelectValue placeholder="選択してください" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">未選択</SelectItem>
-                        {staffQualificationCodes.map((code) => (
-                          <SelectItem key={code.qualificationCode} value={code.qualificationCode}>
-                            {code.qualificationCode} - {code.qualificationName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      訪問職員の資格
-                    </p>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        訪問職員の資格
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
