@@ -1,8 +1,9 @@
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
 import { useIsHeadquarters } from "@/contexts/TenantContext"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PatientForm } from "@/components/PatientForm"
+import { useToast } from "@/hooks/use-toast"
 import {
   Plus,
   Search,
@@ -22,7 +24,8 @@ import {
   User,
   Filter,
   Eye,
-  Building2
+  Building2,
+  Trash2
 } from "lucide-react"
 
 import type { Patient, PaginatedResult } from "@shared/schema"
@@ -75,12 +78,18 @@ export function PatientManagement() {
   const [, setLocation] = useLocation()
   const basePath = useBasePath()
   const isHeadquarters = useIsHeadquarters()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const { data: currentUser } = useCurrentUser()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'critical' | 'inactive'>('all')
   const [facilityFilter, setFacilityFilter] = useState<string>('all')
   const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+
+  // Check if current user is admin or manager
+  const canDeletePatient = currentUser && ['admin', 'manager'].includes(currentUser.role)
 
   // Fetch patients from API
   const { data: patientsData, isLoading, error } = useQuery<PaginatedResult<Patient>>({
@@ -93,6 +102,34 @@ export function PatientManagement() {
         throw new Error(errorMessage)
       }
       return response.json()
+    },
+  })
+
+  // Delete patient mutation
+  const deletePatientMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/patients/${id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "患者の削除に失敗しました")
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] })
+      toast({
+        title: "削除完了",
+        description: "患者を削除しました",
+      })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      })
     },
   })
 
@@ -142,6 +179,14 @@ export function PatientManagement() {
 
   const handleViewDetail = (patient: Patient) => {
     setLocation(`${basePath}/patients/${patient.id}`)
+  }
+
+  const handleDeletePatient = async (patient: Patient) => {
+    const fullName = getFullName(patient)
+    if (!confirm(`${fullName}さんを削除してもよろしいですか？\n\n注意: この操作は取り消せません。患者に関連するすべてのデータ（看護記録、スケジュール、契約など）も削除されます。`)) {
+      return
+    }
+    deletePatientMutation.mutate(patient.id)
   }
 
   const handleViewRecords = (patient: Patient) => {
@@ -369,7 +414,7 @@ export function PatientManagement() {
                     <p>登録日: {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                     <p>更新日: {patient.updatedAt ? new Date(patient.updatedAt).toLocaleDateString('ja-JP') : '未記録'}</p>
                   </div>
-                  <div className={isHeadquarters ? "" : "grid grid-cols-2 gap-2"}>
+                  <div className={isHeadquarters ? "" : "grid grid-cols-3 gap-2"}>
                     <Button
                       size="sm"
                       variant="default"
@@ -381,16 +426,31 @@ export function PatientManagement() {
                       詳細
                     </Button>
                     {!isHeadquarters && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditPatient(patient)}
-                        className="text-xs h-8"
-                        data-testid={`button-edit-${patient.id}`}
-                      >
-                        <Edit className="mr-1 h-3 w-3" />
-                        編集
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditPatient(patient)}
+                          className="text-xs h-8"
+                          data-testid={`button-edit-${patient.id}`}
+                        >
+                          <Edit className="mr-1 h-3 w-3" />
+                          編集
+                        </Button>
+                        {canDeletePatient && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeletePatient(patient)}
+                            className="text-xs h-8"
+                            data-testid={`button-delete-${patient.id}`}
+                            disabled={deletePatientMutation.isPending}
+                          >
+                            <Trash2 className="mr-1 h-3 w-3" />
+                            削除
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -449,15 +509,29 @@ export function PatientManagement() {
                         詳細
                       </Button>
                       {!isHeadquarters && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditPatient(patient)}
-                          data-testid={`button-edit-${patient.id}`}
-                        >
-                          <Edit className="mr-1 h-3 w-3" />
-                          編集
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditPatient(patient)}
+                            data-testid={`button-edit-${patient.id}`}
+                          >
+                            <Edit className="mr-1 h-3 w-3" />
+                            編集
+                          </Button>
+                          {canDeletePatient && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDeletePatient(patient)}
+                              data-testid={`button-delete-${patient.id}`}
+                              disabled={deletePatientMutation.isPending}
+                            >
+                              <Trash2 className="mr-1 h-3 w-3" />
+                              削除
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

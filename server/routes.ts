@@ -1956,6 +1956,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete patient
+  app.delete("/api/patients/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Only admin and manager can delete patients
+      if (!['admin', 'manager'].includes(req.user.role)) {
+        return res.status(403).json({ error: "患者の削除は管理者のみ可能です" });
+      }
+
+      // Check if accessing from headquarters URL - headquarters should not delete patients
+      const currentFacility = req.facility ? await storage.getFacility(req.facility.id) : null;
+      const isHeadquartersUrl = currentFacility?.isHeadquarters === true;
+
+      if (isHeadquartersUrl) {
+        return res.status(403).json({ error: "本社システムでは患者の削除はできません。各施設で削除してください。" });
+      }
+
+      // Check if patient belongs to the facility (use URL context if available)
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+      const existingPatient = await storage.getPatient(id);
+      if (!existingPatient || existingPatient.facilityId !== targetFacilityId) {
+        return res.status(404).json({ error: "患者が見つかりません" });
+      }
+
+      // Delete all related data (order matters due to foreign key constraints)
+      // First delete bonus_calculation_history (references nursing_records)
+      await db.execute(sql`DELETE FROM bonus_calculation_history WHERE nursing_record_id IN (SELECT id FROM nursing_records WHERE patient_id = ${id})`);
+      // Then delete nursing_records
+      await db.execute(sql`DELETE FROM nursing_records WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM visits WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM schedules WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM medications WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM additional_payments WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM doctor_orders WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM insurance_cards WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM care_plans WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM service_care_plans WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM care_reports WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM contracts WHERE patient_id = ${id}`);
+      await db.execute(sql`DELETE FROM monthly_receipts WHERE patient_id = ${id}`);
+
+      // Delete patient
+      const deleted = await storage.deletePatient(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "患者の削除に失敗しました" });
+      }
+
+      res.json({ message: "患者を削除しました" });
+
+    } catch (error) {
+      console.error("Delete patient error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // ========== Visits Routes ==========
   
   // Get visits (all, by patient, or by nurse)
