@@ -27,7 +27,6 @@ import MedicalInstitutionManagement from "@/components/MedicalInstitutionManagem
 import CareManagerManagement from "@/components/CareManagerManagement";
 import BuildingManagement from "@/components/BuildingManagement";
 import InsuranceCardManagement from "@/components/InsuranceCardManagement";
-import MonthlyStatistics from "@/components/MonthlyStatistics";
 import CarePlanManagement from "@/components/CarePlanManagement";
 import CareReportManagement from "@/components/CareReportManagement";
 import ContractManagement from "@/components/ContractManagement";
@@ -168,7 +167,7 @@ function MainLayout() {
       const knownPages = [
         'dashboard', 'patients', 'records', 'schedule', 'users', 'facilities',
         'medical-institutions', 'care-managers', 'buildings', 'insurance-cards',
-        'statistics', 'care-plans', 'care-reports', 'contracts', 'special-management-settings',
+        'care-plans', 'care-reports', 'contracts', 'special-management-settings',
         'bonus-masters', 'monthly-receipts', 'schedules-without-records', 'reports', 'attendance', 'settings'
       ];
 
@@ -431,7 +430,6 @@ function MainLayout() {
               <Route path="/:companySlug/:facilitySlug/care-managers" component={CareManagerManagement} />
               <Route path="/:companySlug/:facilitySlug/buildings" component={BuildingManagement} />
               <Route path="/:companySlug/:facilitySlug/insurance-cards" component={InsuranceCardManagement} />
-              <Route path="/:companySlug/:facilitySlug/statistics/monthly" component={MonthlyStatistics} />
               <Route path="/:companySlug/:facilitySlug/care-plans" component={CarePlanManagement} />
               <Route path="/:companySlug/:facilitySlug/care-reports" component={CareReportManagement} />
               <Route path="/:companySlug/:facilitySlug/contracts" component={ContractManagement} />
@@ -472,7 +470,6 @@ function MainLayout() {
                   <Route path="/care-managers" component={CareManagerManagement} />
                   <Route path="/buildings" component={BuildingManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
-                  <Route path="/statistics/monthly" component={MonthlyStatistics} />
                   <Route path="/care-plans" component={CarePlanManagement} />
                   <Route path="/care-reports" component={CareReportManagement} />
                   <Route path="/contracts" component={ContractManagement} />
@@ -503,7 +500,6 @@ function MainLayout() {
                   <Route path="/care-managers" component={CareManagerManagement} />
                   <Route path="/buildings" component={BuildingManagement} />
                   <Route path="/insurance-cards" component={InsuranceCardManagement} />
-                  <Route path="/statistics/monthly" component={MonthlyStatistics} />
                   <Route path="/care-plans" component={CarePlanManagement} />
                   <Route path="/care-reports" component={CareReportManagement} />
                   <Route path="/contracts" component={ContractManagement} />
