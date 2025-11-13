@@ -1893,7 +1893,7 @@ export function NursingRecords() {
                     <div className="space-y-4">
                       {/* サービスコード（1行目） */}
                       <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">サービスコード</p>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">サービスコード（基本療養費）</p>
                         {(() => {
                           const serviceCodeId = (selectedRecord as any).serviceCodeId;
                           const serviceCode = serviceCodeId 
