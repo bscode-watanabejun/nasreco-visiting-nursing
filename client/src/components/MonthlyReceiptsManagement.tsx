@@ -28,6 +28,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import type { Patient } from "@shared/schema"
 import {
@@ -239,11 +244,17 @@ export default function MonthlyReceiptsManagement() {
       }
       return response.json()
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      // Find the receipt that was recalculated
+      const receipt = allReceipts.find(r => r.id === id)
+      const receiptInfo = receipt
+        ? `${receipt.targetYear}年${receipt.targetMonth}月「${receipt.patient ? `${receipt.patient.lastName} ${receipt.patient.firstName}` : '不明'}」さんのレセプトを再計算しました`
+        : "レセプトを再計算しました"
+      
       queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"] })
       toast({
         title: "再計算完了",
-        description: "レセプトを再計算しました",
+        description: receiptInfo,
       })
     },
     onError: (error: Error) => {
@@ -561,16 +572,23 @@ export default function MonthlyReceiptsManagement() {
                         <div className="flex items-center justify-end gap-2">
                           {!receipt.isConfirmed && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => recalculateMutation.mutate(receipt.id)}
-                                disabled={recalculateMutation.isPending}
-                                className="gap-1"
-                              >
-                                <RefreshCw className="w-3 h-3" />
-                                再計算
-                              </Button>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => recalculateMutation.mutate(receipt.id)}
+                                    disabled={recalculateMutation.isPending}
+                                    className="gap-1"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    再計算
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>訪問記録の加算を再計算して<br />レセプトの点数・金額を更新します</p>
+                                </TooltipContent>
+                              </Tooltip>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -579,15 +597,6 @@ export default function MonthlyReceiptsManagement() {
                               >
                                 <Eye className="w-3 h-3" />
                                 詳細
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDownloadPDF(receipt.id)}
-                                className="gap-1"
-                              >
-                                <Download className="w-3 h-3" />
-                                PDF
                               </Button>
                               <Button
                                 variant="ghost"
@@ -611,15 +620,6 @@ export default function MonthlyReceiptsManagement() {
                               >
                                 <Eye className="w-3 h-3" />
                                 詳細
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDownloadPDF(receipt.id)}
-                                className="gap-1"
-                              >
-                                <Download className="w-3 h-3" />
-                                PDF
                               </Button>
                               {!receipt.isSent && (
                                 <Button

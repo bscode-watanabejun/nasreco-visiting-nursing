@@ -1,8 +1,14 @@
+import React from 'react'
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
-import { registerPDFFont } from '@/lib/pdfFonts'
 
-// フォントを事前登録（初回のみ実行される）
-registerPDFFont()
+// クライアント側のみフォントを登録（サーバー側では実行しない）
+if (typeof window !== 'undefined') {
+  import('@/lib/pdfFonts').then((module) => {
+    module.registerPDFFont()
+  }).catch(() => {
+    // サーバー側では無視
+  })
+}
 
 
 const styles = StyleSheet.create({
@@ -150,14 +156,20 @@ interface ReceiptPDFProps {
       }
     } | null
     relatedRecords: Array<{
-      visitDate: string
-      actualStartTime: string | null
-      actualEndTime: string | null
+      visitDate: string // フォーマット済み（YYYY/MM/DD）
+      actualStartTime: string | null // フォーマット済み（HH:MM）
+      actualEndTime: string | null // フォーマット済み（HH:MM）
       status: string
-      observations: string
+      observations: string // フォーマット済み（40文字まで切り詰め済み）
       implementedCare: string
       nurse: {
         fullName: string
+      } | null
+      serviceCode: {
+        code: string
+        name: string
+        points: number
+        pointsFormatted: string // フォーマット済み（カンマ区切り）
       } | null
     }>
     bonusHistory: Array<{
@@ -170,6 +182,18 @@ interface ReceiptPDFProps {
         calculatedPoints: number
         appliedAt: string
       }
+    }>
+    appliedServiceCodes?: Array<{
+      visitDate: string // フォーマット済み（YYYY/MM/DD）
+      visitDateTime: string // フォーマット済み（YYYY/MM/DD HH:MM）
+      visitEndTime: string | null // フォーマット済み（HH:MM）
+      serviceCode: {
+        code: string
+        name: string
+        points: number
+        pointsFormatted: string // フォーマット済み（カンマ区切り）
+        unit: string
+      } | null
     }>
   }
   facilityInfo?: {
@@ -184,6 +208,7 @@ export const ReceiptPDF = ({ receipt, facilityInfo }: ReceiptPDFProps) => {
   const insuranceTypeLabel = receipt.insuranceType === 'medical' ? '医療保険' : '介護保険'
   const targetDate = `${receipt.targetYear}年${receipt.targetMonth}月`
 
+  // パフォーマンス改善: フォーマット関数をメモ化（useMemoは使えないので、事前計算）
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`
@@ -191,8 +216,20 @@ export const ReceiptPDF = ({ receipt, facilityInfo }: ReceiptPDFProps) => {
 
   const formatTime = (timeString: string | null) => {
     if (!timeString) return '-'
-    return timeString.substring(0, 5) // HH:MM形式
+    // ISO文字列形式（2025-01-01T10:00:00.000Z）から時間部分を抽出
+    if (timeString.includes('T')) {
+      return timeString.substring(11, 16) // HH:MM形式
+    }
+    return timeString.substring(0, 5) // 既にHH:MM形式の場合
   }
+
+  // パフォーマンス改善: 加算点数の合計を事前計算
+  const emergency = receipt.emergencyPoints ?? 0
+  const longDuration = receipt.longDurationPoints ?? 0
+  const multipleVisit = receipt.multipleVisitPoints ?? 0
+  const sameBuilding = receipt.sameBuildingReduction ?? 0
+  const totalBonusPoints = emergency + longDuration + multipleVisit + sameBuilding
+  const specialManagementPoints = receipt.specialManagementPoints ?? 0
 
   const defaultFacilityInfo = facilityInfo || {
     name: '訪問看護ステーション',
@@ -304,82 +341,97 @@ export const ReceiptPDF = ({ receipt, facilityInfo }: ReceiptPDFProps) => {
           <Text style={styles.sectionTitle}>訪問実績 (訪問回数: {receipt.visitCount}回)</Text>
           <View style={styles.table}>
             <View style={[styles.tableRow, styles.tableHeader]}>
-              <View style={[styles.tableCol, styles.tableCol1]}>
-                <Text>訪問日</Text>
+              <View style={[styles.tableCol, { width: '20%' }]}>
+                <Text>訪問日時</Text>
               </View>
-              <View style={[styles.tableCol, styles.tableCol2]}>
-                <Text>開始時刻</Text>
-              </View>
-              <View style={[styles.tableCol, styles.tableCol2]}>
-                <Text>終了時刻</Text>
-              </View>
-              <View style={[styles.tableCol, styles.tableCol4]}>
+              <View style={[styles.tableCol, { width: '30%' }]}>
                 <Text>実施内容</Text>
               </View>
-              <View style={[styles.tableCol, styles.tableCol5]}>
+              <View style={[styles.tableCol, { width: '25%' }]}>
                 <Text>担当看護師</Text>
               </View>
+              <View style={[styles.tableCol, { width: '25%', borderRightWidth: 0 }]}>
+                <Text>サービスコード（基本療養費）</Text>
+              </View>
             </View>
-            {receipt.relatedRecords.slice(0, 10).map((record, index) => (
-              <View key={index} style={styles.tableRow}>
-                <View style={[styles.tableCol, styles.tableCol1]}>
-                  <Text>{formatDate(record.visitDate)}</Text>
+            {receipt.relatedRecords.map((record, index) => {
+              // パフォーマンス改善: サーバー側でフォーマット済みのデータを使用
+              return (
+                <View key={index} style={styles.tableRow}>
+                  <View style={[styles.tableCol, { width: '20%' }]}>
+                    <Text>{record.visitDate}</Text>
+                    {record.actualStartTime && (
+                      <Text style={{ fontSize: 8, color: '#666' }}>
+                        {record.actualStartTime}{record.actualEndTime ? ` - ${record.actualEndTime}` : ''}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={[styles.tableCol, { width: '30%' }]}>
+                    <Text>{record.observations}</Text>
+                  </View>
+                  <View style={[styles.tableCol, { width: '25%' }]}>
+                    <Text>{record.nurse?.fullName || '-'}</Text>
+                  </View>
+                  <View style={[styles.tableCol, { width: '25%', borderRightWidth: 0 }]}>
+                    {record.serviceCode ? (
+                      <>
+                        <Text>{record.serviceCode.code} {record.serviceCode.name}</Text>
+                        <Text style={{ fontSize: 9, color: '#666' }}>
+                          {record.serviceCode.pointsFormatted}点
+                        </Text>
+                      </>
+                    ) : (
+                      <Text>-</Text>
+                    )}
+                  </View>
                 </View>
-                <View style={[styles.tableCol, styles.tableCol2]}>
-                  <Text>{formatTime(record.actualStartTime)}</Text>
-                </View>
-                <View style={[styles.tableCol, styles.tableCol2]}>
-                  <Text>{formatTime(record.actualEndTime)}</Text>
-                </View>
-                <View style={[styles.tableCol, styles.tableCol4]}>
-                  <Text>{record.implementedCare.substring(0, 40)}{record.implementedCare.length > 40 ? '...' : ''}</Text>
-                </View>
-                <View style={[styles.tableCol, styles.tableCol5]}>
-                  <Text>{record.nurse?.fullName || '-'}</Text>
-                </View>
-              </View>
-            ))}
-            {receipt.relatedRecords.length > 10 && (
-              <View style={styles.tableRow}>
-                <View style={[styles.tableCol, { width: '100%', borderRightWidth: 0 }]}>
-                  <Text>※ 他 {receipt.relatedRecords.length - 10} 件（詳細は別紙参照）</Text>
-                </View>
-              </View>
-            )}
+              )
+            })}
           </View>
         </View>
 
-        {/* 加算項目 */}
-        {receipt.bonusHistory.length > 0 && (
+        {/* 適用済みサービスコード */}
+        {receipt.appliedServiceCodes && receipt.appliedServiceCodes.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>加算項目</Text>
+            <Text style={styles.sectionTitle}>適用済みサービスコード</Text>
             <View style={styles.table}>
               <View style={[styles.tableRow, styles.tableHeader]}>
-                <View style={[styles.tableCol, { width: '20%' }]}>
-                  <Text>加算コード</Text>
+                <View style={[styles.tableCol, { width: '30%' }]}>
+                  <Text>訪問日時</Text>
                 </View>
-                <View style={[styles.tableCol, { width: '50%' }]}>
-                  <Text>加算名</Text>
-                </View>
-                <View style={[styles.tableCol, { width: '30%', borderRightWidth: 0 }]}>
-                  <Text>加算点数</Text>
+                <View style={[styles.tableCol, { width: '70%', borderRightWidth: 0 }]}>
+                  <Text>適用済みサービスコード</Text>
                 </View>
               </View>
-              {receipt.bonusHistory.map((item, index) => (
-                item.bonus && (
-                  <View key={index} style={styles.tableRow}>
-                    <View style={[styles.tableCol, { width: '20%' }]}>
-                      <Text>{item.bonus.bonusCode}</Text>
+              {receipt.appliedServiceCodes
+                .filter(item => item.serviceCode !== null && item.serviceCode !== undefined)
+                .map((item, index) => {
+                  // パフォーマンス改善: サーバー側でフォーマット済みのデータを使用
+                  const serviceCode = item.serviceCode!
+                  const timePart = item.visitDateTime && item.visitDateTime.includes(' ') 
+                    ? item.visitDateTime.split(' ')[1] 
+                    : null
+                  const endTimePart = item.visitEndTime ? ` - ${item.visitEndTime}` : ''
+                  
+                  return (
+                    <View key={index} style={styles.tableRow}>
+                      <View style={[styles.tableCol, { width: '30%' }]}>
+                        <Text>{item.visitDate}</Text>
+                        {timePart && (
+                          <Text style={{ fontSize: 8, color: '#666' }}>
+                            {timePart}{endTimePart}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={[styles.tableCol, { width: '70%', borderRightWidth: 0 }]}>
+                        <Text>{serviceCode.code} {serviceCode.name}</Text>
+                        <Text style={{ fontSize: 9, color: '#666' }}>
+                          {serviceCode.pointsFormatted}点/{serviceCode.unit}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={[styles.tableCol, { width: '50%' }]}>
-                      <Text>{item.bonus.bonusName}</Text>
-                    </View>
-                    <View style={[styles.tableCol, { width: '30%', borderRightWidth: 0 }]}>
-                      <Text>{item.history.calculatedPoints}点</Text>
-                    </View>
-                  </View>
-                )
-              ))}
+                  )
+                })}
             </View>
           </View>
         )}
@@ -387,37 +439,19 @@ export const ReceiptPDF = ({ receipt, facilityInfo }: ReceiptPDFProps) => {
         {/* 請求金額 */}
         <View style={styles.totalSection}>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>訪問看護基本点数:</Text>
+            <Text style={styles.totalLabel}>基本点数:</Text>
             <Text style={styles.totalValue}>{receipt.totalVisitPoints.toLocaleString()}点</Text>
           </View>
-          {receipt.specialManagementPoints && receipt.specialManagementPoints > 0 && (
+          {specialManagementPoints > 0 && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>特別管理加算:</Text>
-              <Text style={styles.totalValue}>{receipt.specialManagementPoints.toLocaleString()}点</Text>
+              <Text style={styles.totalValue}>{specialManagementPoints.toLocaleString()}点</Text>
             </View>
           )}
-          {receipt.emergencyPoints && receipt.emergencyPoints > 0 && (
+          {totalBonusPoints !== 0 && (
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>緊急訪問加算:</Text>
-              <Text style={styles.totalValue}>{receipt.emergencyPoints.toLocaleString()}点</Text>
-            </View>
-          )}
-          {receipt.longDurationPoints && receipt.longDurationPoints > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>長時間訪問加算:</Text>
-              <Text style={styles.totalValue}>{receipt.longDurationPoints.toLocaleString()}点</Text>
-            </View>
-          )}
-          {receipt.multipleVisitPoints && receipt.multipleVisitPoints > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>複数名訪問加算:</Text>
-              <Text style={styles.totalValue}>{receipt.multipleVisitPoints.toLocaleString()}点</Text>
-            </View>
-          )}
-          {receipt.sameBuildingReduction && receipt.sameBuildingReduction < 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>同一建物減算:</Text>
-              <Text style={styles.totalValue}>{receipt.sameBuildingReduction.toLocaleString()}点</Text>
+              <Text style={styles.totalLabel}>加算点数:</Text>
+              <Text style={styles.totalValue}>{totalBonusPoints.toLocaleString()}点</Text>
             </View>
           )}
           <View style={[styles.totalRow, { borderTop: 2, borderTopColor: '#333', paddingTop: 5, marginTop: 5 }]}>

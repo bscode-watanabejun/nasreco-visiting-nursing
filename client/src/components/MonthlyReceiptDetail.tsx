@@ -44,11 +44,8 @@ import {
   ClipboardCheck,
   Edit,
   Download,
-  Printer,
   FileSpreadsheet,
 } from "lucide-react"
-import { pdf } from "@react-pdf/renderer"
-import { ReceiptPDF } from "@/components/ReceiptPDF"
 import { Combobox } from "@/components/ui/combobox"
 import { Label } from "@/components/ui/label"
 import { masterDataApi, type NursingServiceCode } from "@/lib/api"
@@ -376,7 +373,7 @@ export default function MonthlyReceiptDetail() {
     }
   }
 
-  // PDF生成関数
+  // PDF生成関数（サーバー側でPDFを生成）
   const handleDownloadPDF = async () => {
     try {
       toast({
@@ -386,15 +383,12 @@ export default function MonthlyReceiptDetail() {
 
       const response = await fetch(`/api/monthly-receipts/${receiptId}/pdf`)
       if (!response.ok) {
-        throw new Error("PDFデータの取得に失敗しました")
+        const errorData = await response.json().catch(() => ({ error: "PDF生成に失敗しました" }))
+        throw new Error(errorData.error || "PDF生成に失敗しました")
       }
 
-      const { pdfData, facilityInfo } = await response.json()
-
-      // PDFドキュメントを生成
-      const blob = await pdf(
-        <ReceiptPDF receipt={pdfData} facilityInfo={facilityInfo} />
-      ).toBlob()
+      // PDFバイナリを取得
+      const blob = await response.blob()
 
       // ダウンロード
       const url = URL.createObjectURL(blob)
@@ -420,48 +414,6 @@ export default function MonthlyReceiptDetail() {
     }
   }
 
-  // PDF印刷関数
-  const handlePrintPDF = async () => {
-    try {
-      toast({
-        title: "印刷準備中",
-        description: "レセプトPDFを準備しています...",
-      })
-
-      const response = await fetch(`/api/monthly-receipts/${receiptId}/pdf`)
-      if (!response.ok) {
-        throw new Error("PDFデータの取得に失敗しました")
-      }
-
-      const { pdfData, facilityInfo } = await response.json()
-
-      // PDFドキュメントを生成
-      const blob = await pdf(
-        <ReceiptPDF receipt={pdfData} facilityInfo={facilityInfo} />
-      ).toBlob()
-
-      // 印刷用の新しいウィンドウで開く
-      const url = URL.createObjectURL(blob)
-      const printWindow = window.open(url)
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          printWindow.print()
-        })
-      }
-
-      toast({
-        title: "印刷準備完了",
-        description: "印刷ダイアログを開きました",
-      })
-    } catch (error) {
-      console.error("Print PDF error:", error)
-      toast({
-        title: "印刷エラー",
-        description: error instanceof Error ? error.message : "印刷の準備に失敗しました",
-        variant: "destructive",
-      })
-    }
-  }
 
   if (isLoading) {
     return (
@@ -561,15 +513,6 @@ export default function MonthlyReceiptDetail() {
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* Action Buttons */}
-          <Button
-            variant="outline"
-            size="default"
-            onClick={handlePrintPDF}
-            className="gap-2"
-          >
-            <Printer className="w-4 h-4" />
-            印刷
-          </Button>
           <Button
             variant="outline"
             size="default"

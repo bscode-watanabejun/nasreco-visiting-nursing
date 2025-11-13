@@ -8037,16 +8037,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PDF生成エンドポイント
-  app.get("/api/monthly-receipts/:id/pdf", async (req, res) => {
+  // PDF生成エンドポイント（サーバー側でPDFを生成）
+  app.get("/api/monthly-receipts/:id/pdf", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    const startTime = Date.now();
+    const timings: Record<string, number> = {};
+    let lastCheckpoint = startTime;
+
+    const checkpoint = (label: string) => {
+      const now = Date.now();
+      timings[label] = now - lastCheckpoint;
+      lastCheckpoint = now;
+    };
+
     try {
       const { id } = req.params;
+      const facilityId = req.facility?.id || req.user.facilityId;
 
       // レセプト詳細データを取得
+      checkpoint('start');
       const [receipt] = await db.select()
         .from(monthlyReceipts)
-        .where(eq(monthlyReceipts.id, id))
+        .where(and(
+          eq(monthlyReceipts.id, id),
+          eq(monthlyReceipts.facilityId, facilityId)
+        ))
         .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id));
+      checkpoint('receipt_query');
 
       if (!receipt || !receipt.monthly_receipts) {
         return res.status(404).json({ error: "レセプトが見つかりません" });
@@ -8055,50 +8071,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const receiptData = receipt.monthly_receipts;
       const patientData = receipt.patients;
 
-      // 保険証情報を取得
-      const cardType = receiptData.insuranceType === 'care' ? 'long_term_care' : 'medical';
-      const insuranceCardsData = await db.select()
-        .from(insuranceCards)
-        .where(and(
-          eq(insuranceCards.patientId, receiptData.patientId),
-          eq(insuranceCards.cardType, cardType),
-          eq(insuranceCards.isActive, true)
-        ));
-
-      // 訪問看護指示書情報を取得
-      const doctorOrdersData = await db.select()
-        .from(doctorOrders)
-        .leftJoin(medicalInstitutions, eq(doctorOrders.medicalInstitutionId, medicalInstitutions.id))
-        .where(eq(doctorOrders.patientId, receiptData.patientId));
-
-      // 看護記録を取得（日付範囲を文字列で指定）
+      // 日付範囲を計算
       const startDate = `${receiptData.targetYear}-${String(receiptData.targetMonth).padStart(2, '0')}-01`;
       const endYear = receiptData.targetMonth === 12 ? receiptData.targetYear + 1 : receiptData.targetYear;
       const endMonth = receiptData.targetMonth === 12 ? 1 : receiptData.targetMonth + 1;
       const endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-01`;
 
-      const records = await db.select()
-        .from(nursingRecords)
-        .leftJoin(users, eq(nursingRecords.nurseId, users.id))
+      // データベースクエリを並列実行（パフォーマンス改善）
+      checkpoint('before_parallel_queries');
+      const cardType = receiptData.insuranceType === 'care' ? 'long_term_care' : 'medical';
+      const [insuranceCardsData, doctorOrdersData, records, facility] = await Promise.all([
+        // 保険証情報を取得
+        db.select()
+          .from(insuranceCards)
+          .where(and(
+            eq(insuranceCards.patientId, receiptData.patientId),
+            eq(insuranceCards.cardType, cardType),
+            eq(insuranceCards.isActive, true)
+          )),
+        // 訪問看護指示書情報を取得
+        db.select()
+          .from(doctorOrders)
+          .leftJoin(medicalInstitutions, eq(doctorOrders.medicalInstitutionId, medicalInstitutions.id))
+          .where(eq(doctorOrders.patientId, receiptData.patientId)),
+        // 看護記録を取得（サービスコード情報も含める）
+        db.select({
+          nursing_records: nursingRecords,
+          users: users,
+          nursing_service_codes: nursingServiceCodes,
+        })
+          .from(nursingRecords)
+          .leftJoin(users, eq(nursingRecords.nurseId, users.id))
+          .leftJoin(nursingServiceCodes, eq(nursingRecords.serviceCodeId, nursingServiceCodes.id))
+          .where(and(
+            eq(nursingRecords.patientId, receiptData.patientId),
+            gte(nursingRecords.visitDate, startDate),
+            lt(nursingRecords.visitDate, endDate)
+          ))
+          .orderBy(asc(nursingRecords.visitDate)),
+        // 施設情報を取得
+        db.query.facilities.findFirst({
+          where: eq(facilities.id, facilityId),
+        }),
+      ]);
+      checkpoint('parallel_queries_complete');
+
+      // 適用済みサービスコードを取得（serviceCodeIdが設定されている加算履歴）
+      // パフォーマンス改善: recordsで既にサービスコード情報を取得しているため、
+      // appliedServiceCodesDataではbonusCalculationHistoryから直接取得し、
+      // recordsのデータとマージする
+      const recordIds = records.map(r => r.nursing_records.id);
+      
+      // recordsから訪問日時情報をマップ化（高速アクセス用）
+      const recordsMap = new Map(
+        records.map(r => [r.nursing_records.id, {
+          visitDate: r.nursing_records.visitDate,
+          actualStartTime: r.nursing_records.actualStartTime,
+          actualEndTime: r.nursing_records.actualEndTime,
+        }])
+      );
+      
+      // appliedServiceCodesDataの取得（nursingRecordsのJOINを削除してパフォーマンス改善）
+      checkpoint('before_applied_service_codes_query');
+      const appliedServiceCodesData = recordIds.length > 0 ? await db.select({
+        history: bonusCalculationHistory,
+        serviceCode: nursingServiceCodes,
+        recordId: bonusCalculationHistory.nursingRecordId,
+      })
+        .from(bonusCalculationHistory)
+        .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
         .where(and(
-          eq(nursingRecords.patientId, receiptData.patientId),
-          gte(nursingRecords.visitDate, startDate),
-          lt(nursingRecords.visitDate, endDate)
+          inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+          isNotNull(bonusCalculationHistory.serviceCodeId)
         ))
-        .orderBy(asc(nursingRecords.visitDate));
+        .then(results => results.map(item => {
+          // recordsから訪問日時情報を取得（マップを使用して高速化）
+          const record = recordsMap.get(item.recordId);
+          return {
+            history: item.history,
+            serviceCode: item.serviceCode,
+            record: record || null,
+          };
+        }).sort((a, b) => {
+          // 訪問日時でソート（recordsの順序に合わせる）
+          if (!a.record || !b.record) return 0;
+          const dateCompare = a.record.visitDate.localeCompare(b.record.visitDate);
+          if (dateCompare !== 0) return dateCompare;
+          const aTime = a.record.actualStartTime ? String(a.record.actualStartTime) : '';
+          const bTime = b.record.actualStartTime ? String(b.record.actualStartTime) : '';
+          return aTime.localeCompare(bTime);
+        })) : [];
+      checkpoint('applied_service_codes_query_complete');
 
-      // 施設情報を取得（facilityIdはユーザーセッションから取得）
-      const userId = req.session?.userId;
-      if (!userId) {
-        return res.status(401).json({ error: "認証が必要です" });
-      }
+      // bonusBreakdownから各加算の点数を正確に取得するため、bonusCodeの完全一致または部分一致で検索
+      // bonusBreakdownには { bonusCode, bonusName, count, points } の形式でデータが含まれる
 
-      const [userResult] = await db.select()
-        .from(users)
-        .leftJoin(facilities, eq(users.facilityId, facilities.id))
-        .where(eq(users.id, userId));
-
-      const facility = userResult?.facilities;
       const facilityInfo = facility ? {
         name: facility.name,
         address: facility.address || '',
@@ -8108,6 +8175,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // PDFデータ構造を構築
       const bonusBreakdown = (receiptData.bonusBreakdown as any[]) || [];
+      
+      // bonusBreakdownから各加算の点数を合計して取得（複数の加算がある場合は合計）
+      const emergencyPoints = bonusBreakdown
+        .filter((b: any) => b.bonusCode?.includes('emergency'))
+        .reduce((sum, b) => sum + (b.points || 0), 0);
+      
+      const longDurationPoints = bonusBreakdown
+        .filter((b: any) => b.bonusCode?.includes('long_duration') || b.bonusCode?.includes('long_visit') || (b.bonusCode?.includes('long') && !b.bonusCode?.includes('along')))
+        .reduce((sum, b) => sum + (b.points || 0), 0);
+      
+      const multipleVisitPoints = bonusBreakdown
+        .filter((b: any) => b.bonusCode?.includes('multiple_visit') || b.bonusCode?.includes('multiple'))
+        .reduce((sum, b) => sum + (b.points || 0), 0);
+      
+      const sameBuildingReduction = bonusBreakdown
+        .filter((b: any) => b.bonusCode?.includes('same_building') || b.bonusCode?.includes('building_reduction'))
+        .reduce((sum, b) => sum + (b.points || 0), 0);
+      
       const pdfData = {
         id: receiptData.id.toString(),
         targetYear: receiptData.targetYear,
@@ -8116,10 +8201,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         visitCount: receiptData.visitCount,
         totalVisitPoints: receiptData.totalVisitPoints,
         specialManagementPoints: receiptData.specialManagementPoints || 0,
-        emergencyPoints: bonusBreakdown.find((b: any) => b.bonusCode?.includes('emergency'))?.points || 0,
-        longDurationPoints: bonusBreakdown.find((b: any) => b.bonusCode?.includes('long'))?.points || 0,
-        multipleVisitPoints: bonusBreakdown.find((b: any) => b.bonusCode?.includes('multiple'))?.points || 0,
-        sameBuildingReduction: bonusBreakdown.find((b: any) => b.bonusCode?.includes('same_building'))?.points || 0,
+        emergencyPoints,
+        longDurationPoints,
+        multipleVisitPoints,
+        sameBuildingReduction,
         totalPoints: receiptData.totalPoints,
         totalAmount: receiptData.totalAmount,
         patient: {
@@ -8149,17 +8234,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
             doctorName: doctorOrdersData[0].medical_institutions.doctorName,
           } : { name: '', doctorName: '' },
         } : null,
-        relatedRecords: records.map(r => ({
-          visitDate: r.nursing_records.visitDate,
-          actualStartTime: r.nursing_records.actualStartTime || null,
-          actualEndTime: r.nursing_records.actualEndTime || null,
-          status: r.nursing_records.status,
-          observations: r.nursing_records.observations || '',
-          implementedCare: r.nursing_records.content || '',
-          nurse: r.users ? {
-            fullName: r.users.fullName,
-          } : null,
-        })),
+        relatedRecords: records.map(r => {
+          // パフォーマンス改善: サーバー側でフォーマット処理を実行
+          const visitDate = r.nursing_records.visitDate;
+          const actualStartTime = r.nursing_records.actualStartTime;
+          const actualEndTime = r.nursing_records.actualEndTime;
+          
+          // 日付フォーマット
+          const visitDateFormatted = visitDate ? (() => {
+            const date = new Date(visitDate);
+            return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+          })() : '';
+          
+          // 時間フォーマット
+          const formatTime = (time: string | Date | null | undefined): string | null => {
+            if (!time) return null;
+            const timeStr = typeof time === 'string' 
+              ? (time.includes('T') ? time.substring(11, 16) : time.substring(0, 5))
+              : (time instanceof Date ? time.toISOString().substring(11, 16) : String(time).substring(0, 5));
+            return timeStr;
+          };
+          
+          const startTimeFormatted = formatTime(actualStartTime);
+          const endTimeFormatted = formatTime(actualEndTime);
+          
+          // 観察事項の文字列切り詰め
+          const observations = r.nursing_records.observations || '';
+          const observationsText = observations.length > 40 ? observations.substring(0, 40) + '...' : observations;
+          
+          // サービスコードの点数フォーマット
+          const serviceCodePointsFormatted = r.nursing_service_codes 
+            ? r.nursing_service_codes.points.toLocaleString() 
+            : null;
+          
+          return {
+            visitDate: visitDateFormatted,
+            actualStartTime: startTimeFormatted,
+            actualEndTime: endTimeFormatted,
+            status: r.nursing_records.status,
+            observations: observationsText || '-',
+            implementedCare: r.nursing_records.content || '',
+            nurse: r.users ? {
+              fullName: r.users.fullName,
+            } : null,
+            serviceCode: r.nursing_service_codes ? {
+              code: r.nursing_service_codes.serviceCode,
+              name: r.nursing_service_codes.serviceName,
+              points: r.nursing_service_codes.points,
+              pointsFormatted: serviceCodePointsFormatted!,
+            } : null,
+          };
+        }),
         bonusHistory: bonusBreakdown.map((item: any) => ({
           bonus: {
             bonusCode: item.bonusCode || '',
@@ -8171,15 +8296,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
             appliedAt: new Date().toISOString(),
           },
         })),
+        appliedServiceCodes: appliedServiceCodesData.map(item => {
+          const visitDate = item.record?.visitDate || '';
+          const actualStartTime = item.record?.actualStartTime as string | Date | null | undefined;
+          const actualEndTime = item.record?.actualEndTime as string | Date | null | undefined;
+          
+          // パフォーマンス改善: サーバー側でフォーマット処理を実行
+          const formatDate = (dateStr: string) => {
+            const date = new Date(dateStr);
+            return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+          };
+          
+          const formatTime = (time: string | Date | null | undefined): string | null => {
+            if (!time) return null;
+            if (typeof time === 'string') {
+              return time.includes('T') ? time.substring(11, 16) : time.substring(0, 5);
+            }
+            if (time instanceof Date) {
+              return time.toISOString().substring(11, 16);
+            }
+            return String(time).substring(0, 5);
+          };
+          
+          const visitDateFormatted = visitDate ? formatDate(visitDate) : '';
+          const startTimeFormatted = formatTime(actualStartTime);
+          const endTimeFormatted = formatTime(actualEndTime);
+          const visitDateTime = startTimeFormatted ? `${visitDateFormatted} ${startTimeFormatted}` : visitDateFormatted;
+          
+          return {
+            visitDate: visitDateFormatted,
+            visitDateTime,
+            visitEndTime: endTimeFormatted,
+            serviceCode: item.serviceCode ? {
+              code: item.serviceCode.serviceCode,
+              name: item.serviceCode.serviceName,
+              points: item.serviceCode.points,
+              pointsFormatted: item.serviceCode.points.toLocaleString(),
+              unit: '回', // 単位は固定（サービスコードマスタにunitフィールドがないため）
+            } : null,
+          };
+        }),
       };
 
-      // PDFデータをJSONで返す（フロントエンドでPDF生成）
-      res.json({
-        pdfData,
-        facilityInfo,
+      checkpoint('pdf_data_preparation_complete');
+      
+      // データ量をログ出力（デバッグ用）
+      console.log('[PDF Performance] Data counts:', {
+        relatedRecords: pdfData.relatedRecords.length,
+        appliedServiceCodes: pdfData.appliedServiceCodes?.length || 0,
+        bonusHistory: pdfData.bonusHistory.length,
+      });
+
+      // レスポンスヘッダーを先に設定（ストリーミングを早く開始）
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=receipt_${receiptData.targetYear}${String(receiptData.targetMonth).padStart(2, '0')}_${patientData?.patientNumber || 'unknown'}.pdf`
+      );
+
+      // パフォーマンス改善: データは既にサーバー側でフォーマット済みのため、変換不要
+      checkpoint('before_date_conversion');
+      const pdfDataWithStringDates = pdfData; // 既にフォーマット済み
+      checkpoint('date_conversion_complete');
+
+      // モジュールを並列で読み込む（パフォーマンス改善）
+      checkpoint('before_module_imports');
+      const [{ renderToStream }, { registerPDFFont }, ReceiptPDFModule, React] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./pdf-fonts'),
+        import('../client/src/components/ReceiptPDF'),
+        import('react'),
+      ]);
+      checkpoint('module_imports_complete');
+
+      // フォント登録（キャッシュ済みの場合は高速）
+      checkpoint('before_font_registration');
+      registerPDFFont();
+      checkpoint('font_registration_complete');
+
+      // ReceiptPDFコンポーネントを取得
+      const ReceiptPDF = ReceiptPDFModule.ReceiptPDF;
+
+      // PDFをストリームとして生成（ReceiptPDFはDocumentを含むコンポーネント）
+      checkpoint('before_pdf_render');
+      const pdfElement = React.createElement(ReceiptPDF, { receipt: pdfDataWithStringDates, facilityInfo }) as any;
+      const pdfStream = await renderToStream(pdfElement);
+      checkpoint('pdf_render_complete');
+
+      // PDFストリームをレスポンスにパイプ
+      checkpoint('before_stream_pipe');
+      pdfStream.pipe(res);
+      
+      // ストリーミング完了を待機（非同期）
+      pdfStream.on('end', () => {
+        checkpoint('stream_complete');
+        const totalTime = Date.now() - startTime;
+        console.log('[PDF Performance] Total time:', totalTime, 'ms');
+        console.log('[PDF Performance] Timings:', JSON.stringify(timings, null, 2));
       });
 
     } catch (error) {
+      const totalTime = Date.now() - startTime;
+      console.error("[PDF Performance] Error occurred after", totalTime, "ms");
+      console.error("[PDF Performance] Timings so far:", JSON.stringify(timings, null, 2));
       console.error("PDF generation error:", error);
       res.status(500).json({ error: "PDF生成中にエラーが発生しました" });
     }
