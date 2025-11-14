@@ -123,56 +123,56 @@ async function seedMasterData() {
   console.log('🚀 マスターデータの投入を開始します...\n');
 
   try {
-    // 1. 都道府県コード（47件）
+    // 1. 都道府県コード（別表2、47件）
     console.log('📍 都道府県コードを投入中...');
     await db.insert(prefectureCodes).values([
       { prefectureCode: '01', prefectureName: '北海道', displayOrder: 1, isActive: true },
-      { prefectureCode: '02', prefectureName: '青森県', displayOrder: 2, isActive: true },
-      { prefectureCode: '03', prefectureName: '岩手県', displayOrder: 3, isActive: true },
-      { prefectureCode: '04', prefectureName: '宮城県', displayOrder: 4, isActive: true },
-      { prefectureCode: '05', prefectureName: '秋田県', displayOrder: 5, isActive: true },
-      { prefectureCode: '06', prefectureName: '山形県', displayOrder: 6, isActive: true },
-      { prefectureCode: '07', prefectureName: '福島県', displayOrder: 7, isActive: true },
-      { prefectureCode: '08', prefectureName: '茨城県', displayOrder: 8, isActive: true },
-      { prefectureCode: '09', prefectureName: '栃木県', displayOrder: 9, isActive: true },
-      { prefectureCode: '10', prefectureName: '群馬県', displayOrder: 10, isActive: true },
-      { prefectureCode: '11', prefectureName: '埼玉県', displayOrder: 11, isActive: true },
-      { prefectureCode: '12', prefectureName: '千葉県', displayOrder: 12, isActive: true },
-      { prefectureCode: '13', prefectureName: '東京都', displayOrder: 13, isActive: true },
-      { prefectureCode: '14', prefectureName: '神奈川県', displayOrder: 14, isActive: true },
-      { prefectureCode: '15', prefectureName: '新潟県', displayOrder: 15, isActive: true },
-      { prefectureCode: '16', prefectureName: '富山県', displayOrder: 16, isActive: true },
-      { prefectureCode: '17', prefectureName: '石川県', displayOrder: 17, isActive: true },
-      { prefectureCode: '18', prefectureName: '福井県', displayOrder: 18, isActive: true },
-      { prefectureCode: '19', prefectureName: '山梨県', displayOrder: 19, isActive: true },
-      { prefectureCode: '20', prefectureName: '長野県', displayOrder: 20, isActive: true },
-      { prefectureCode: '21', prefectureName: '岐阜県', displayOrder: 21, isActive: true },
-      { prefectureCode: '22', prefectureName: '静岡県', displayOrder: 22, isActive: true },
-      { prefectureCode: '23', prefectureName: '愛知県', displayOrder: 23, isActive: true },
-      { prefectureCode: '24', prefectureName: '三重県', displayOrder: 24, isActive: true },
-      { prefectureCode: '25', prefectureName: '滋賀県', displayOrder: 25, isActive: true },
-      { prefectureCode: '26', prefectureName: '京都府', displayOrder: 26, isActive: true },
-      { prefectureCode: '27', prefectureName: '大阪府', displayOrder: 27, isActive: true },
-      { prefectureCode: '28', prefectureName: '兵庫県', displayOrder: 28, isActive: true },
-      { prefectureCode: '29', prefectureName: '奈良県', displayOrder: 29, isActive: true },
-      { prefectureCode: '30', prefectureName: '和歌山県', displayOrder: 30, isActive: true },
-      { prefectureCode: '31', prefectureName: '鳥取県', displayOrder: 31, isActive: true },
-      { prefectureCode: '32', prefectureName: '島根県', displayOrder: 32, isActive: true },
-      { prefectureCode: '33', prefectureName: '岡山県', displayOrder: 33, isActive: true },
-      { prefectureCode: '34', prefectureName: '広島県', displayOrder: 34, isActive: true },
-      { prefectureCode: '35', prefectureName: '山口県', displayOrder: 35, isActive: true },
-      { prefectureCode: '36', prefectureName: '徳島県', displayOrder: 36, isActive: true },
-      { prefectureCode: '37', prefectureName: '香川県', displayOrder: 37, isActive: true },
-      { prefectureCode: '38', prefectureName: '愛媛県', displayOrder: 38, isActive: true },
-      { prefectureCode: '39', prefectureName: '高知県', displayOrder: 39, isActive: true },
-      { prefectureCode: '40', prefectureName: '福岡県', displayOrder: 40, isActive: true },
-      { prefectureCode: '41', prefectureName: '佐賀県', displayOrder: 41, isActive: true },
-      { prefectureCode: '42', prefectureName: '長崎県', displayOrder: 42, isActive: true },
-      { prefectureCode: '43', prefectureName: '熊本県', displayOrder: 43, isActive: true },
-      { prefectureCode: '44', prefectureName: '大分県', displayOrder: 44, isActive: true },
-      { prefectureCode: '45', prefectureName: '宮崎県', displayOrder: 45, isActive: true },
-      { prefectureCode: '46', prefectureName: '鹿児島県', displayOrder: 46, isActive: true },
-      { prefectureCode: '47', prefectureName: '沖縄県', displayOrder: 47, isActive: true },
+      { prefectureCode: '02', prefectureName: '青森', displayOrder: 2, isActive: true },
+      { prefectureCode: '03', prefectureName: '岩手', displayOrder: 3, isActive: true },
+      { prefectureCode: '04', prefectureName: '宮城', displayOrder: 4, isActive: true },
+      { prefectureCode: '05', prefectureName: '秋田', displayOrder: 5, isActive: true },
+      { prefectureCode: '06', prefectureName: '山形', displayOrder: 6, isActive: true },
+      { prefectureCode: '07', prefectureName: '福島', displayOrder: 7, isActive: true },
+      { prefectureCode: '08', prefectureName: '茨城', displayOrder: 8, isActive: true },
+      { prefectureCode: '09', prefectureName: '栃木', displayOrder: 9, isActive: true },
+      { prefectureCode: '10', prefectureName: '群馬', displayOrder: 10, isActive: true },
+      { prefectureCode: '11', prefectureName: '埼玉', displayOrder: 11, isActive: true },
+      { prefectureCode: '12', prefectureName: '千葉', displayOrder: 12, isActive: true },
+      { prefectureCode: '13', prefectureName: '東京', displayOrder: 13, isActive: true },
+      { prefectureCode: '14', prefectureName: '神奈川', displayOrder: 14, isActive: true },
+      { prefectureCode: '15', prefectureName: '新潟', displayOrder: 15, isActive: true },
+      { prefectureCode: '16', prefectureName: '富山', displayOrder: 16, isActive: true },
+      { prefectureCode: '17', prefectureName: '石川', displayOrder: 17, isActive: true },
+      { prefectureCode: '18', prefectureName: '福井', displayOrder: 18, isActive: true },
+      { prefectureCode: '19', prefectureName: '山梨', displayOrder: 19, isActive: true },
+      { prefectureCode: '20', prefectureName: '長野', displayOrder: 20, isActive: true },
+      { prefectureCode: '21', prefectureName: '岐阜', displayOrder: 21, isActive: true },
+      { prefectureCode: '22', prefectureName: '静岡', displayOrder: 22, isActive: true },
+      { prefectureCode: '23', prefectureName: '愛知', displayOrder: 23, isActive: true },
+      { prefectureCode: '24', prefectureName: '三重', displayOrder: 24, isActive: true },
+      { prefectureCode: '25', prefectureName: '滋賀', displayOrder: 25, isActive: true },
+      { prefectureCode: '26', prefectureName: '京都', displayOrder: 26, isActive: true },
+      { prefectureCode: '27', prefectureName: '大阪', displayOrder: 27, isActive: true },
+      { prefectureCode: '28', prefectureName: '兵庫', displayOrder: 28, isActive: true },
+      { prefectureCode: '29', prefectureName: '奈良', displayOrder: 29, isActive: true },
+      { prefectureCode: '30', prefectureName: '和歌山', displayOrder: 30, isActive: true },
+      { prefectureCode: '31', prefectureName: '鳥取', displayOrder: 31, isActive: true },
+      { prefectureCode: '32', prefectureName: '島根', displayOrder: 32, isActive: true },
+      { prefectureCode: '33', prefectureName: '岡山', displayOrder: 33, isActive: true },
+      { prefectureCode: '34', prefectureName: '広島', displayOrder: 34, isActive: true },
+      { prefectureCode: '35', prefectureName: '山口', displayOrder: 35, isActive: true },
+      { prefectureCode: '36', prefectureName: '徳島', displayOrder: 36, isActive: true },
+      { prefectureCode: '37', prefectureName: '香川', displayOrder: 37, isActive: true },
+      { prefectureCode: '38', prefectureName: '愛媛', displayOrder: 38, isActive: true },
+      { prefectureCode: '39', prefectureName: '高知', displayOrder: 39, isActive: true },
+      { prefectureCode: '40', prefectureName: '福岡', displayOrder: 40, isActive: true },
+      { prefectureCode: '41', prefectureName: '佐賀', displayOrder: 41, isActive: true },
+      { prefectureCode: '42', prefectureName: '長崎', displayOrder: 42, isActive: true },
+      { prefectureCode: '43', prefectureName: '熊本', displayOrder: 43, isActive: true },
+      { prefectureCode: '44', prefectureName: '大分', displayOrder: 44, isActive: true },
+      { prefectureCode: '45', prefectureName: '宮崎', displayOrder: 45, isActive: true },
+      { prefectureCode: '46', prefectureName: '鹿児島', displayOrder: 46, isActive: true },
+      { prefectureCode: '47', prefectureName: '沖縄', displayOrder: 47, isActive: true },
     ]).onConflictDoNothing();
     console.log('✓ 都道府県コード: 47件投入完了\n');
 
@@ -195,31 +195,74 @@ async function seedMasterData() {
     // 3. 訪問場所コード（別表16）
     console.log('🏠 訪問場所コードを投入中...');
     await db.insert(visitLocationCodes).values([
-      { locationCode: '01', locationName: '居宅', description: '利用者の自宅', displayOrder: 1, isActive: true },
-      { locationCode: '02', locationName: '老人ホーム', description: '有料老人ホーム等', displayOrder: 2, isActive: true },
-      { locationCode: '03', locationName: '特別養護老人ホーム', description: '特別養護老人ホーム', displayOrder: 3, isActive: true },
-      { locationCode: '04', locationName: '介護老人保健施設', description: '介護老人保健施設', displayOrder: 4, isActive: true },
-      { locationCode: '05', locationName: 'その他の施設', description: 'その他の施設', displayOrder: 5, isActive: true },
-      { locationCode: '06', locationName: '病院', description: '病院', displayOrder: 6, isActive: true },
-      { locationCode: '07', locationName: '診療所', description: '診療所', displayOrder: 7, isActive: true },
-      { locationCode: '08', locationName: 'グループホーム', description: '認知症対応型共同生活介護事業所', displayOrder: 8, isActive: true },
-      { locationCode: '09', locationName: 'サービス付き高齢者向け住宅', description: 'サービス付き高齢者向け住宅', displayOrder: 9, isActive: true },
-      { locationCode: '99', locationName: 'その他', description: 'その他（文字データで指定）', displayOrder: 99, isActive: true },
+      { locationCode: '01', locationName: '自宅', description: '利用者の自宅', displayOrder: 10, isActive: true },
+      { locationCode: '11', locationName: '施設（社会福祉施設及び身体障害者施設）', description: '社会福祉施設及び身体障害者施設', displayOrder: 20, isActive: true },
+      { locationCode: '12', locationName: '施設（小規模多機能型居宅介護）', description: '小規模多機能型居宅介護', displayOrder: 30, isActive: true },
+      { locationCode: '13', locationName: '施設（複合型サービス）', description: '複合型サービス', displayOrder: 40, isActive: true },
+      { locationCode: '14', locationName: '施設（認知症対応型グループホーム）', description: '認知症対応型グループホーム', displayOrder: 50, isActive: true },
+      { locationCode: '15', locationName: '施設（特定施設）', description: '特定施設', displayOrder: 60, isActive: true },
+      { locationCode: '16', locationName: '施設（地域密着型介護老人福祉施設及び介護老人福祉施設）', description: '地域密着型介護老人福祉施設及び介護老人福祉施設', displayOrder: 70, isActive: true },
+      { locationCode: '31', locationName: '病院', description: '医療機関（病院）', displayOrder: 80, isActive: true },
+      { locationCode: '32', locationName: '診療所', description: '医療機関（診療所）', displayOrder: 90, isActive: true },
+      { locationCode: '99', locationName: 'その他', description: 'その他の場所', displayOrder: 100, isActive: true },
     ]).onConflictDoNothing();
     console.log('✓ 訪問場所コード: 10件投入完了\n');
 
     // 4. レセプト種別コード（別表4）
     console.log('📄 レセプト種別コードを投入中...');
     await db.insert(receiptTypeCodes).values([
-      { receiptTypeCode: '3110', receiptTypeName: '訪問看護療養費（健康保険）', insuranceType: 'medical', description: '健康保険法に基づく訪問看護療養費', displayOrder: 1, isActive: true },
-      { receiptTypeCode: '3120', receiptTypeName: '訪問看護療養費（国民健康保険）', insuranceType: 'medical', description: '国民健康保険法に基づく訪問看護療養費', displayOrder: 2, isActive: true },
-      { receiptTypeCode: '3130', receiptTypeName: '訪問看護療養費（後期高齢者医療）', insuranceType: 'medical', description: '高齢者の医療の確保に関する法律に基づく訪問看護療養費', displayOrder: 3, isActive: true },
-      { receiptTypeCode: '3111', receiptTypeName: '訪問看護療養費（健康保険・公費併用）', insuranceType: 'medical', description: '健康保険と公費の併用', displayOrder: 4, isActive: true },
-      { receiptTypeCode: '3121', receiptTypeName: '訪問看護療養費（国民健康保険・公費併用）', insuranceType: 'medical', description: '国民健康保険と公費の併用', displayOrder: 5, isActive: true },
-      { receiptTypeCode: '3131', receiptTypeName: '訪問看護療養費（後期高齢者医療・公費併用）', insuranceType: 'medical', description: '後期高齢者医療と公費の併用', displayOrder: 6, isActive: true },
-      { receiptTypeCode: '3140', receiptTypeName: '訪問看護療養費（公費単独）', insuranceType: 'medical', description: '公費負担医療のみ', displayOrder: 7, isActive: true },
+      // 訪問看護・医保単独/国保単独（5種類）
+      { receiptTypeCode: '6112', receiptTypeName: '訪問看護・医保単独/国保単独・本人/世帯主', insuranceType: 'medical', description: '医療保険単独、本人または世帯主', displayOrder: 10, isActive: true },
+      { receiptTypeCode: '6114', receiptTypeName: '訪問看護・医保単独/国保単独・未就学者', insuranceType: 'medical', description: '医療保険単独、未就学者', displayOrder: 20, isActive: true },
+      { receiptTypeCode: '6116', receiptTypeName: '訪問看護・医保単独/国保単独・家族/その他', insuranceType: 'medical', description: '医療保険単独、家族またはその他', displayOrder: 30, isActive: true },
+      { receiptTypeCode: '6118', receiptTypeName: '訪問看護・医保単独/国保単独・高齢受給者一般・低所得者', insuranceType: 'medical', description: '医療保険単独、高齢受給者一般・低所得者', displayOrder: 40, isActive: true },
+      { receiptTypeCode: '6110', receiptTypeName: '訪問看護・医保単独/国保単独・高齢受給者7割', insuranceType: 'medical', description: '医療保険単独、高齢受給者7割', displayOrder: 50, isActive: true },
+      // 訪問看護・医保/国保と1種の公費併用（5種類）
+      { receiptTypeCode: '6122', receiptTypeName: '訪問看護・医保/国保と1種の公費併用・本人/世帯主', insuranceType: 'medical', description: '医療保険と1種の公費併用、本人または世帯主', displayOrder: 110, isActive: true },
+      { receiptTypeCode: '6124', receiptTypeName: '訪問看護・医保/国保と1種の公費併用・未就学者', insuranceType: 'medical', description: '医療保険と1種の公費併用、未就学者', displayOrder: 120, isActive: true },
+      { receiptTypeCode: '6126', receiptTypeName: '訪問看護・医保/国保と1種の公費併用・家族/その他', insuranceType: 'medical', description: '医療保険と1種の公費併用、家族またはその他', displayOrder: 130, isActive: true },
+      { receiptTypeCode: '6128', receiptTypeName: '訪問看護・医保/国保と1種の公費併用・高齢受給者一般・低所得者', insuranceType: 'medical', description: '医療保険と1種の公費併用、高齢受給者一般・低所得者', displayOrder: 140, isActive: true },
+      { receiptTypeCode: '6120', receiptTypeName: '訪問看護・医保/国保と1種の公費併用・高齢受給者7割', insuranceType: 'medical', description: '医療保険と1種の公費併用、高齢受給者7割', displayOrder: 150, isActive: true },
+      // 訪問看護・医保/国保と2種の公費併用（5種類）
+      { receiptTypeCode: '6132', receiptTypeName: '訪問看護・医保/国保と2種の公費併用・本人/世帯主', insuranceType: 'medical', description: '医療保険と2種の公費併用、本人または世帯主', displayOrder: 210, isActive: true },
+      { receiptTypeCode: '6134', receiptTypeName: '訪問看護・医保/国保と2種の公費併用・未就学者', insuranceType: 'medical', description: '医療保険と2種の公費併用、未就学者', displayOrder: 220, isActive: true },
+      { receiptTypeCode: '6136', receiptTypeName: '訪問看護・医保/国保と2種の公費併用・家族/その他', insuranceType: 'medical', description: '医療保険と2種の公費併用、家族またはその他', displayOrder: 230, isActive: true },
+      { receiptTypeCode: '6138', receiptTypeName: '訪問看護・医保/国保と2種の公費併用・高齢受給者一般・低所得者', insuranceType: 'medical', description: '医療保険と2種の公費併用、高齢受給者一般・低所得者', displayOrder: 240, isActive: true },
+      { receiptTypeCode: '6130', receiptTypeName: '訪問看護・医保/国保と2種の公費併用・高齢受給者7割', insuranceType: 'medical', description: '医療保険と2種の公費併用、高齢受給者7割', displayOrder: 250, isActive: true },
+      // 訪問看護・医保/国保と3種の公費併用（5種類）
+      { receiptTypeCode: '6142', receiptTypeName: '訪問看護・医保/国保と3種の公費併用・本人/世帯主', insuranceType: 'medical', description: '医療保険と3種の公費併用、本人または世帯主', displayOrder: 310, isActive: true },
+      { receiptTypeCode: '6144', receiptTypeName: '訪問看護・医保/国保と3種の公費併用・未就学者', insuranceType: 'medical', description: '医療保険と3種の公費併用、未就学者', displayOrder: 320, isActive: true },
+      { receiptTypeCode: '6146', receiptTypeName: '訪問看護・医保/国保と3種の公費併用・家族/その他', insuranceType: 'medical', description: '医療保険と3種の公費併用、家族またはその他', displayOrder: 330, isActive: true },
+      { receiptTypeCode: '6148', receiptTypeName: '訪問看護・医保/国保と3種の公費併用・高齢受給者一般・低所得者', insuranceType: 'medical', description: '医療保険と3種の公費併用、高齢受給者一般・低所得者', displayOrder: 340, isActive: true },
+      { receiptTypeCode: '6140', receiptTypeName: '訪問看護・医保/国保と3種の公費併用・高齢受給者7割', insuranceType: 'medical', description: '医療保険と3種の公費併用、高齢受給者7割', displayOrder: 350, isActive: true },
+      // 訪問看護・医保/国保と4種の公費併用（5種類）
+      { receiptTypeCode: '6152', receiptTypeName: '訪問看護・医保/国保と4種の公費併用・本人/世帯主', insuranceType: 'medical', description: '医療保険と4種の公費併用、本人または世帯主', displayOrder: 410, isActive: true },
+      { receiptTypeCode: '6154', receiptTypeName: '訪問看護・医保/国保と4種の公費併用・未就学者', insuranceType: 'medical', description: '医療保険と4種の公費併用、未就学者', displayOrder: 420, isActive: true },
+      { receiptTypeCode: '6156', receiptTypeName: '訪問看護・医保/国保と4種の公費併用・家族/その他', insuranceType: 'medical', description: '医療保険と4種の公費併用、家族またはその他', displayOrder: 430, isActive: true },
+      { receiptTypeCode: '6158', receiptTypeName: '訪問看護・医保/国保と4種の公費併用・高齢受給者一般・低所得者', insuranceType: 'medical', description: '医療保険と4種の公費併用、高齢受給者一般・低所得者', displayOrder: 440, isActive: true },
+      { receiptTypeCode: '6150', receiptTypeName: '訪問看護・医保/国保と4種の公費併用・高齢受給者7割', insuranceType: 'medical', description: '医療保険と4種の公費併用、高齢受給者7割', displayOrder: 450, isActive: true },
+      // 訪問看護・公費単独（4種類）
+      { receiptTypeCode: '6212', receiptTypeName: '訪問看護・公費単独', insuranceType: 'medical', description: '公費負担医療単独', displayOrder: 510, isActive: true },
+      { receiptTypeCode: '6222', receiptTypeName: '訪問看護・2種の公費併用', insuranceType: 'medical', description: '2種の公費負担医療併用', displayOrder: 520, isActive: true },
+      { receiptTypeCode: '6232', receiptTypeName: '訪問看護・3種の公費併用', insuranceType: 'medical', description: '3種の公費負担医療併用', displayOrder: 530, isActive: true },
+      { receiptTypeCode: '6242', receiptTypeName: '訪問看護・4種の公費併用', insuranceType: 'medical', description: '4種の公費負担医療併用', displayOrder: 540, isActive: true },
+      // 訪問看護・後期高齢者単独（2種類）
+      { receiptTypeCode: '6318', receiptTypeName: '訪問看護・後期高齢者単独・一般・低所得者', insuranceType: 'medical', description: '後期高齢者医療単独、一般・低所得者', displayOrder: 610, isActive: true },
+      { receiptTypeCode: '6310', receiptTypeName: '訪問看護・後期高齢者単独・7割', insuranceType: 'medical', description: '後期高齢者医療単独、7割', displayOrder: 620, isActive: true },
+      // 訪問看護・後期高齢者と1種の公費併用（2種類）
+      { receiptTypeCode: '6328', receiptTypeName: '訪問看護・後期高齢者と1種の公費併用・一般・低所得者', insuranceType: 'medical', description: '後期高齢者医療と1種の公費併用、一般・低所得者', displayOrder: 710, isActive: true },
+      { receiptTypeCode: '6320', receiptTypeName: '訪問看護・後期高齢者と1種の公費併用・7割', insuranceType: 'medical', description: '後期高齢者医療と1種の公費併用、7割', displayOrder: 720, isActive: true },
+      // 訪問看護・後期高齢者と2種の公費併用（2種類）
+      { receiptTypeCode: '6338', receiptTypeName: '訪問看護・後期高齢者と2種の公費併用・一般・低所得者', insuranceType: 'medical', description: '後期高齢者医療と2種の公費併用、一般・低所得者', displayOrder: 810, isActive: true },
+      { receiptTypeCode: '6330', receiptTypeName: '訪問看護・後期高齢者と2種の公費併用・7割', insuranceType: 'medical', description: '後期高齢者医療と2種の公費併用、7割', displayOrder: 820, isActive: true },
+      // 訪問看護・後期高齢者と3種の公費併用（2種類）
+      { receiptTypeCode: '6348', receiptTypeName: '訪問看護・後期高齢者と3種の公費併用・一般・低所得者', insuranceType: 'medical', description: '後期高齢者医療と3種の公費併用、一般・低所得者', displayOrder: 910, isActive: true },
+      { receiptTypeCode: '6340', receiptTypeName: '訪問看護・後期高齢者と3種の公費併用・7割', insuranceType: 'medical', description: '後期高齢者医療と3種の公費併用、7割', displayOrder: 920, isActive: true },
+      // 訪問看護・後期高齢者と4種の公費併用（2種類）
+      { receiptTypeCode: '6358', receiptTypeName: '訪問看護・後期高齢者と4種の公費併用・一般・低所得者', insuranceType: 'medical', description: '後期高齢者医療と4種の公費併用、一般・低所得者', displayOrder: 1010, isActive: true },
+      { receiptTypeCode: '6350', receiptTypeName: '訪問看護・後期高齢者と4種の公費併用・7割', insuranceType: 'medical', description: '後期高齢者医療と4種の公費併用、7割', displayOrder: 1020, isActive: true },
     ]).onConflictDoNothing();
-    console.log('✓ レセプト種別コード: 7件投入完了\n');
+    console.log('✓ レセプト種別コード: 39件投入完了\n');
 
     // 5. 訪問看護サービスコード（CSVファイルから読み込み）
     console.log('💊 訪問看護サービスコードを投入中...');
@@ -237,14 +280,14 @@ async function seedMasterData() {
 
     // 投入件数をカウント
     const serviceCodesCount = serviceCodesData.length;
-    const totalCount = 47 + 10 + 10 + 7 + serviceCodesCount;
+    const totalCount = 47 + 10 + 10 + 39 + serviceCodesCount;
     
     console.log('✅ マスターデータの投入が完了しました！');
     console.log('\n【投入結果】');
     console.log('  - 都道府県コード: 47件');
     console.log('  - 職員資格コード: 10件');
     console.log('  - 訪問場所コード: 10件');
-    console.log('  - レセプト種別コード: 7件');
+    console.log('  - レセプト種別コード: 39件');
     console.log(`  - 訪問看護サービスコード: ${serviceCodesCount}件`);
     console.log(`  合計: ${totalCount}件`);
 

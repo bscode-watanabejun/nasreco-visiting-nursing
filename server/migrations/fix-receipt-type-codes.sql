@@ -7,7 +7,7 @@ BEGIN;
 -- 既存データを削除
 DELETE FROM receipt_type_codes;
 
--- 訪問看護・医保単独/国保単独（6種類）
+-- 訪問看護・医保単独/国保単独（5種類）
 INSERT INTO receipt_type_codes (receipt_type_code, receipt_type_name, insurance_type, description, display_order, is_active) VALUES
 ('6112', '訪問看護・医保単独/国保単独・本人/世帯主', 'medical', '医療保険単独、本人または世帯主', 10, true),
 ('6114', '訪問看護・医保単独/国保単独・未就学者', 'medical', '医療保険単独、未就学者', 20, true),
@@ -79,7 +79,7 @@ INSERT INTO receipt_type_codes (receipt_type_code, receipt_type_name, insurance_
 ('6358', '訪問看護・後期高齢者と4種の公費併用・一般・低所得者', 'medical', '後期高齢者医療と4種の公費併用、一般・低所得者', 1010, true),
 ('6350', '訪問看護・後期高齢者と4種の公費併用・7割', 'medical', '後期高齢者医療と4種の公費併用、7割', 1020, true);
 
--- 確認：43件のコードが正しく登録されたか
+-- 確認：39件のコードが正しく登録されたか
 SELECT COUNT(*) as total_codes FROM receipt_type_codes;
 
 COMMIT;

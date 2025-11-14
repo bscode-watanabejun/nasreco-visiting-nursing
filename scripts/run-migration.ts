@@ -1,0 +1,75 @@
+/**
+ * レセプト種別コードマイグレーション実行スクリプト
+ *
+ * 3xxx形式のレセプト種別コードを6xxx形式に更新します。
+ *
+ * 実行方法:
+ *   npx tsx scripts/run-migration.ts
+ */
+
+import fs from 'fs';
+import path from 'path';
+import { db, pool } from '../server/db';
+
+async function runMigration() {
+  console.log('🚀 レセプト種別コードマイグレーションを開始します...\n');
+
+  try {
+    // SQLファイルを読み込む
+    const migrationPath = path.join(process.cwd(), 'server/migrations/fix-receipt-type-codes.sql');
+    
+    if (!fs.existsSync(migrationPath)) {
+      throw new Error(`マイグレーションファイルが見つかりません: ${migrationPath}`);
+    }
+
+    const sql = fs.readFileSync(migrationPath, 'utf-8');
+    
+    console.log('📄 マイグレーションSQLを読み込みました');
+    console.log('🔄 データベースを更新中...\n');
+
+    // SQLを実行（トランザクション内で実行される）
+    // 複数のSQL文を含む場合は、クライアントのqueryメソッドを直接使用
+    const client = await pool.connect();
+    try {
+      await client.query(sql);
+    } finally {
+      client.release();
+    }
+
+    // 確認: 登録されたコード数を確認
+    const result = await db.execute<{ total_codes: number }>(
+      `SELECT COUNT(*) as total_codes FROM receipt_type_codes`
+    );
+
+    const count = result.rows[0]?.total_codes || 0;
+    
+    console.log('✅ マイグレーションが完了しました！');
+    console.log(`📊 登録されたレセプト種別コード数: ${count}件\n`);
+
+    // 実際のコード数は39件（SQLファイルのコメントに誤りがあるが、実際のINSERT文は39件）
+    if (count !== 39) {
+      console.warn(`⚠️  警告: 期待されるコード数は39件ですが、実際には${count}件が登録されました。`);
+    } else {
+      console.log('✅ すべてのコードが正しく登録されました。');
+    }
+
+  } catch (error) {
+    console.error('\n❌ エラーが発生しました:', error);
+    throw error;
+  } finally {
+    // 接続を閉じる
+    await pool.end();
+  }
+}
+
+// スクリプト実行
+runMigration()
+  .then(() => {
+    console.log('処理を終了します。');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('\nスクリプトが失敗しました:', error);
+    process.exit(1);
+  });
+
