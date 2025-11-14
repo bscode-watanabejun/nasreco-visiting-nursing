@@ -301,7 +301,7 @@ export default function BonusMasterManagement() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingBonus, setEditingBonus] = useState<BonusMaster | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [insuranceFilter, setInsuranceFilter] = useState<string>("all")
+  const [insuranceFilter, setInsuranceFilter] = useState<string>("medical")
   const [activeFilter, setActiveFilter] = useState<string>("active")
   const [formData, setFormData] = useState<BonusFormData>(initialFormData)
 
@@ -319,7 +319,7 @@ export default function BonusMasterManagement() {
     queryKey: ["/api/bonus-masters", insuranceFilter, activeFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (insuranceFilter !== "all") params.append("insuranceType", insuranceFilter)
+      params.append("insuranceType", insuranceFilter)
       if (activeFilter !== "all") params.append("isActive", activeFilter === "active" ? "true" : "false")
 
       const response = await fetch(`/api/bonus-masters?${params}`)
@@ -697,7 +697,6 @@ export default function BonusMasterManagement() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">すべて</SelectItem>
                   <SelectItem value="medical">医療保険</SelectItem>
                   <SelectItem value="care">介護保険</SelectItem>
                 </SelectContent>
