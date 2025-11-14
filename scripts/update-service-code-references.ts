@@ -80,21 +80,20 @@ async function updateServiceCodeReferences() {
       throw new Error('正しいコードIDがマスタに存在しません');
     }
 
-    // 3. 確認プロンプト（実際の実行時はコメントアウト）
-    console.log('⚠️  訪問記録の参照を更新しますか？');
-    console.log('   実行する場合は、スクリプト内の確認プロンプトを有効化してください。\n');
+    // 3. 確認プロンプト
+    console.log('⚠️  訪問記録の参照を更新しますか？\n');
     
-    // 実際の実行時は以下のコメントを外す
-    // const readline = require('readline');
-    // const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    // const answer = await new Promise<string>(resolve => {
-    //   rl.question('続行しますか？ (yes/no): ', resolve);
-    // });
-    // rl.close();
-    // if (answer.toLowerCase() !== 'yes') {
-    //   console.log('❌ 実行をキャンセルしました。');
-    //   return;
-    // }
+    const readline = await import('readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise<string>(resolve => {
+      rl.question('続行しますか？ (yes/no): ', resolve);
+    });
+    rl.close();
+    if (answer.toLowerCase() !== 'yes') {
+      console.log('❌ 実行をキャンセルしました。');
+      return;
+    }
+    console.log('');
 
     // 4. トランザクション内で更新実行
     console.log('📊 3. 訪問記録の参照を更新中...');

@@ -84,21 +84,20 @@ async function deactivateWrongServiceCodes() {
       throw new Error('参照が残っているため無効化できません');
     }
 
-    // 3. 確認プロンプト（実際の実行時はコメントアウト）
-    console.log('⚠️  誤ったコードを無効化しますか？');
-    console.log('   実行する場合は、スクリプト内の確認プロンプトを有効化してください。\n');
+    // 3. 確認プロンプト
+    console.log('⚠️  誤ったコードを無効化しますか？\n');
     
-    // 実際の実行時は以下のコメントを外す
-    // const readline = require('readline');
-    // const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    // const answer = await new Promise<string>(resolve => {
-    //   rl.question('続行しますか？ (yes/no): ', resolve);
-    // });
-    // rl.close();
-    // if (answer.toLowerCase() !== 'yes') {
-    //   console.log('❌ 実行をキャンセルしました。');
-    //   return;
-    // }
+    const readline = await import('readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise<string>(resolve => {
+      rl.question('続行しますか？ (yes/no): ', resolve);
+    });
+    rl.close();
+    if (answer.toLowerCase() !== 'yes') {
+      console.log('❌ 実行をキャンセルしました。');
+      return;
+    }
+    console.log('');
 
     // 4. トランザクション内で無効化実行
     console.log('📊 3. 誤ったコードを無効化中...');
