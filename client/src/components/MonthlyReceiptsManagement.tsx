@@ -45,7 +45,8 @@ import {
   Lock,
   Unlock,
   Eye,
-  Printer
+  Printer,
+  FileSpreadsheet
 } from "lucide-react"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
@@ -324,6 +325,81 @@ export default function MonthlyReceiptsManagement() {
     }
   }
 
+  const handleDownloadMedicalInsuranceBatchCSV = async () => {
+    // 表示されているレセプトのうち、確定済みかつ医療保険のレセプトIDを収集
+    const targetReceiptIds = receipts
+      .filter(receipt => receipt.isConfirmed && receipt.insuranceType === 'medical')
+      .map(receipt => receipt.id)
+
+    if (targetReceiptIds.length === 0) {
+      toast({
+        title: "エラー",
+        description: "出力可能な医療保険レセプトがありません（確定済みの医療保険レセプトが必要です）",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      toast({
+        title: "CSV生成中",
+        description: "医療保険レセプトCSVを生成しています...",
+      })
+
+      const response = await fetch('/api/monthly-receipts/export/medical-insurance-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ receiptIds: targetReceiptIds }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast({
+            title: "データなし",
+            description: "該当するレセプトがありません",
+            variant: "destructive",
+          })
+          return
+        }
+        const error = await response.json()
+        throw new Error(error.error || "CSV出力に失敗しました")
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `medical_receipts_${filterYear}${String(filterMonth).padStart(2, '0')}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      // スキップされたレセプトがある場合は警告を表示
+      const skippedReceiptsHeader = response.headers.get('X-Skipped-Receipts')
+      if (skippedReceiptsHeader) {
+        const skippedCount = skippedReceiptsHeader.split(',').length
+        toast({
+          title: "ダウンロード完了",
+          description: `CSVファイルをダウンロードしました（${skippedCount}件のレセプトはデータ不足のためスキップされました）`,
+        })
+      } else {
+        toast({
+          title: "ダウンロード完了",
+          description: "CSVファイルをダウンロードしました",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "CSV出力に失敗しました",
+        variant: "destructive",
+      })
+    }
+  }
+
   // PDF生成関数
   const handleDownloadPDF = async (receiptId: string) => {
     try {
@@ -500,10 +576,25 @@ export default function MonthlyReceiptsManagement() {
       {/* Receipts Table */}
       <Card>
         <CardHeader>
-          <CardTitle>レセプト一覧</CardTitle>
-          <CardDescription>
-            {receipts.length}件のレセプト
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>レセプト一覧</CardTitle>
+              <CardDescription>
+                {receipts.length}件のレセプト
+              </CardDescription>
+            </div>
+            {filterInsuranceType === 'medical' && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleDownloadMedicalInsuranceBatchCSV}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                医療保険レセプトデータ出力
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

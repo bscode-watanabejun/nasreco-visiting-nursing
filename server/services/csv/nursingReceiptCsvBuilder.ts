@@ -5,7 +5,7 @@
  */
 
 import { buildCsvLine, buildCsvFile } from './csvUtils';
-import type { ReceiptCsvData } from './types';
+import type { ReceiptCsvData, MedicalInsuranceReceiptCsvData } from './types';
 import { determineReceiptTypeCode, determineBurdenClassificationCode, determineInstructionTypeCode } from './receiptClassification';
 
 /**
@@ -28,6 +28,7 @@ export class NursingReceiptCsvBuilder {
   private lines: string[];
   private instructionTypeCodeCache: string = '01';  // HJレコードで設定した指示区分をKAレコードで再利用
   private burdenClassificationCodeCache: string = '0';  // REレコードで設定した負担区分（別表22）
+  private currentReceiptNumber: number = 1;  // 複数レセプト対応時のレセプト番号管理
 
   constructor() {
     this.lines = [];
@@ -167,9 +168,11 @@ export class NursingReceiptCsvBuilder {
   /**
    * 3. RE: レセプト共通レコード
    */
-  private addRERecord(data: ReceiptCsvData): void {
+  private addRERecord(data: ReceiptCsvData, receiptNumber?: number): void {
     // レセプト番号 (6桁連番)
-    const receiptNumber = String(1).padStart(6, '0');
+    const receiptNum = receiptNumber !== undefined 
+      ? String(receiptNumber).padStart(6, '0')
+      : String(1).padStart(6, '0');
 
     // Phase 3: レセプト種別コードを動的判定（4桁コードをそのまま使用）
     const receiptType = determineReceiptTypeCode(
@@ -213,7 +216,7 @@ export class NursingReceiptCsvBuilder {
 
     const fields = [
       'RE',                                   // レコード識別
-      receiptNumber,                          // レセプト番号
+      receiptNum,                             // レセプト番号
       receiptType,                            // レセプト種別 (Phase 3: 動的判定)
       billingYearMonth,                       // 請求年月
       kanjiName,                              // 氏名(漢字)
@@ -731,6 +734,78 @@ export class NursingReceiptCsvBuilder {
 
     this.lines.push(buildCsvLine(fields));
   }
+
+  /**
+   * 複数レセプトを1ファイルにまとめてCSV生成
+   */
+  public async buildMultiple(data: MedicalInsuranceReceiptCsvData): Promise<Buffer> {
+    this.lines = [];
+    this.currentReceiptNumber = 1;
+
+    if (data.receipts.length === 0) {
+      throw new Error('レセプトデータがありません');
+    }
+
+    // 1. HM: 訪問看護ステーション情報レコード（1回のみ、最初のレセプトの施設情報を使用）
+    const firstReceipt = data.receipts[0];
+    this.addHMRecord(firstReceipt);
+
+    // 2. GO: 訪問看護療養費請求書レコード（1回のみ）
+    this.addGORecord();
+
+    // 3. 各レセプト（利用者）ごとに処理
+    for (const receiptData of data.receipts) {
+      // RE: レセプト共通レコード
+      this.addRERecord(receiptData, this.currentReceiptNumber);
+
+      // HO: 保険者レコード
+      this.addHORecord(receiptData);
+
+      // SN: 資格確認レコード（複数出力対応）
+      this.addSNRecords(receiptData);
+
+      // JD: 受診日等レコード（複数出力対応）
+      this.addJDRecords(receiptData);
+
+      // MF: 窓口負担額レコード
+      this.addMFRecord(receiptData);
+
+      // IH: 医療機関・保険医情報レコード
+      this.addIHRecord(receiptData);
+
+      // HJ: 訪問看護指示レコード
+      this.addHJRecord(receiptData);
+
+      // JS: 心身の状態レコード
+      this.addJSRecord(receiptData);
+
+      // SY: 傷病名レコード
+      this.addSYRecord(receiptData);
+
+      // RJ: 利用者情報レコード
+      this.addRJRecord(receiptData);
+
+      // KA: 訪問看護療養費レコード (複数)
+      // 13.1 基本訪問記録のKAレコード
+      const sortedRecords = this.sortRecordsByDateAndTime(receiptData.nursingRecords);
+      
+      for (const record of sortedRecords) {
+        const visitOrder = this.getVisitOrderForDate(sortedRecords, record);
+        this.addKARecord(receiptData, record, visitOrder);
+      }
+
+      // 13.2 加算のKAレコード（サービスコード選択済みのもののみ）
+      for (const bonus of receiptData.bonusHistory) {
+        this.addBonusKARecord(receiptData, bonus);
+      }
+
+      // レセプト番号をインクリメント
+      this.currentReceiptNumber++;
+    }
+
+    // Shift_JISエンコードして返す
+    return buildCsvFile(this.lines);
+  }
 }
 
 /**
@@ -739,4 +814,12 @@ export class NursingReceiptCsvBuilder {
 export async function generateNursingReceiptCsv(data: ReceiptCsvData): Promise<Buffer> {
   const builder = new NursingReceiptCsvBuilder();
   return builder.build(data);
+}
+
+/**
+ * 複数の訪問看護療養費CSVを1ファイルにまとめて生成する便利関数
+ */
+export async function generateMultipleNursingReceiptCsv(data: MedicalInsuranceReceiptCsvData): Promise<Buffer> {
+  const builder = new NursingReceiptCsvBuilder();
+  return builder.buildMultiple(data);
 }

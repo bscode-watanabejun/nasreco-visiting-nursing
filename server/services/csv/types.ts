@@ -306,3 +306,24 @@ export interface CareInsuranceReceiptCsvData {
   // 利用者データ（複数）
   patients: CareInsurancePatientData[];
 }
+
+/**
+ * 医療保険レセプトCSV生成に必要なデータ（複数利用者対応）
+ */
+export interface MedicalInsuranceReceiptCsvData {
+  // 施設情報
+  facility: {
+    facilityCode: string; // 7桁
+    prefectureCode: string; // 2桁
+    name: string;
+    address: string;
+    phone: string;
+  };
+
+  // 対象期間
+  targetYear: number;
+  targetMonth: number;
+
+  // レセプトデータ（複数）
+  receipts: ReceiptCsvData[];
+}
