@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -82,7 +82,7 @@ interface MonthlyReceipt {
 export default function MonthlyReceiptsManagement() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const [, setLocation] = useLocation()
+  const [location, setLocation] = useLocation()
   const basePath = useBasePath()
 
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
@@ -90,12 +90,47 @@ export default function MonthlyReceiptsManagement() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [selectedInsuranceType, setSelectedInsuranceType] = useState<'medical' | 'care'>('medical')
 
+  // URLクエリパラメータからフィルタ条件を読み込む
+  const getInitialFilters = () => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const currentYear = new Date().getFullYear()
+    const currentMonth = new Date().getMonth() + 1
+    
+    return {
+      year: urlParams.get('year') || currentYear.toString(),
+      month: urlParams.get('month') || currentMonth.toString(),
+      insuranceType: urlParams.get('insuranceType') || 'medical',
+      status: urlParams.get('status') || 'all',
+      patientId: urlParams.get('patientId') || 'all',
+    }
+  }
+
+  const initialFilters = getInitialFilters()
+
   // Filters
-  const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString())
-  const [filterMonth, setFilterMonth] = useState<string>((new Date().getMonth() + 1).toString())
-  const [filterInsuranceType, setFilterInsuranceType] = useState<string>('medical')
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [filterPatientId, setFilterPatientId] = useState<string>('all')
+  const [filterYear, setFilterYear] = useState<string>(initialFilters.year)
+  const [filterMonth, setFilterMonth] = useState<string>(initialFilters.month)
+  const [filterInsuranceType, setFilterInsuranceType] = useState<string>(initialFilters.insuranceType)
+  const [filterStatus, setFilterStatus] = useState<string>(initialFilters.status)
+  const [filterPatientId, setFilterPatientId] = useState<string>(initialFilters.patientId)
+
+  // フィルタ条件が変更されたらURLクエリパラメータを更新
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (filterYear !== 'all') params.set('year', filterYear)
+    if (filterMonth !== 'all') params.set('month', filterMonth)
+    params.set('insuranceType', filterInsuranceType)
+    if (filterStatus !== 'all') params.set('status', filterStatus)
+    if (filterPatientId !== 'all') params.set('patientId', filterPatientId)
+
+    const newSearch = params.toString()
+    const newUrl = `${location.split('?')[0]}${newSearch ? `?${newSearch}` : ''}`
+    
+    // URLを更新（ページリロードはしない）
+    if (window.location.search !== `?${newSearch}`) {
+      window.history.replaceState({}, '', newUrl)
+    }
+  }, [filterYear, filterMonth, filterInsuranceType, filterStatus, filterPatientId, location])
 
   // Fetch patients for filter dropdown
   const { data: patientsData } = useQuery<{ data: Patient[] } | Patient[]>({
@@ -400,6 +435,81 @@ export default function MonthlyReceiptsManagement() {
     }
   }
 
+  const handleDownloadCareInsuranceBatchCSV = async () => {
+    // 表示されているレセプトのうち、確定済みかつ介護保険のレセプトIDを収集
+    const targetReceiptIds = receipts
+      .filter(receipt => receipt.isConfirmed && receipt.insuranceType === 'care')
+      .map(receipt => receipt.id)
+
+    if (targetReceiptIds.length === 0) {
+      toast({
+        title: "エラー",
+        description: "出力可能な介護保険レセプトがありません（確定済みの介護保険レセプトが必要です）",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      toast({
+        title: "CSV生成中",
+        description: "介護保険レセプトCSVを生成しています...",
+      })
+
+      const response = await fetch('/api/monthly-receipts/export/care-insurance-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ receiptIds: targetReceiptIds }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast({
+            title: "データなし",
+            description: "該当するレセプトがありません",
+            variant: "destructive",
+          })
+          return
+        }
+        const error = await response.json()
+        throw new Error(error.error || "CSV出力に失敗しました")
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `care_receipts_${filterYear}${String(filterMonth).padStart(2, '0')}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      // スキップされたレセプトがある場合は警告を表示
+      const skippedReceiptsHeader = response.headers.get('X-Skipped-Receipts')
+      if (skippedReceiptsHeader) {
+        const skippedCount = skippedReceiptsHeader.split(',').length
+        toast({
+          title: "ダウンロード完了",
+          description: `CSVファイルをダウンロードしました（${skippedCount}件のレセプトはデータ不足のためスキップされました）`,
+        })
+      } else {
+        toast({
+          title: "ダウンロード完了",
+          description: "CSVファイルをダウンロードしました",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "CSV出力に失敗しました",
+        variant: "destructive",
+      })
+    }
+  }
+
   // PDF生成関数
   const handleDownloadPDF = async (receiptId: string) => {
     try {
@@ -561,15 +671,6 @@ export default function MonthlyReceiptsManagement() {
               </Select>
             </div>
           </div>
-
-          {filterInsuranceType === 'care' && (
-            <div className="flex gap-2 mt-4">
-              <Button variant="outline" size="sm" onClick={() => handleDownloadCSV('care')} className="gap-2">
-                <Download className="w-4 h-4" />
-                介護保険レセプトCSV出力
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -592,6 +693,17 @@ export default function MonthlyReceiptsManagement() {
               >
                 <FileSpreadsheet className="w-4 h-4" />
                 医療保険レセプトデータ出力
+              </Button>
+            )}
+            {filterInsuranceType === 'care' && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleDownloadCareInsuranceBatchCSV}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                介護保険レセプトデータ出力
               </Button>
             )}
           </div>
@@ -681,7 +793,12 @@ export default function MonthlyReceiptsManagement() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setLocation(`${basePath}/monthly-receipts/${receipt.id}`)}
+                                onClick={() => {
+                                  // 現在のクエリパラメータを保持して詳細画面に遷移
+                                  const currentParams = new URLSearchParams(window.location.search)
+                                  const queryString = currentParams.toString()
+                                  setLocation(`${basePath}/monthly-receipts/${receipt.id}${queryString ? `?${queryString}` : ''}`)
+                                }}
                                 className="gap-1"
                               >
                                 <Eye className="w-3 h-3" />
@@ -704,7 +821,12 @@ export default function MonthlyReceiptsManagement() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setLocation(`${basePath}/monthly-receipts/${receipt.id}`)}
+                                onClick={() => {
+                                  // 現在のクエリパラメータを保持して詳細画面に遷移
+                                  const currentParams = new URLSearchParams(window.location.search)
+                                  const queryString = currentParams.toString()
+                                  setLocation(`${basePath}/monthly-receipts/${receipt.id}${queryString ? `?${queryString}` : ''}`)
+                                }}
                                 className="gap-1"
                               >
                                 <Eye className="w-3 h-3" />

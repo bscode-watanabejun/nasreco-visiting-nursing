@@ -9832,6 +9832,361 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export care insurance receipts to CSV (Batch - Multiple Receipts)
+  app.post("/api/monthly-receipts/export/care-insurance-batch", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { receiptIds } = req.body;
+
+      if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
+        return res.status(400).json({ error: "レセプトIDのリストが必要です" });
+      }
+
+      // Get confirmed care insurance receipts for the given IDs
+      const receipts = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .where(and(
+          eq(monthlyReceipts.facilityId, facilityId),
+          eq(monthlyReceipts.insuranceType, 'care'),
+          eq(monthlyReceipts.isConfirmed, true),
+          inArray(monthlyReceipts.id, receiptIds)
+        ))
+        .orderBy(patients.patientNumber);
+
+      if (receipts.length === 0) {
+        return res.status(404).json({ error: "該当する確定済みの介護保険レセプトがありません" });
+      }
+
+      // Get facility information
+      const facility = await db.query.facilities.findFirst({
+        where: eq(facilities.id, facilityId),
+      });
+
+      if (!facility) {
+        return res.status(404).json({ error: "施設情報が見つかりません" });
+      }
+
+      // 事業所番号を10桁に拡張（7桁のfacilityCodeを10桁にパディング）
+      const facilityCode10 = facility.facilityCode 
+        ? facility.facilityCode.padEnd(10, '0').substring(0, 10)
+        : '0000000000';
+
+      // サービスコードを6桁から2桁+4桁に分解する関数
+      const processServiceCode = (serviceCode: string | null): { typeCode: string; itemCode: string } => {
+        if (!serviceCode) {
+          return { typeCode: '13', itemCode: '0000' }; // デフォルト値
+        }
+        // 介護保険のサービスコードは6桁（先頭2桁がサービス種類コード、後4桁がサービス項目コード）
+        if (serviceCode.length === 6) {
+          return {
+            typeCode: serviceCode.substring(0, 2),
+            itemCode: serviceCode.substring(2, 6),
+          };
+        }
+        // 9桁の場合は先頭2桁と次の4桁を使用（医療保険との互換性）
+        if (serviceCode.length >= 6) {
+          return {
+            typeCode: serviceCode.substring(0, 2),
+            itemCode: serviceCode.substring(2, 6),
+          };
+        }
+        return { typeCode: '13', itemCode: '0000' };
+      };
+
+      // 全利用者のデータを準備
+      const patientDataList: CareInsurancePatientData[] = [];
+      const skippedReceipts: string[] = [];
+
+      for (const receiptItem of receipts) {
+        try {
+          const receipt = receiptItem.receipt;
+          const patient = receiptItem.patient!;
+
+          if (!patient) {
+            skippedReceipts.push(receipt.id);
+            continue;
+          }
+
+          const targetYear = receipt.targetYear;
+          const targetMonth = receipt.targetMonth;
+          const startDate = new Date(targetYear, targetMonth - 1, 1);
+          const endDate = new Date(targetYear, targetMonth, 0);
+
+          // Get insurance card
+          const insuranceCardData = await db.select()
+            .from(insuranceCards)
+            .where(and(
+              eq(insuranceCards.patientId, patient.id),
+              eq(insuranceCards.facilityId, facilityId),
+              eq(insuranceCards.cardType, 'long_term_care')
+            ))
+            .orderBy(desc(insuranceCards.validFrom))
+            .limit(1);
+
+          if (!insuranceCardData[0]) {
+            console.warn(`患者 ${patient.patientNumber} の介護保険証情報が見つかりません。スキップします。`);
+            skippedReceipts.push(receipt.id);
+            continue;
+          }
+
+          const insuranceCard = insuranceCardData[0];
+
+          // 要介護状態区分がない場合はスキップ
+          if (!patient.careLevel) {
+            console.warn(`患者 ${patient.patientNumber} の要介護状態区分が設定されていません。スキップします。`);
+            skippedReceipts.push(receipt.id);
+            continue;
+          }
+
+          // 被保険者番号を10桁にパディング（左側に0を追加）
+          const insuredNumber10 = insuranceCard.insuredNumber.padStart(10, '0').substring(0, 10);
+          
+          // 保険者番号を8桁にパディング（左側に0を追加）
+          const insurerNumber8 = insuranceCard.insurerNumber.padStart(8, '0').substring(0, 8);
+
+          // Get public expense cards
+          const publicExpenseCardsData = await db.select()
+            .from(publicExpenseCards)
+            .where(and(
+              eq(publicExpenseCards.patientId, patient.id),
+              eq(publicExpenseCards.facilityId, facilityId),
+              eq(publicExpenseCards.isActive, true)
+            ))
+            .orderBy(asc(publicExpenseCards.priority));
+
+          // Get service care plan
+          const serviceCarePlanData = await db.select()
+            .from(serviceCarePlans)
+            .where(and(
+              eq(serviceCarePlans.patientId, patient.id),
+              eq(serviceCarePlans.facilityId, facilityId),
+              eq(serviceCarePlans.isActive, true)
+            ))
+            .orderBy(desc(serviceCarePlans.planDate))
+            .limit(1);
+
+          // Get nursing records for the period
+          const relatedRecords = await db.select({
+            record: nursingRecords,
+            serviceCode: nursingServiceCodes,
+          })
+            .from(nursingRecords)
+            .leftJoin(nursingServiceCodes, eq(nursingRecords.serviceCodeId, nursingServiceCodes.id))
+            .where(and(
+              eq(nursingRecords.patientId, patient.id),
+              eq(nursingRecords.facilityId, facilityId),
+              gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+              lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+              eq(nursingRecords.status, 'completed')
+            ))
+            .orderBy(nursingRecords.visitDate);
+
+          // Get bonus calculation history
+          const recordIds = relatedRecords.map(r => r.record.id);
+          let bonusHistory: any[] = [];
+
+          if (recordIds.length > 0) {
+            bonusHistory = await db.select({
+              history: bonusCalculationHistory,
+              bonus: bonusMaster,
+              serviceCode: nursingServiceCodes,
+            })
+              .from(bonusCalculationHistory)
+              .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+              .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
+              .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+          }
+
+          // サービス開始年月日を訪問記録の最初の日付から取得
+          const serviceStartDate = relatedRecords.length > 0 
+            ? relatedRecords[0].record.visitDate 
+            : null;
+
+          // 訪問記録をサービス項目コードごとにグループ化
+          const recordGroups = new Map<string, {
+            serviceCode: string;
+            serviceTypeCode: string;
+            serviceItemCode: string;
+            points: number;
+            visitCount: number;
+            totalPoints: number;
+          }>();
+
+          for (const item of relatedRecords) {
+            const record = item.record;
+            const serviceCode = item.serviceCode?.serviceCode || '';
+            const { typeCode, itemCode } = processServiceCode(serviceCode);
+            const key = `${typeCode}-${itemCode}`;
+
+            if (!recordGroups.has(key)) {
+              recordGroups.set(key, {
+                serviceCode,
+                serviceTypeCode: typeCode,
+                serviceItemCode: itemCode,
+                points: item.serviceCode?.points || 0,
+                visitCount: 0,
+                totalPoints: 0,
+              });
+            }
+
+            const group = recordGroups.get(key)!;
+            group.visitCount++;
+            group.totalPoints += item.serviceCode?.points || 0;
+          }
+
+          // 加算をサービス項目コードごとにグループ化
+          const bonusGroups = new Map<string, {
+            serviceCode: string;
+            serviceTypeCode: string;
+            serviceItemCode: string;
+            points: number;
+            visitCount: number;
+            totalPoints: number;
+          }>();
+
+          for (const item of bonusHistory) {
+            if (!item.bonus || !item.serviceCode) continue;
+            const serviceCode = item.serviceCode.serviceCode;
+            const { typeCode, itemCode } = processServiceCode(serviceCode);
+            const key = `${typeCode}-${itemCode}`;
+
+            if (!bonusGroups.has(key)) {
+              bonusGroups.set(key, {
+                serviceCode,
+                serviceTypeCode: typeCode,
+                serviceItemCode: itemCode,
+                points: item.serviceCode.points,
+                visitCount: 0,
+                totalPoints: 0,
+              });
+            }
+
+            const group = bonusGroups.get(key)!;
+            group.visitCount++;
+            group.totalPoints += item.serviceCode.points;
+          }
+
+          patientDataList.push({
+            receipt: {
+              id: receipt.id,
+              targetYear: receipt.targetYear,
+              targetMonth: receipt.targetMonth,
+              visitCount: receipt.visitCount,
+              totalPoints: receipt.totalPoints,
+              totalAmount: receipt.totalAmount,
+            },
+            patient: {
+              id: patient.id,
+              patientNumber: patient.patientNumber,
+              lastName: patient.lastName,
+              firstName: patient.firstName,
+              kanaName: patient.kanaName,
+              dateOfBirth: patient.dateOfBirth,
+              gender: patient.gender,
+              careLevel: patient.careLevel,
+            },
+            insuranceCard: {
+              insurerNumber: insurerNumber8,
+              insuredNumber: insuredNumber10,
+              copaymentRate: insuranceCard.copaymentRate,
+              certificationDate: insuranceCard.certificationDate,
+              validFrom: insuranceCard.validFrom,
+              validUntil: insuranceCard.validUntil,
+            },
+            publicExpenses: publicExpenseCardsData.map(pe => ({
+              priority: pe.priority,
+              legalCategoryNumber: pe.legalCategoryNumber,
+              beneficiaryNumber: pe.beneficiaryNumber,
+              recipientNumber: pe.recipientNumber,
+              validFrom: pe.validFrom,
+              validUntil: pe.validUntil,
+            })),
+            serviceCarePlan: {
+              planDate: serviceCarePlanData[0]?.planDate || '',
+              certificationPeriodStart: serviceCarePlanData[0]?.certificationPeriodStart || null,
+              certificationPeriodEnd: serviceCarePlanData[0]?.certificationPeriodEnd || null,
+              planPeriodStart: serviceStartDate || null,
+              planPeriodEnd: null,
+              creatorType: '1' as const,
+              careManagerOfficeNumber: '0000000000',
+            },
+            nursingRecords: Array.from(recordGroups.values()).map(group => ({
+              id: '',
+              visitDate: '',
+              serviceCode: group.serviceCode,
+              serviceTypeCode: group.serviceTypeCode,
+              serviceItemCode: group.serviceItemCode,
+              points: group.points,
+              visitCount: group.visitCount,
+              totalPoints: group.totalPoints,
+            })),
+            bonusHistory: Array.from(bonusGroups.values()).map(group => ({
+              id: '',
+              nursingRecordId: '',
+              visitDate: '',
+              bonusCode: '',
+              bonusName: '',
+              serviceCode: group.serviceCode,
+              serviceTypeCode: group.serviceTypeCode,
+              serviceItemCode: group.serviceItemCode,
+              points: group.points,
+              visitCount: group.visitCount,
+              totalPoints: group.totalPoints,
+            })),
+          });
+        } catch (error) {
+          console.error(`Error processing receipt ${receiptItem.receipt.id}:`, error);
+          skippedReceipts.push(receiptItem.receipt.id);
+        }
+      }
+
+      if (patientDataList.length === 0) {
+        return res.status(400).json({ 
+          error: "CSV出力可能なレセプトがありません",
+          skippedReceipts 
+        });
+      }
+
+      // 最初のレセプトの対象年月を使用
+      const firstReceipt = patientDataList[0];
+      const csvData: CareInsuranceReceiptCsvData = {
+        facility: {
+          facilityCode: facilityCode10,
+          prefectureCode: facility.prefectureCode || '00',
+          name: facility.name,
+        },
+        targetYear: firstReceipt.receipt.targetYear,
+        targetMonth: firstReceipt.receipt.targetMonth,
+        patients: patientDataList,
+      };
+
+      // CSVを生成
+      const builder = new CareInsuranceReceiptCsvBuilder();
+      const csvBuffer = await builder.build(csvData);
+
+      // ファイル名を生成
+      const fileName = `care_receipts_${csvData.targetYear}${String(csvData.targetMonth).padStart(2, '0')}.csv`;
+
+      // レスポンスヘッダー設定
+      res.setHeader('Content-Type', 'text/csv; charset=Shift_JIS');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      
+      // スキップされたレセプトがある場合は警告ヘッダーを追加
+      if (skippedReceipts.length > 0) {
+        res.setHeader('X-Skipped-Receipts', skippedReceipts.join(','));
+      }
+
+      res.send(csvBuffer);
+    } catch (error) {
+      console.error("Error exporting batch care insurance receipt CSV:", error);
+      res.status(500).json({ error: "CSV出力に失敗しました" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

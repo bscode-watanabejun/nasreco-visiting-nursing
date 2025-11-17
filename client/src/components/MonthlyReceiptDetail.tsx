@@ -488,7 +488,12 @@ export default function MonthlyReceiptDetail() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setLocation(`${basePath}/monthly-receipts`)}
+              onClick={() => {
+                // URLクエリパラメータを保持して一覧画面に戻る
+                const currentParams = new URLSearchParams(window.location.search)
+                const queryString = currentParams.toString()
+                setLocation(`${basePath}/monthly-receipts${queryString ? `?${queryString}` : ''}`)
+              }}
               className="gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -522,15 +527,17 @@ export default function MonthlyReceiptDetail() {
             <Download className="w-4 h-4" />
             PDF出力
           </Button>
-          <Button
-            variant="outline"
-            size="default"
-            onClick={handleDownloadCSV}
-            className="gap-2"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            医療保険レセプトデータ出力
-          </Button>
+          {receipt.insuranceType === 'medical' && (
+            <Button
+              variant="outline"
+              size="default"
+              onClick={handleDownloadCSV}
+              className="gap-2"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              医療保険レセプトデータ出力
+            </Button>
+          )}
           <Button
             variant="outline"
             size="default"
