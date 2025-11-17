@@ -735,18 +735,6 @@ export function NursingRecords() {
 
   // Handle URL parameters for creating/editing from Dashboard
   useEffect(() => {
-    // デバッグログ: スケジュール連携の状態を確認
-    if (scheduleIdFromUrl && modeFromUrl === 'create') {
-      console.log(`[NursingRecords] スケジュール連携チェック:`, {
-        scheduleIdFromUrl,
-        scheduleFromUrl: scheduleFromUrl ? '取得済み' : '未取得',
-        scheduleFromUrlError: scheduleFromUrlError ? 'エラーあり' : 'エラーなし',
-        modeFromUrl,
-        formDataSelectedScheduleId: formData.selectedScheduleId,
-        conditionMet: !!(scheduleIdFromUrl && scheduleFromUrl && modeFromUrl === 'create')
-      })
-    }
-
     if (scheduleIdFromUrl && scheduleFromUrl && modeFromUrl === 'create') {
       // Create new record from schedule (with schedule data)
       const schedule = scheduleFromUrl
@@ -755,8 +743,6 @@ export function NursingRecords() {
       // Get local date from UTC timestamp to avoid timezone offset issues
       const scheduleDate = schedule.scheduledDate ? new Date(schedule.scheduledDate) : new Date()
       const visitDate = `${scheduleDate.getFullYear()}-${String(scheduleDate.getMonth() + 1).padStart(2, '0')}-${String(scheduleDate.getDate()).padStart(2, '0')}`
-
-      console.log(`[NursingRecords] スケジュール連携成功: scheduleId=${scheduleIdFromUrl}`)
 
       setCameFromUrl(true) // Mark that we came from URL
       setIsCreating(true)
@@ -770,7 +756,6 @@ export function NursingRecords() {
         emergencyVisitReason: schedule.visitType === '緊急訪問' ? '緊急訪問のため' : '',
         selectedScheduleId: scheduleIdFromUrl
       }
-      console.log(`[NursingRecords] formData設定: selectedScheduleId=${newFormData.selectedScheduleId}`)
       
       // スケジュール連携時は、prevVisitDateRefとprevPatientIdRefを更新して、
       // 後続のuseEffectでselectedScheduleIdがクリアされないようにする
