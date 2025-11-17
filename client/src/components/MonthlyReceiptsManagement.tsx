@@ -486,16 +486,14 @@ export default function MonthlyReceiptsManagement() {
             </div>
           </div>
 
-          <div className="flex gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={() => handleDownloadCSV('care')} className="gap-2">
-              <Download className="w-4 h-4" />
-              介護保険CSV出力
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleDownloadCSV('medical')} className="gap-2">
-              <Download className="w-4 h-4" />
-              医療保険CSV出力
-            </Button>
-          </div>
+          {filterInsuranceType === 'care' && (
+            <div className="flex gap-2 mt-4">
+              <Button variant="outline" size="sm" onClick={() => handleDownloadCSV('care')} className="gap-2">
+                <Download className="w-4 h-4" />
+                介護保険レセプトCSV出力
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

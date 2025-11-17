@@ -202,3 +202,107 @@ export interface GORecordData {
   totalPoints: number; // 合計点数
   totalAmount: number; // 合計金額
 }
+
+/**
+ * 利用者1人分のデータ
+ */
+export interface CareInsurancePatientData {
+  // レセプト基本情報
+  receipt: {
+    id: string;
+    targetYear: number;
+    targetMonth: number;
+    visitCount: number;
+    totalPoints: number;
+    totalAmount: number;
+  };
+
+  // 患者情報
+  patient: {
+    id: string;
+    patientNumber: string;
+    lastName: string;
+    firstName: string;
+    kanaName: string | null; // 全角カタカナ
+    dateOfBirth: Date | string;
+    gender: 'male' | 'female' | 'other';
+    careLevel: 'support1' | 'support2' | 'care1' | 'care2' | 'care3' | 'care4' | 'care5' | null;
+  };
+
+  // 保険証情報
+  insuranceCard: {
+    insurerNumber: string; // 保険者番号（8桁）
+    insuredNumber: string; // 被保険者番号（10桁）
+    copaymentRate: '10' | '20' | '30' | null; // 負担割合
+    certificationDate: Date | string | null; // 認定日
+    validFrom: Date | string;
+    validUntil: Date | string | null;
+  };
+
+  // 公費情報（優先順位1-3）
+  publicExpenses: Array<{
+    priority: number; // 1=第一公費, 2=第二公費, 3=第三公費
+    legalCategoryNumber: string; // 法別番号
+    beneficiaryNumber: string; // 負担者番号（8桁）
+    recipientNumber: string | null; // 受給者番号（7桁、医療観察法は不要）
+    validFrom: Date | string;
+    validUntil: Date | string | null;
+  }>;
+
+  // 居宅サービス計画情報
+  serviceCarePlan: {
+    planDate: Date | string;
+    certificationPeriodStart: Date | string | null; // 認定有効期間開始
+    certificationPeriodEnd: Date | string | null; // 認定有効期間終了
+    planPeriodStart: Date | string | null; // サービス開始年月日
+    planPeriodEnd: Date | string | null; // サービス終了年月日
+    creatorType: '1' | '2' | '3' | null; // 作成区分コード（1=居宅介護支援事業所, 2=自己作成, 3=介護予防支援事業所）
+    careManagerOfficeNumber: string | null; // 居宅介護支援事業所番号（10桁、仮値）
+  };
+
+  // 訪問記録一覧（サービス項目ごとにグループ化）
+  nursingRecords: Array<{
+    id: string;
+    visitDate: Date | string;
+    serviceCode: string; // 6桁のサービスコード（介護保険）
+    serviceTypeCode: string; // サービス種類コード（2桁、先頭2桁）
+    serviceItemCode: string; // サービス項目コード（4桁、後4桁）
+    points: number; // 単位数
+    visitCount: number; // 回数
+    totalPoints: number; // サービス単位数（単位数 × 回数）
+  }>;
+
+  // 加算履歴（サービスコード選択済みのもののみ）
+  bonusHistory: Array<{
+    id: string;
+    nursingRecordId: string;
+    visitDate: Date | string;
+    bonusCode: string;
+    bonusName: string;
+    serviceCode: string; // 6桁のサービスコード
+    serviceTypeCode: string; // サービス種類コード（2桁）
+    serviceItemCode: string; // サービス項目コード（4桁）
+    points: number; // 単位数
+    visitCount: number; // 回数
+    totalPoints: number; // サービス単位数
+  }>;
+}
+
+/**
+ * 介護保険レセプトCSV生成に必要なデータ（複数利用者対応）
+ */
+export interface CareInsuranceReceiptCsvData {
+  // 施設情報
+  facility: {
+    facilityCode: string; // 10桁の事業所番号（現在は7桁のfacilityCodeを10桁に拡張）
+    prefectureCode: string; // 2桁
+    name: string;
+  };
+
+  // 対象期間
+  targetYear: number;
+  targetMonth: number;
+
+  // 利用者データ（複数）
+  patients: CareInsurancePatientData[];
+}
