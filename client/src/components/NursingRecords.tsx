@@ -597,13 +597,26 @@ export function NursingRecords() {
   const recordIdFromUrl = urlParams.get('recordId')
   const returnTo = urlParams.get('returnTo')
 
-  const { data: scheduleFromUrl } = useQuery({
+  const { data: scheduleFromUrl, error: scheduleFromUrlError } = useQuery({
     queryKey: ["schedule", scheduleIdFromUrl],
     queryFn: async () => {
       if (!scheduleIdFromUrl) return null
-      const response = await fetch(`/api/schedules/${scheduleIdFromUrl}`)
-      if (!response.ok) return null
-      return response.json()
+      try {
+        const response = await fetch(`/api/schedules/${scheduleIdFromUrl}`)
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+          console.error(`[NursingRecords] スケジュール取得エラー (scheduleId: ${scheduleIdFromUrl}):`, {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData.error || errorData.message || 'Unknown error'
+          })
+          return null
+        }
+        return response.json()
+      } catch (error) {
+        console.error(`[NursingRecords] スケジュール取得例外 (scheduleId: ${scheduleIdFromUrl}):`, error)
+        return null
+      }
     },
     enabled: !!scheduleIdFromUrl,
   })
@@ -722,6 +735,16 @@ export function NursingRecords() {
 
   // Handle URL parameters for creating/editing from Dashboard
   useEffect(() => {
+    // デバッグログ: スケジュール連携の状態を確認
+    if (scheduleIdFromUrl && modeFromUrl === 'create') {
+      console.log(`[NursingRecords] スケジュール連携チェック:`, {
+        scheduleIdFromUrl,
+        scheduleFromUrl: scheduleFromUrl ? '取得済み' : '未取得',
+        scheduleFromUrlError: scheduleFromUrlError ? 'エラーあり' : 'エラーなし',
+        modeFromUrl
+      })
+    }
+
     if (scheduleIdFromUrl && scheduleFromUrl && modeFromUrl === 'create') {
       // Create new record from schedule (with schedule data)
       const schedule = scheduleFromUrl
@@ -730,6 +753,8 @@ export function NursingRecords() {
       // Get local date from UTC timestamp to avoid timezone offset issues
       const scheduleDate = schedule.scheduledDate ? new Date(schedule.scheduledDate) : new Date()
       const visitDate = `${scheduleDate.getFullYear()}-${String(scheduleDate.getMonth() + 1).padStart(2, '0')}-${String(scheduleDate.getDate()).padStart(2, '0')}`
+
+      console.log(`[NursingRecords] スケジュール連携成功: scheduleId=${scheduleIdFromUrl}`)
 
       setCameFromUrl(true) // Mark that we came from URL
       setIsCreating(true)
@@ -758,7 +783,7 @@ export function NursingRecords() {
       // Don't clear URL parameters - keep mode=create to maintain state
       // The history will be cleaned up when user saves or cancels
     }
-  }, [scheduleIdFromUrl, scheduleFromUrl, modeFromUrl, patientIdFromUrl, basePath])
+  }, [scheduleIdFromUrl, scheduleFromUrl, scheduleFromUrlError, modeFromUrl, patientIdFromUrl, basePath])
 
   // Handle recordId from URL to open record detail view
   useEffect(() => {
