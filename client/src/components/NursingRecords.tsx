@@ -741,7 +741,9 @@ export function NursingRecords() {
         scheduleIdFromUrl,
         scheduleFromUrl: scheduleFromUrl ? '取得済み' : '未取得',
         scheduleFromUrlError: scheduleFromUrlError ? 'エラーあり' : 'エラーなし',
-        modeFromUrl
+        modeFromUrl,
+        formDataSelectedScheduleId: formData.selectedScheduleId,
+        conditionMet: !!(scheduleIdFromUrl && scheduleFromUrl && modeFromUrl === 'create')
       })
     }
 
@@ -759,7 +761,7 @@ export function NursingRecords() {
       setCameFromUrl(true) // Mark that we came from URL
       setIsCreating(true)
       setSelectedRecord(null)
-      setFormData({
+      const newFormData = {
         ...getInitialFormData(),
         patientId: patientIdFromUrl || schedule.patientId || '',
         visitDate: visitDate, // Set visit date from schedule
@@ -767,7 +769,15 @@ export function NursingRecords() {
         actualEndTime: endTime.toTimeString().slice(0, 5),
         emergencyVisitReason: schedule.visitType === '緊急訪問' ? '緊急訪問のため' : '',
         selectedScheduleId: scheduleIdFromUrl
-      })
+      }
+      console.log(`[NursingRecords] formData設定: selectedScheduleId=${newFormData.selectedScheduleId}`)
+      
+      // スケジュール連携時は、prevVisitDateRefとprevPatientIdRefを更新して、
+      // 後続のuseEffectでselectedScheduleIdがクリアされないようにする
+      prevVisitDateRef.current = newFormData.visitDate
+      prevPatientIdRef.current = newFormData.patientId
+      
+      setFormData(newFormData)
       setSaveError(null)
 
       // Don't clear URL parameters - keep mode=create to maintain state
