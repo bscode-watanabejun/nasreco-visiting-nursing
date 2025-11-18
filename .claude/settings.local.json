@@ -5,7 +5,8 @@
       "Bash(NODE_PATH=/home/runner/workspace/node_modules node:*)",
       "Bash(while read f)",
       "Bash(do cp \"$f\" kaigo_receipt_spec.docx)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(NODE_PATH=/home/runner/workspace/node_modules npx tsx:*)"
     ],
     "deny": [],
     "ask": []
