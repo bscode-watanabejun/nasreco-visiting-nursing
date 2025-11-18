@@ -39,6 +39,7 @@ interface FormData {
   ageCategory: 'preschool' | 'general' | 'elderly' | ''
   elderlyRecipientCategory: 'general_low' | 'seventy' | ''
   reviewOrganizationCode: '1' | '2' | ''
+  partialBurdenCategory: '1' | '3' | undefined
 }
 
 const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: string): FormData => ({
@@ -57,6 +58,9 @@ const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: stri
   ageCategory: card?.ageCategory || '',
   elderlyRecipientCategory: card?.elderlyRecipientCategory || '',
   reviewOrganizationCode: (card?.reviewOrganizationCode as '1' | '2') || '',
+  partialBurdenCategory: (card?.partialBurdenCategory === '1' || card?.partialBurdenCategory === '3') 
+    ? card.partialBurdenCategory 
+    : undefined,
 })
 
 // 年齢区分を計算する関数
@@ -237,6 +241,10 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         if (formData.ageCategory) multipartData.append('ageCategory', formData.ageCategory)
         if (formData.elderlyRecipientCategory) multipartData.append('elderlyRecipientCategory', formData.elderlyRecipientCategory)
         if (formData.reviewOrganizationCode) multipartData.append('reviewOrganizationCode', formData.reviewOrganizationCode)
+        // 一部負担金区分は表示されている場合のみ送信（該当なしの場合はnullを送信）
+        if (formData.cardType === 'medical' && formData.elderlyRecipientCategory === 'general_low') {
+          multipartData.append('partialBurdenCategory', formData.partialBurdenCategory || '')
+        }
         multipartData.append('file', formData.file)
 
         response = await fetch(url, {
@@ -261,6 +269,10 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
           ...(formData.ageCategory && { ageCategory: formData.ageCategory }),
           ...(formData.elderlyRecipientCategory && { elderlyRecipientCategory: formData.elderlyRecipientCategory }),
           ...(formData.reviewOrganizationCode && { reviewOrganizationCode: formData.reviewOrganizationCode }),
+          // 一部負担金区分は表示されている場合のみ送信（該当なしの場合はnullを送信）
+          ...(formData.cardType === 'medical' && formData.elderlyRecipientCategory === 'general_low' && {
+            partialBurdenCategory: formData.partialBurdenCategory || null
+          }),
         }
 
         response = await fetch(url, {
@@ -531,6 +543,33 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
               </Select>
               <p className="text-xs text-muted-foreground">
                 70-74歳の高齢受給者の負担区分を選択してください
+              </p>
+            </div>
+          )}
+
+          {/* Partial Burden Category (70歳以上、低所得者の場合のみ、医療保険のみ) */}
+          {formData.cardType === 'medical' && patientAge !== null && patientAge >= 70 && formData.elderlyRecipientCategory === 'general_low' && (
+            <div className="space-y-2">
+              <Label htmlFor="partialBurdenCategory">
+                一部負担金区分
+              </Label>
+              <Select
+                value={formData.partialBurdenCategory || 'none'}
+                onValueChange={(value: '1' | '3' | 'none') =>
+                  setFormData(prev => ({ ...prev, partialBurdenCategory: value === 'none' ? undefined : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="該当なし" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">該当なし</SelectItem>
+                  <SelectItem value="1">適用区分II（コード1）</SelectItem>
+                  <SelectItem value="3">適用区分I（コード3）</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                70歳以上の低所得者で、特定医療費受給者証・特定疾患医療受給者証・限度額適用・標準負担額減額認定証が提示された場合のみ記録します
               </p>
             </div>
           )}

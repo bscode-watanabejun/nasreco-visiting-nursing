@@ -197,8 +197,17 @@ export class NursingReceiptCsvBuilder {
     const birthDate = data.patient.dateOfBirth ? formatDateToYYYYMMDD(data.patient.dateOfBirth) : '';
 
     // 給付割合（国民健康保険の場合は記録、その他は省略）
-    // TODO: 将来的に国民健康保険の給付割合データを保持する場合は実装
-    const benefitRatio = '';
+    // 保険者番号から国保かどうかを判定（審査支払機関コードが'2'の場合）
+    const reviewOrgCode = this.determineReviewOrganizationCode(data);
+    let benefitRatio = '';
+    if (reviewOrgCode === '2') {
+      // 国保の場合、負担割合から給付割合を計算（100 - 負担割合）
+      const copaymentRate = data.insuranceCard.copaymentRate 
+        ? parseInt(data.insuranceCard.copaymentRate) 
+        : 30; // デフォルト3割
+      const benefitRate = 100 - copaymentRate;
+      benefitRatio = String(benefitRate).padStart(3, '0'); // 3桁で出力（例: 090, 080, 070）
+    }
 
     // Phase 3: 負担区分コード（別表22）を動的判定
     this.burdenClassificationCodeCache = determineBurdenClassificationCode(
@@ -207,12 +216,25 @@ export class NursingReceiptCsvBuilder {
       data.publicExpenses
     );
 
-    // TODO: 一部負担金区分（別表7）の実装
+    // 一部負担金区分（別表7）の実装
     // 別表7は70歳以上の低所得者（適用区分Ⅰ・Ⅱ）の場合のみ記録
     // コード '1'=適用区分Ⅱ, '3'=適用区分Ⅰ, 該当しない場合は空欄
-    // 現在はデータソースがないため空欄出力（暫定対応）
-    // 将来的には insuranceCards.partialBurdenCategory フィールドを追加して対応
-    const partialBurdenCategory = '';  // 別表7: 一部負担金区分（暫定: 空欄）
+    let partialBurdenCategory = '';
+    if (data.insuranceCard.partialBurdenCategory) {
+      // 年齢を計算
+      const birthDate = data.patient.dateOfBirth ? new Date(data.patient.dateOfBirth) : null;
+      if (birthDate) {
+        const today = new Date();
+        const age = today.getFullYear() - birthDate.getFullYear() - 
+                    (today.getMonth() < birthDate.getMonth() || 
+                     (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate()) ? 1 : 0);
+        
+        // 70歳以上かつ低所得者（elderlyRecipientCategory='general_low'）の場合のみ記録
+        if (age >= 70 && data.insuranceCard.elderlyRecipientCategory === 'general_low') {
+          partialBurdenCategory = data.insuranceCard.partialBurdenCategory;
+        }
+      }
+    }
 
     const fields = [
       'RE',                                   // レコード識別

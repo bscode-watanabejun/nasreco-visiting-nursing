@@ -1159,6 +1159,7 @@ export default function MonthlyReceiptDetail() {
             ageCategory: (receipt.insuranceCard as any).ageCategory || null, // Phase 3: 年齢区分
             elderlyRecipientCategory: (receipt.insuranceCard as any).elderlyRecipientCategory || null, // Phase 3: 高齢受給者区分
             reviewOrganizationCode: (receipt.insuranceCard as any).reviewOrganizationCode || null, // 審査支払機関コード
+            partialBurdenCategory: (receipt.insuranceCard as any).partialBurdenCategory || null, // 一部負担金区分（別表7）
             isActive: true,
             filePath: null,
             originalFileName: null,

@@ -4660,6 +4660,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         facilityId
       };
 
+      // FormDataで空文字列が送信された場合、nullに変換
+      if (validatedData.partialBurdenCategory === '') {
+        cardData.partialBurdenCategory = null;
+      }
+
       // Add file path and original filename if file was uploaded
       if (req.file) {
         const uploaded = await uploadDocumentFile(req.file, 'insurance-cards');
@@ -4695,6 +4700,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validatedData,
         updatedAt: new Date()
       };
+
+      // FormDataで空文字列が送信された場合、nullに変換
+      if (validatedData.partialBurdenCategory === '') {
+        updateData.partialBurdenCategory = null;
+      }
 
       // If a new file is uploaded, delete the old one first
       if (req.file) {
@@ -9476,6 +9486,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           certificateSymbol: targetInsuranceCard.insuredSymbol || '',     // schema: insuredSymbol
           certificateNumber: targetInsuranceCard.insuredCardNumber || '', // schema: insuredCardNumber
           reviewOrganizationCode: targetInsuranceCard.reviewOrganizationCode || null, // 審査支払機関コード
+          copaymentRate: targetInsuranceCard.copaymentRate || null, // 負担割合（給付割合計算用）
+          partialBurdenCategory: (targetInsuranceCard.partialBurdenCategory === '1' || targetInsuranceCard.partialBurdenCategory === '3') 
+            ? targetInsuranceCard.partialBurdenCategory 
+            : null, // 一部負担金区分（別表7）
         },
         // Phase 3: 公費負担医療情報（優先順位順）
         publicExpenses: publicExpensesData.map(pe => ({
@@ -9736,6 +9750,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               certificateSymbol: medicalInsuranceCard.insuredSymbol || '',
               certificateNumber: medicalInsuranceCard.insuredCardNumber || '',
               reviewOrganizationCode: medicalInsuranceCard.reviewOrganizationCode || null,
+              copaymentRate: medicalInsuranceCard.copaymentRate || null, // 負担割合（給付割合計算用）
+              partialBurdenCategory: (medicalInsuranceCard.partialBurdenCategory === '1' || medicalInsuranceCard.partialBurdenCategory === '3') 
+                ? medicalInsuranceCard.partialBurdenCategory 
+                : null, // 一部負担金区分（別表7）
             },
             publicExpenses: publicExpensesData.map(pe => ({
               legalCategoryNumber: pe.legalCategoryNumber,
