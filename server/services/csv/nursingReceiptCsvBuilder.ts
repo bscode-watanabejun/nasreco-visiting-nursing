@@ -4,7 +4,7 @@
  * 「オンラインによる請求に係る記録条件仕様(訪問看護用)」令和6年6月版に準拠
  */
 
-import { buildCsvLine, buildCsvFile } from './csvUtils';
+import { buildCsvLine, buildCsvFile, toShiftJIS } from './csvUtils';
 import type { ReceiptCsvData, MedicalInsuranceReceiptCsvData } from './types';
 import { determineReceiptTypeCode, determineBurdenClassificationCode, determineInstructionTypeCode } from './receiptClassification';
 
@@ -32,6 +32,141 @@ export class NursingReceiptCsvBuilder {
 
   constructor() {
     this.lines = [];
+  }
+
+  /**
+   * 可変長フィールドを生成（Shift_JISでの最大バイト数を考慮）
+   * @param value - 値
+   * @param maxBytes - 最大バイト数
+   * @returns 最大バイト数以内に収めた文字列
+   */
+  private formatVariable(value: string | null | undefined, maxBytes: number): string {
+    if (!value) return '';
+    const shiftJisBytes = toShiftJIS(value);
+    if (shiftJisBytes.length <= maxBytes) {
+      return value;
+    }
+    // 最大バイト数を超える場合は切り詰める
+    let truncated = '';
+    for (let i = 0; i < value.length; i++) {
+      const testStr = truncated + value[i];
+      const testBytes = toShiftJIS(testStr);
+      if (testBytes.length > maxBytes) {
+        break;
+      }
+      truncated = testStr;
+    }
+    return truncated;
+  }
+
+  /**
+   * 訪問場所変更履歴を自動検出（同一月内で異なる場所コードが使用された場合を変更とみなす）
+   * @param nursingRecords - 訪問記録一覧
+   * @param firstLocationCode - 最初の訪問場所コード
+   * @returns 変更履歴の配列（最大2件）
+   */
+  private detectVisitLocationChanges(
+    nursingRecords: Array<{
+      visitDate: Date | string;
+      visitLocationCode: string;
+      visitLocationCustom?: string | null;
+    }>,
+    firstLocationCode: string
+  ): Array<{
+    changeDate: Date | string;
+    locationCode: string;
+    locationCustom?: string | null;
+  }> {
+    if (nursingRecords.length === 0) return [];
+
+    // 訪問日でソート
+    const sortedRecords = [...nursingRecords].sort((a, b) => {
+      const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
+      const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    const changes: Array<{
+      changeDate: Date | string;
+      locationCode: string;
+      locationCustom?: string | null;
+    }> = [];
+
+    // 最初の訪問場所と異なる場所コードが出現した日を検出
+    for (const record of sortedRecords) {
+      if (record.visitLocationCode !== firstLocationCode) {
+        const changeDate = record.visitDate;
+        // 既に同じ変更日・場所コードの記録がないか確認
+        const existing = changes.find(c => {
+          const cDate = typeof c.changeDate === 'string' ? new Date(c.changeDate) : c.changeDate;
+          const rDate = typeof changeDate === 'string' ? new Date(changeDate) : changeDate;
+          return cDate.toDateString() === rDate.toDateString() && c.locationCode === record.visitLocationCode;
+        });
+
+        if (!existing) {
+          changes.push({
+            changeDate,
+            locationCode: record.visitLocationCode,
+            locationCustom: record.visitLocationCustom
+          });
+
+          // 最大2件まで
+          if (changes.length >= 2) break;
+        }
+      }
+    }
+
+    return changes;
+  }
+
+  /**
+   * 訪問終了情報を取得（対象月の訪問記録から集約）
+   * @param nursingRecords - 訪問記録一覧
+   * @param deathDate - 死亡年月日
+   * @returns 訪問終了情報の配列 [訪問終了年月日, 訪問終了時刻, 訪問終了状況コード, 訪問終了状況文字データ]
+   */
+  private getServiceEndInfo(
+    nursingRecords: Array<{
+      visitDate: Date | string;
+      actualEndTime: string;
+      isServiceEnd?: boolean;
+      serviceEndReasonCode?: string | null;
+      serviceEndReasonText?: string | null;
+    }>,
+    deathDate: Date | string | null
+  ): [string, string, string, string] {
+    // 訪問終了フラグがtrueの訪問記録を取得
+    const serviceEndRecords = nursingRecords.filter(r => r.isServiceEnd);
+    
+    if (serviceEndRecords.length === 0) {
+      return ['', '', '', ''];
+    }
+    
+    // 最初の1件を使用（複数ある場合は最初の1件のみ）
+    const firstEnd = serviceEndRecords[0];
+    
+    // 訪問終了状況コード「04（死亡）」の場合は、死亡年月日と重複しないように空欄にする
+    if (firstEnd.serviceEndReasonCode === '04' && deathDate) {
+      return ['', '', '', ''];
+    }
+    
+    // 訪問終了時刻は actualEndTime から HHMM 形式に変換
+    let serviceEndTime = '';
+    if (firstEnd.actualEndTime) {
+      // actualEndTimeは "HH:MM" 形式または "HHMM" 形式
+      const timeStr = firstEnd.actualEndTime.replace(':', '');
+      if (timeStr.length >= 4) {
+        serviceEndTime = timeStr.substring(0, 4);
+      }
+    }
+    
+    const serviceEndDate = formatDateToYYYYMMDD(firstEnd.visitDate);
+    const serviceEndReasonCode = firstEnd.serviceEndReasonCode || '';
+    const serviceEndReasonText = (firstEnd.serviceEndReasonCode === '99' && firstEnd.serviceEndReasonText)
+      ? this.formatVariable(firstEnd.serviceEndReasonText, 20)
+      : '';
+    
+    return [serviceEndDate, serviceEndTime, serviceEndReasonCode, serviceEndReasonText];
   }
 
   /**
@@ -546,6 +681,16 @@ export class NursingReceiptCsvBuilder {
     // 訪問した場所1コード (最初の訪問記録の訪問場所、別表16)
     const visitLocationCode = data.nursingRecords[0]?.visitLocationCode || '01';
 
+    // 訪問した場所1文字データ（場所コード99の場合のみ）
+    const visitLocation1Text = (visitLocationCode === '99' && data.nursingRecords[0]?.visitLocationCustom)
+      ? this.formatVariable(data.nursingRecords[0].visitLocationCustom, 130)
+      : '';
+
+    // 訪問場所変更履歴の自動検出（場所2・3）
+    const locationChanges = this.detectVisitLocationChanges(data.nursingRecords, visitLocationCode);
+    const location2 = locationChanges[0] || null;
+    const location3 = locationChanges[1] || null;
+
     // 死亡年月日（既存のdeathDateフィールドから取得）
     const deathDate = data.patient.deathDate
       ? formatDateToYYYYMMDD(data.patient.deathDate)
@@ -556,8 +701,6 @@ export class NursingReceiptCsvBuilder {
     //   将来的には patients.visitEndDate, visitEndTime, visitEndStatusCode, visitEndStatusText フィールドを追加
     // - 死亡詳細情報（時刻、場所コード、場所文字データ）
     //   将来的には patients.deathTime, deathPlaceCode, deathPlaceText フィールドを追加
-    // - 訪問場所変更履歴（訪問した場所2・3）
-    //   将来的には visit_location_history テーブルを追加
     // - 他の訪問看護ステーション情報
     //   将来的には other_nursing_stations テーブルを追加
 
@@ -565,21 +708,29 @@ export class NursingReceiptCsvBuilder {
       'RJ',                // 1. レコード識別情報
       firstVisitDate,      // 2. 訪問開始年月日 YYYYMMDD
       visitLocationCode,   // 3. 訪問した場所1コード (別表16 場所コード)
-      '',                  // 4. 訪問した場所1文字データ
-      '',                  // 5. 訪問した場所2訪問場所変更年月日
-      '',                  // 6. 訪問した場所2コード
-      '',                  // 7. 訪問した場所2文字データ
-      '',                  // 8. 訪問した場所3訪問場所変更年月日
-      '',                  // 9. 訪問した場所3コード
-      '',                  // 10. 訪問した場所3文字データ
-      '',                  // 11. 訪問終了年月日（TODO: 暫定空欄）
-      '',                  // 12. 訪問終了時刻（TODO: 暫定空欄）
-      '',                  // 13. 訪問終了状況コード（TODO: 暫定空欄、別表15）
-      '',                  // 14. 訪問終了状況文字データ（TODO: 暫定空欄）
+      visitLocation1Text,  // 4. 訪問した場所1文字データ（場所コード99の場合のみ）
+      location2 ? formatDateToYYYYMMDD(location2.changeDate) : '',  // 5. 訪問した場所2訪問場所変更年月日
+      location2 ? location2.locationCode : '',  // 6. 訪問した場所2コード
+      location2 && location2.locationCode === '99' && location2.locationCustom
+        ? this.formatVariable(location2.locationCustom, 130)
+        : '',  // 7. 訪問した場所2文字データ
+      location3 ? formatDateToYYYYMMDD(location3.changeDate) : '',  // 8. 訪問した場所3訪問場所変更年月日
+      location3 ? location3.locationCode : '',  // 9. 訪問した場所3コード
+      location3 && location3.locationCode === '99' && location3.locationCustom
+        ? this.formatVariable(location3.locationCustom, 130)
+        : '',  // 10. 訪問した場所3文字データ
+      ...this.getServiceEndInfo(data.nursingRecords, deathDate),  // 11-14. 訪問終了情報
       deathDate,           // 15. 死亡年月日（既存フィールドから取得）
-      '',                  // 16. 死亡時刻（TODO: 暫定空欄）
-      '',                  // 17. 死亡場所コード（TODO: 暫定空欄、別表16）
-      '',                  // 18. 死亡場所文字データ（TODO: 暫定空欄）
+      // 16. 死亡時刻（HHMM形式に変換）
+      data.patient.deathTime
+        ? data.patient.deathTime.replace(':', '').substring(0, 4) // HH:MM → HHMM
+        : '',
+      // 17. 死亡場所コード（別表16）
+      data.patient.deathPlaceCode || '',
+      // 18. 死亡場所文字データ（場所コード99の場合のみ）
+      (data.patient.deathPlaceCode === '99' && data.patient.deathPlaceText)
+        ? this.formatVariable(data.patient.deathPlaceText, 130)
+        : '',
       '',                  // 19. 利用者情報コード
       '',                  // 20. 他の訪問看護ステーション1都道府県
       '',                  // 21. 他の訪問看護ステーション1点数表

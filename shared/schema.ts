@@ -175,7 +175,10 @@ export const patients = pgTable("patients", {
   lastDischargeDate: date("last_discharge_date"), // 直近の退院日
   lastPlanCreatedDate: date("last_plan_created_date"), // 直近の訪問看護計画作成日
   deathDate: date("death_date"), // 死亡日
-  deathLocation: varchar("death_location", { length: 50 }), // 死亡場所: 'home'(在宅), 'facility'(特養等)
+  // RJレコード用：死亡詳細情報
+  deathTime: varchar("death_time", { length: 4 }), // 死亡時刻（HHMM形式）
+  deathPlaceCode: varchar("death_place_code", { length: 2 }), // 死亡場所コード（別表16）
+  deathPlaceText: text("death_place_text"), // 死亡場所文字データ（コード99の場合のみ、最大130バイト）
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -305,7 +308,13 @@ export const nursingRecords = pgTable("nursing_records", {
   // レセプトCSV出力用フィールド（新規訪問記録のみ必須）
   serviceCodeId: varchar("service_code_id").references(() => nursingServiceCodes.id), // サービスコードマスタへの参照
   visitLocationCode: varchar("visit_location_code", { length: 2 }), // 訪問場所コード
+  visitLocationCustom: text("visit_location_custom"), // 訪問場所詳細（場所コード99の場合のみ、RJレコード用）
   staffQualificationCode: varchar("staff_qualification_code", { length: 2 }), // 職員資格コード
+
+  // RJレコード用：訪問終了情報
+  isServiceEnd: boolean("is_service_end").default(false), // 今回で訪問終了フラグ
+  serviceEndReasonCode: varchar("service_end_reason_code", { length: 2 }), // 訪問終了状況コード（別表15）
+  serviceEndReasonText: text("service_end_reason_text"), // 訪問終了状況文字データ（コード99の場合のみ、最大20バイト）
 
   // Phase 3: 編集管理用フィールド
   lastEditedBy: varchar("last_edited_by").references(() => users.id), // 最終編集者
@@ -895,6 +904,23 @@ export const visitLocationCodes = pgTable("visit_location_codes", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
+
+// 訪問場所変更履歴テーブル（月単位で管理、RJレコード用）
+export const visitLocationChanges = pgTable("visit_location_changes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  patientId: varchar("patient_id").notNull().references(() => patients.id),
+  targetYear: integer("target_year").notNull(), // 対象年
+  targetMonth: integer("target_month").notNull(), // 対象月
+  changeDate: date("change_date").notNull(), // 変更年月日（最初に異なる場所コードが使用された日）
+  locationCode: varchar("location_code", { length: 2 }).notNull(), // 別表16コード
+  locationCustom: text("location_custom"), // 場所コード99の場合の文字データ
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // 同一患者・同一月・同一変更日・同一場所コードの重複を防ぐ
+  uniquePatientMonthDateLocation: sql`UNIQUE(${table.facilityId}, ${table.patientId}, ${table.targetYear}, ${table.targetMonth}, ${table.changeDate}, ${table.locationCode})`,
+}));
 
 // レセプト種別コードマスタ
 export const receiptTypeCodes = pgTable("receipt_type_codes", {

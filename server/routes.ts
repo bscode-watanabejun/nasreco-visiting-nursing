@@ -2961,7 +2961,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate) : null,
       lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate) : null,
       deathDate: patient.deathDate ? new Date(patient.deathDate) : null,
-      deathLocation: patient.deathLocation || null,
+      // RJレコード用：死亡詳細情報
+      deathTime: (patient as any).deathTime || null,
+      deathPlaceCode: (patient as any).deathPlaceCode || null,
+      deathPlaceText: (patient as any).deathPlaceText || null,
       // Phase 4: 特別管理情報
       specialManagementTypes: patient.specialManagementTypes || [],
       // Week 3: 専門管理加算用フィールド
@@ -9474,6 +9477,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           insuranceNumber: patient.insuranceNumber || '',
           insuranceType: patient.insuranceType, // Phase 3: 保険種別
           deathDate: patient.deathDate || null, // RJレコード用：死亡年月日
+          deathTime: (patient as any).deathTime || null,
+          deathPlaceCode: (patient as any).deathPlaceCode || null,
+          deathPlaceText: (patient as any).deathPlaceText || null,
         },
         // Phase 3: 保険証情報（レセプトの保険種別に応じた保険証を使用）
         insuranceCard: {
@@ -9523,9 +9529,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : (record.actualEndTime || ''),
           serviceCode: record.serviceCode?.serviceCode || '', // 実際の9桁サービスコードを取得
           visitLocationCode: record.visitLocationCode || '01', // デフォルトは'01'（自宅、別表16）
+          visitLocationCustom: record.visitLocationCustom || null,
           staffQualificationCode: record.staffQualificationCode || '00',
           calculatedPoints: record.calculatedPoints || 0,
           observations: record.observations || '', // 観察事項（JSレコードの心身の状態用）
+          isServiceEnd: record.isServiceEnd || false,
+          serviceEndReasonCode: record.serviceEndReasonCode || null,
+          serviceEndReasonText: record.serviceEndReasonText || null,
           appliedBonuses: (record.appliedBonuses as any[]) || [],
         })),
         bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],
@@ -9740,6 +9750,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               insuranceNumber: patient.insuranceNumber || '',
               insuranceType: patient.insuranceType,
               deathDate: patient.deathDate || null,
+              deathTime: (patient as any).deathTime || null,
+              deathPlaceCode: (patient as any).deathPlaceCode || null,
+              deathPlaceText: (patient as any).deathPlaceText || null,
             },
             insuranceCard: {
               cardType: medicalInsuranceCard.cardType,
@@ -9786,9 +9799,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 : (record.actualEndTime || ''),
               serviceCode: record.serviceCode?.serviceCode || '',
               visitLocationCode: record.visitLocationCode || '01',
+              visitLocationCustom: record.visitLocationCustom || null,
               staffQualificationCode: record.staffQualificationCode || '00',
               calculatedPoints: record.calculatedPoints || 0,
               observations: record.observations || '',
+              isServiceEnd: record.isServiceEnd || false,
+              serviceEndReasonCode: record.serviceEndReasonCode || null,
+              serviceEndReasonText: record.serviceEndReasonText || null,
               appliedBonuses: (record.appliedBonuses as any[]) || [],
             })),
             bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],

@@ -14,13 +14,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DatePickerWithYearMonth } from "@/components/ui/date-picker-with-year-month"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
+import { masterDataApi } from "@/lib/api"
+import type { VisitLocationCode } from "@/lib/api"
 
 import type { Patient, InsertPatient, UpdatePatient, MedicalInstitution, CareManager, Building } from "@shared/schema"
 
@@ -86,7 +88,10 @@ const patientFormSchema = z.object({
   lastDischargeDate: z.date().nullish(),
   lastPlanCreatedDate: z.date().nullish(),
   deathDate: z.date().nullish(),
-  deathLocation: z.enum(["home", "facility"]).nullish(),
+  // RJレコード用：死亡詳細情報
+  deathTime: z.string().optional(), // HH:MM形式
+  deathPlaceCode: z.string().optional(), // 別表16の場所コード
+  deathPlaceText: z.string().optional(), // 場所コード99の場合のみ
 })
 
 type PatientFormData = z.infer<typeof patientFormSchema>
@@ -126,6 +131,13 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
 
   const { data: buildings = [] } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
+    enabled: isOpen,
+  });
+
+  // 訪問場所コードマスタ（死亡場所コード選択用）
+  const { data: visitLocationCodes = [] } = useQuery<VisitLocationCode[]>({
+    queryKey: ["visit-location-codes"],
+    queryFn: () => masterDataApi.getVisitLocationCodes(),
     enabled: isOpen,
   });
 
@@ -172,7 +184,10 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       lastDischargeDate: undefined,
       lastPlanCreatedDate: undefined,
       deathDate: undefined,
-      deathLocation: undefined,
+      // RJレコード用：死亡詳細情報
+      deathTime: undefined,
+      deathPlaceCode: undefined,
+      deathPlaceText: undefined,
     },
   })
 
@@ -229,7 +244,16 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate + 'T00:00:00') : undefined,
           lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate + 'T00:00:00') : undefined,
           deathDate: patient.deathDate ? new Date(patient.deathDate + 'T00:00:00') : undefined,
-          deathLocation: (patient.deathLocation === "home" || patient.deathLocation === "facility") ? patient.deathLocation : undefined,
+          // RJレコード用：死亡詳細情報
+          // deathTimeはHHMM形式からHH:MM形式に変換して表示
+          deathTime: (patient as any).deathTime 
+            ? ((patient as any).deathTime.length === 4
+                ? `${(patient as any).deathTime.substring(0, 2)}:${(patient as any).deathTime.substring(2, 4)}`
+                : (patient as any).deathTime)
+            : undefined,
+          // データベースから取得した値がnullの場合は'none'に変換（未選択状態を表現）
+          deathPlaceCode: (patient as any).deathPlaceCode || 'none',
+          deathPlaceText: (patient as any).deathPlaceText || undefined,
         })
       } else if (mode === 'create') {
         setLoadedPatientId(null)
@@ -265,12 +289,15 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
           specialCareType: "none",
           isInHospital: false,
           isInShortStay: false,
-          // Phase 2-A: 退院・計画・死亡情報
-          lastDischargeDate: undefined,
-          lastPlanCreatedDate: undefined,
-          deathDate: undefined,
-          deathLocation: undefined,
-        })
+      // Phase 2-A: 退院・計画・死亡情報
+      lastDischargeDate: undefined,
+      lastPlanCreatedDate: undefined,
+      deathDate: undefined,
+      // RJレコード用：死亡詳細情報
+      deathTime: undefined,
+      deathPlaceCode: undefined,
+      deathPlaceText: undefined,
+    })
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -296,7 +323,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
         lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
         lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
         deathDate: data.deathDate ? formatDateForAPI(data.deathDate) : null,
-        deathLocation: data.deathLocation || null,
+        // RJレコード用：死亡詳細情報
+        // deathTimeはHH:MM形式からHHMM形式に変換（varchar(4)の制約に対応）
+        deathTime: data.deathTime ? data.deathTime.replace(':', '').substring(0, 4) : null,
+        // 'none'が選択された場合はnullに変換
+        deathPlaceCode: (data.deathPlaceCode && data.deathPlaceCode !== 'none') ? data.deathPlaceCode : null,
+        deathPlaceText: data.deathPlaceText || null,
         facilityId: "", // Will be set by the backend
       }
 
@@ -348,7 +380,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
         lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
         lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
         deathDate: data.deathDate ? formatDateForAPI(data.deathDate) : null,
-        deathLocation: data.deathLocation || null,
+        // RJレコード用：死亡詳細情報
+        // deathTimeはHH:MM形式からHHMM形式に変換（varchar(4)の制約に対応）
+        deathTime: data.deathTime ? data.deathTime.replace(':', '').substring(0, 4) : null,
+        // 'none'が選択された場合はnullに変換
+        deathPlaceCode: (data.deathPlaceCode && data.deathPlaceCode !== 'none') ? data.deathPlaceCode : null,
+        deathPlaceText: data.deathPlaceText || null,
       }
 
       const response = await fetch(`/api/patients/${patient.id}`, {
@@ -972,10 +1009,12 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                 {/* Phase 2-A: 退院・計画・死亡情報 */}
                 <div className="space-y-4">
                   <h3 className="text-base font-semibold">退院・計画・死亡情報</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="lastDischargeDate"
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                    {/* 列1: 直近の退院日 */}
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="lastDischargeDate"
                       render={({ field }) => {
                         // 常に最新の値を取得
                         const currentValue = form.watch("lastDischargeDate")
@@ -1016,11 +1055,14 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           </FormItem>
                         )
                       }}
-                    />
+                      />
+                    </div>
 
-                    <FormField
-                      control={form.control}
-                      name="lastPlanCreatedDate"
+                    {/* 列2: 直近の訪問看護計画作成日 */}
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="lastPlanCreatedDate"
                       render={({ field }) => {
                         const currentValue = form.watch("lastPlanCreatedDate")
 
@@ -1055,11 +1097,14 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           </FormItem>
                         )
                       }}
-                    />
+                      />
+                    </div>
 
-                    <FormField
-                      control={form.control}
-                      name="deathDate"
+                    {/* 列3: 死亡日 */}
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="deathDate"
                       render={({ field }) => {
                         const currentValue = form.watch("deathDate")
 
@@ -1094,47 +1139,95 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                           </FormItem>
                         )
                       }}
-                    />
+                      />
+                    </div>
+                  </div>
 
+                  {/* 死亡時刻と死亡場所を横並び（死亡日が入力されている場合のみ） */}
+                  {form.watch("deathDate") && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* 死亡時刻（列1） */}
+                      <FormField
+                        control={form.control}
+                        name="deathTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>死亡時刻</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="time"
+                                value={field.value || ''}
+                                onChange={(e) => field.onChange(e.target.value)}
+                                placeholder="HH:MM"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* 死亡場所（列2と列3をまたいで表示） */}
+                      <div className="col-span-1 md:col-span-2">
+                        <FormField
+                          control={form.control}
+                          name="deathPlaceCode"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>死亡場所</FormLabel>
+                              <Select
+                                value={field.value ?? 'none'}
+                                onValueChange={field.onChange}
+                              >
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="死亡場所を選択" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent className="max-w-full">
+                                  <SelectItem value="none">未選択</SelectItem>
+                                  {visitLocationCodes
+                                    .filter(code => code.isActive)
+                                    .sort((a, b) => a.displayOrder - b.displayOrder)
+                                    .map((code) => (
+                                      <SelectItem key={code.id} value={code.locationCode}>
+                                        {code.locationCode} - {code.locationName}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 死亡場所詳細（コード99の場合のみ、全幅で表示） */}
+                  {form.watch("deathDate") && form.watch("deathPlaceCode") === '99' && (
                     <FormField
                       control={form.control}
-                      name="deathLocation"
+                      name="deathPlaceText"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>死亡場所</FormLabel>
-                          <div className="flex gap-2">
-                            <Select
-                              key={field.value ?? 'empty'}
-                              onValueChange={field.onChange}
-                              value={field.value ?? undefined}
-                            >
-                              <FormControl>
-                                <SelectTrigger className="flex-1">
-                                  <SelectValue placeholder="死亡場所を選択" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="home">在宅</SelectItem>
-                                <SelectItem value="facility">特別養護老人ホーム等</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {field.value && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                onClick={() => field.onChange(null)}
-                                title="選択をクリア"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
+                          <FormLabel>死亡場所詳細</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              value={field.value || ''}
+                              onChange={(e) => field.onChange(e.target.value)}
+                              placeholder="死亡場所の詳細を入力してください（最大130文字）"
+                              maxLength={130}
+                              rows={3}
+                            />
+                          </FormControl>
                           <FormMessage />
+                          <FormDescription className="text-xs text-muted-foreground">
+                            死亡場所「99（その他）」を選択した場合のみ入力してください（最大130バイト）
+                          </FormDescription>
                         </FormItem>
                       )}
                     />
-                  </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

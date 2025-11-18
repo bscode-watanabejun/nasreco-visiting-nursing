@@ -603,12 +603,37 @@ export function PatientDetail() {
                           : '未登録'}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">死亡場所</p>
-                      <p className="font-medium">
-                        {patient.deathLocation === 'home' ? '在宅' : patient.deathLocation === 'facility' ? '特別養護老人ホーム等' : '未登録'}
-                      </p>
-                    </div>
+                    {(patient as any).deathPlaceCode && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">死亡場所</p>
+                        <p className="font-medium">
+                          {(patient as any).deathPlaceCode} - {(() => {
+                            // 訪問場所コードマスタから名称を取得（簡易表示）
+                            // 実際の実装ではマスタデータを取得して表示する方が良い
+                            return (patient as any).deathPlaceCode === '01' ? '自宅' :
+                                   (patient as any).deathPlaceCode === '16' ? '施設（地域密着型介護老人福祉施設及び介護老人福祉施設）' :
+                                   (patient as any).deathPlaceCode === '99' ? 'その他' :
+                                   (patient as any).deathPlaceCode;
+                          })()}
+                        </p>
+                        {(patient as any).deathPlaceCode === '99' && (patient as any).deathPlaceText && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {(patient as any).deathPlaceText}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {(patient as any).deathTime && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">死亡時刻</p>
+                        <p className="font-medium">
+                          {/* HHMM形式をHH:MM形式に変換して表示 */}
+                          {(patient as any).deathTime.length === 4
+                            ? `${(patient as any).deathTime.substring(0, 2)}:${(patient as any).deathTime.substring(2, 4)}`
+                            : (patient as any).deathTime}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

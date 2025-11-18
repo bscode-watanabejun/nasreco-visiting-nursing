@@ -38,6 +38,9 @@ export interface ReceiptCsvData {
     insuranceNumber: string;
     insuranceType: string | null; // Phase 3: 保険種別（動的判定用）
     deathDate?: Date | string | null; // 死亡日（RJレコード用）
+    deathTime?: string | null; // 死亡時刻（HHMM形式）
+    deathPlaceCode?: string | null; // 死亡場所コード（別表16）
+    deathPlaceText?: string | null; // 死亡場所文字データ
   };
 
   // 医療機関情報（訪問看護指示書発行元）
@@ -89,9 +92,13 @@ export interface ReceiptCsvData {
     actualEndTime: string;
     serviceCode: string; // 9桁
     visitLocationCode: string; // 2桁
+    visitLocationCustom?: string | null; // 訪問場所詳細（場所コード99の場合のみ、RJレコード用）
     staffQualificationCode: string; // 2桁
     calculatedPoints: number;
     observations: string; // 観察事項（必須、JSレコードの心身の状態用）
+    isServiceEnd?: boolean; // 今回で訪問終了フラグ
+    serviceEndReasonCode?: string | null; // 訪問終了状況コード（別表15）
+    serviceEndReasonText?: string | null; // 訪問終了状況文字データ（コード99の場合のみ）
     appliedBonuses: Array<{
       bonusCode: string;
       bonusName: string;

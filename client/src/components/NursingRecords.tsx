@@ -140,7 +140,12 @@ interface FormData {
   // Phase 3: レセプトCSV対応
   nursingServiceCode: string // 訪問看護サービスコード
   visitLocation: string // 訪問場所コード
+  visitLocationCustom: string // 訪問場所詳細（場所コード99の場合のみ）
   staffQualification: string // 職員資格コード
+  // RJレコード用：訪問終了情報
+  isServiceEnd: boolean // 今回で訪問終了
+  serviceEndReasonCode: string // 訪問終了状況コード（別表15）
+  serviceEndReasonText: string // 訪問終了状況文字データ（コード99の場合のみ）
 }
 
 // Helper function to get full name
@@ -254,7 +259,14 @@ const convertFormDataToApiFormat = (
     // Phase 3: レセプトCSV対応フィールド（サーバー側のスキーマに合わせてフィールド名を修正）
     ...(serviceCodeId && { serviceCodeId }),
     ...(formData.visitLocation && { visitLocationCode: formData.visitLocation }),
+    ...(formData.visitLocation === '99' && formData.visitLocationCustom && { visitLocationCustom: formData.visitLocationCustom }),
     ...(formData.staffQualification && { staffQualificationCode: formData.staffQualification }),
+    // RJレコード用：訪問終了情報
+    isServiceEnd: formData.isServiceEnd,
+    ...(formData.isServiceEnd && {
+      serviceEndReasonCode: formData.serviceEndReasonCode || '',
+      serviceEndReasonText: formData.serviceEndReasonCode === '99' ? (formData.serviceEndReasonText || '') : null,
+    }),
   }
 
   // スケジュールIDの紐付け - always include for proper tracking
@@ -370,7 +382,12 @@ const getInitialFormData = (): FormData => {
     // Phase 3: レセプトCSV対応
     nursingServiceCode: '',
     visitLocation: '',
-    staffQualification: ''
+    visitLocationCustom: '',
+    staffQualification: '',
+    // RJレコード用：訪問終了情報
+    isServiceEnd: false,
+    serviceEndReasonCode: '',
+    serviceEndReasonText: ''
   }
 }
 
@@ -901,7 +918,12 @@ export function NursingRecords() {
         ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
         : '',
       visitLocation: (record as any).visitLocationCode || '',
-      staffQualification: (record as any).staffQualificationCode || ''
+      visitLocationCustom: (record as any).visitLocationCustom || '',
+      staffQualification: (record as any).staffQualificationCode || '',
+      // RJレコード用：訪問終了情報
+      isServiceEnd: (record as any).isServiceEnd || false,
+      serviceEndReasonCode: (record as any).serviceEndReasonCode || '',
+      serviceEndReasonText: (record as any).serviceEndReasonText || ''
     })
 
   }
@@ -967,7 +989,12 @@ export function NursingRecords() {
         ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
         : '',
       visitLocation: (record as any).visitLocationCode || '',
-      staffQualification: (record as any).staffQualificationCode || ''
+      visitLocationCustom: (record as any).visitLocationCustom || '',
+      staffQualification: (record as any).staffQualificationCode || '',
+      // RJレコード用：訪問終了情報
+      isServiceEnd: (record as any).isServiceEnd || false,
+      serviceEndReasonCode: (record as any).serviceEndReasonCode || '',
+      serviceEndReasonText: (record as any).serviceEndReasonText || ''
     })
   }
 
@@ -1901,7 +1928,7 @@ export function NursingRecords() {
             </Card>
 
             {/* Receipt and Billing Information Card */}
-            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).staffQualificationCode || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert) && (
+            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
               <Card>
                 <CardHeader>
                   <CardTitle>レセプト・加算情報</CardTitle>
@@ -1945,6 +1972,15 @@ export function NursingRecords() {
                               <p className="text-base text-muted-foreground">未設定</p>
                             );
                           })()}
+                          {/* 訪問場所詳細（場所コード99の場合のみ） */}
+                          {(selectedRecord as any).visitLocationCode === '99' && (selectedRecord as any).visitLocationCustom && (
+                            <div className="mt-2">
+                              <p className="text-sm font-medium text-muted-foreground mb-1">訪問場所詳細</p>
+                              <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                                <p className="text-sm whitespace-pre-wrap">{(selectedRecord as any).visitLocationCustom}</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* 職員資格 */}
@@ -2041,6 +2077,71 @@ export function NursingRecords() {
                       <p className="text-sm font-medium text-muted-foreground mb-2">長時間訪問看護加算の理由</p>
                       <div className="bg-orange-50 border border-orange-200 rounded-md p-3">
                         <p className="text-sm whitespace-pre-wrap">{selectedRecord.longVisitReason}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 訪問終了情報 */}
+                  {(selectedRecord as any).isServiceEnd && (
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3">訪問終了情報</h3>
+                      <div className="space-y-3">
+                        {/* 訪問終了時刻と訪問終了状況コード（横並び） */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* 訪問終了時刻 */}
+                          {(selectedRecord as any).actualEndTime && (
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">訪問終了時刻</p>
+                              <p className="text-base font-semibold">
+                                {(() => {
+                                  const endTime = (selectedRecord as any).actualEndTime;
+                                  // Date型の場合
+                                  if (endTime instanceof Date) {
+                                    return endTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                                  }
+                                  // ISO形式の文字列の場合（例: "2025-11-19T07:13:00.000Z"）
+                                  if (typeof endTime === 'string' && endTime.includes('T')) {
+                                    return new Date(endTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                                  }
+                                  // 既に"HH:MM"形式の文字列の場合
+                                  return endTime;
+                                })()}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {/* 訪問終了状況コード */}
+                          {(selectedRecord as any).serviceEndReasonCode && (
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">訪問終了状況コード</p>
+                              {(() => {
+                                const reasonCode = (selectedRecord as any).serviceEndReasonCode;
+                                const reasonNames: Record<string, string> = {
+                                  '01': '01 - 軽快',
+                                  '02': '02 - 施設',
+                                  '03': '03 - 医療機関',
+                                  '04': '04 - 死亡',
+                                  '99': '99 - その他'
+                                };
+                                return (
+                                  <p className="text-base font-semibold">
+                                    {reasonNames[reasonCode] || reasonCode}
+                                  </p>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* 訪問終了状況詳細（コード99の場合のみ） */}
+                        {(selectedRecord as any).serviceEndReasonCode === '99' && (selectedRecord as any).serviceEndReasonText && (
+                          <div>
+                            <p className="text-sm font-medium text-muted-foreground mb-2">訪問終了状況詳細</p>
+                            <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                              <p className="text-sm whitespace-pre-wrap">{(selectedRecord as any).serviceEndReasonText}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2842,6 +2943,24 @@ export function NursingRecords() {
                       </p>
                     </div>
                   </div>
+
+                  {/* 訪問場所詳細（場所コード99の場合のみ） */}
+                  {formData.visitLocation === '99' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="visit-location-custom">訪問場所詳細</Label>
+                      <Textarea
+                        id="visit-location-custom"
+                        value={formData.visitLocationCustom}
+                        onChange={(e) => setFormData(prev => ({ ...prev, visitLocationCustom: e.target.value }))}
+                        placeholder="訪問場所の詳細を入力してください（最大130文字）"
+                        maxLength={130}
+                        rows={3}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        場所コード「99（その他）」を選択した場合のみ入力してください（最大130バイト）
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3079,8 +3198,99 @@ export function NursingRecords() {
                         }
 
                         return null;
-                      })()}
+                      })(                      )}
                     </div>
+                  </div>
+                </div>
+
+                {/* 訪問終了情報セクション */}
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-sm font-semibold mb-3">訪問終了情報</h3>
+                  
+                  {/* 訪問終了情報 */}
+                  <div className="border rounded-lg">
+                  <div className="flex items-start space-x-3 p-3">
+                    <Checkbox
+                      id="is-service-end"
+                      checked={formData.isServiceEnd}
+                      onCheckedChange={(checked) => {
+                        setFormData(prev => ({ ...prev, isServiceEnd: checked === true }))
+                      }}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="is-service-end" className="cursor-pointer font-medium">
+                        今回で訪問終了
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        訪問を終了する場合にチェック
+                      </p>
+                    </div>
+                  </div>
+                  {formData.isServiceEnd && (
+                    <div className="px-3 pb-3 pt-0 space-y-3">
+                      {/* 訪問終了時刻は表示のみ（実際の終了時間から自動取得） */}
+                      <div className="space-y-2">
+                        <Label className="text-sm">
+                          訪問終了時刻
+                        </Label>
+                        <div className="flex items-center h-10 px-3 border rounded-md bg-gray-100">
+                          <span className="text-sm">
+                            {formData.actualEndTime 
+                              ? formData.actualEndTime
+                              : '未設定（実際の終了時間を入力してください）'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          訪問終了時刻は「実際の終了時間」から自動取得されます
+                        </p>
+                      </div>
+                      
+                      {/* 訪問終了状況コード */}
+                      <div className="space-y-2">
+                        <Label htmlFor="service-end-reason-code" className="text-sm">
+                          訪問終了状況コード <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          value={formData.serviceEndReasonCode}
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, serviceEndReasonCode: value }))}
+                        >
+                          <SelectTrigger id="service-end-reason-code">
+                            <SelectValue placeholder="選択してください" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="01">01 - 軽快</SelectItem>
+                            <SelectItem value="02">02 - 施設</SelectItem>
+                            <SelectItem value="03">03 - 医療機関</SelectItem>
+                            <SelectItem value="04">04 - 死亡</SelectItem>
+                            <SelectItem value="99">99 - その他</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          訪問を終了した理由（別表15）
+                        </p>
+                      </div>
+                      
+                      {/* 訪問終了状況詳細（コード99の場合のみ） */}
+                      {formData.serviceEndReasonCode === '99' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="service-end-reason-text" className="text-sm">
+                            訪問終了状況詳細 <span className="text-red-500">*</span>
+                          </Label>
+                          <Textarea
+                            id="service-end-reason-text"
+                            value={formData.serviceEndReasonText}
+                            onChange={(e) => setFormData(prev => ({ ...prev, serviceEndReasonText: e.target.value }))}
+                            maxLength={20}
+                            placeholder="訪問終了の理由を入力してください（最大20文字）"
+                            className="min-h-[80px] resize-none"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            コード99（その他）を選択した場合のみ入力してください（最大20バイト）
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   </div>
                 </div>
               </div>

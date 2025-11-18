@@ -58,7 +58,7 @@ export interface BonusCalculationContext {
   lastDischargeDate?: Date | null; // 直近の退院日
   lastPlanCreatedDate?: Date | null; // 直近の訪問看護計画作成日
   deathDate?: Date | null; // 死亡日
-  deathLocation?: string | null; // 死亡場所: 'home'(在宅), 'facility'(特養等)
+  deathPlaceCode?: string | null; // 死亡場所コード（別表16）: '01'(自宅), '16'(施設)等
   specialManagementTypes?: string[] | null; // 特別管理項目（配列）
 
   // Week 3: 専門管理加算用コンテキスト
@@ -519,30 +519,30 @@ async function evaluateTerminalCareRequirement(
   }
 
   // 3. 死亡場所の確認（加算種別による）
-  const deathLocation = context.deathLocation;
+  const deathPlaceCode = context.deathPlaceCode;
 
   if (bonusCode === 'terminal_care_1') {
     // 医療保険1: 在宅または特養等
-    if (!deathLocation || !['home', 'facility'].includes(deathLocation)) {
+    if (!deathPlaceCode || !['01', '16'].includes(deathPlaceCode)) {
       return {
         passed: false,
-        reason: "death_locationが未設定または不正な値",
+        reason: "death_place_codeが未設定または不正な値（'01'または'16'が必要）",
       };
     }
   } else if (bonusCode === 'terminal_care_2') {
     // 医療保険2: 特養等のみ
-    if (deathLocation !== 'facility') {
+    if (deathPlaceCode !== '16') {
       return {
         passed: false,
-        reason: "特養等での死亡が必要（death_location='facility'）",
+        reason: "特養等での死亡が必要（death_place_code='16'）",
       };
     }
   } else if (bonusCode === 'care_terminal_care') {
     // 介護保険: 在宅のみ
-    if (deathLocation !== 'home') {
+    if (deathPlaceCode !== '01') {
       return {
         passed: false,
-        reason: "在宅での死亡が必要（death_location='home'）",
+        reason: "在宅での死亡が必要（death_place_code='01'）",
       };
     }
   }
@@ -1983,7 +1983,7 @@ export async function recalculateBonusesForReceipt(
       lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate) : null,
       lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate) : null,
       deathDate: patient.deathDate ? new Date(patient.deathDate) : null,
-      deathLocation: patient.deathLocation || null,
+      deathPlaceCode: (patient as any).deathPlaceCode || null,
       // Phase 4: 特別管理情報
       specialManagementTypes: patient.specialManagementTypes || [],
       // Week 3: 専門管理加算用フィールド
