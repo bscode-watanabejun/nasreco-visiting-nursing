@@ -155,9 +155,10 @@ const getFullName = (patient: Patient): string => {
 
 // Helper function to check if a service code is a basic service code
 function isBasicServiceCode(serviceCode: NursingServiceCode, insuranceType: 'medical' | 'care' | null): boolean {
-  // 医療保険: サービスコード名に「基本療養費」が含まれるかで判定
+  // 医療保険: 「訪問看護基本療養費」または「精神科訪問看護基本療養費」で始まるものを基本療養費とする
   if (serviceCode.insuranceType === 'medical') {
-    if (!serviceCode.serviceName.includes('基本療養費')) {
+    if (!serviceCode.serviceName.startsWith('訪問看護基本療養費') && 
+        !serviceCode.serviceName.startsWith('精神科訪問看護基本療養費')) {
       return false;
     }
   }
@@ -2812,9 +2813,10 @@ export function NursingRecords() {
                           // まず、基本療養費のサービスコードを全て取得
                           let filteredCodes = nursingServiceCodes
                             .filter(code => {
-                              // 医療保険: 「基本療養費」を含む
+                              // 医療保険: 「訪問看護基本療養費」または「精神科訪問看護基本療養費」で始まるものを基本療養費とする
                               if (code.insuranceType === 'medical') {
-                                return code.serviceName.includes('基本療養費');
+                                return code.serviceName.startsWith('訪問看護基本療養費') || 
+                                       code.serviceName.startsWith('精神科訪問看護基本療養費');
                               }
                               
                               // 介護保険: 「訪看」で始まり、「・」（中点）を含まないものを基本療養費とする

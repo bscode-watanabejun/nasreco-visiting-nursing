@@ -1728,8 +1728,10 @@ function SelectedBonusServiceCodeSection({
   // 加算に対応するサービスコードをフィルタ（加算コード名から推測）
   const getAvailableServiceCodes = (bonusCode: string): NursingServiceCode[] => {
     return serviceCodes.filter(code => {
-      // 基本療養費のサービスコードを除外
-      if (code.serviceName.includes('基本療養費')) {
+      // 基本療養費のサービスコードを除外（サービス名が「基本療養費」で始まるもの）
+      // 加算用のサービスコードは「加算」で始まるため、除外されない
+      if (code.serviceName.startsWith('訪問看護基本療養費') || 
+          code.serviceName.startsWith('精神科訪問看護基本療養費')) {
         return false;
       }
       
@@ -2060,8 +2062,10 @@ function UnselectedBonusServiceCodeSection({
   const getAvailableServiceCodes = (bonusCode: string): NursingServiceCode[] => {
     // 加算コードに基づいてサービスコードをフィルタ
     return serviceCodes.filter(code => {
-      // 基本療養費のサービスコードを除外
-      if (code.serviceName.includes('基本療養費')) {
+      // 基本療養費のサービスコードを除外（サービス名が「基本療養費」で始まるもの）
+      // 加算用のサービスコードは「加算」で始まるため、除外されない
+      if (code.serviceName.startsWith('訪問看護基本療養費') || 
+          code.serviceName.startsWith('精神科訪問看護基本療養費')) {
         return false;
       }
       
