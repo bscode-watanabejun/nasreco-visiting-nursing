@@ -75,7 +75,7 @@ async function mapServiceCodes() {
           const name = code.serviceName;
           // 基本療養費（Ⅰ）→ 基本療養費１
           // 週3日まで → 週３日目まで
-          return name.includes('基本療養費') && 
+          return (name.startsWith('訪問看護基本療養費') || name.startsWith('精神科訪問看護基本療養費')) && 
                  (name.includes('週３日') || name.includes('週3日')) &&
                  code.insuranceType === wrongCode.insuranceType;
         });

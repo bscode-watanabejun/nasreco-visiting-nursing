@@ -71,9 +71,10 @@ async function checkAllBonusPoints() {
         where: and(...conditions),
       });
 
-      // 基本療養費を除外
+      // 基本療養費を除外（「訪問看護基本療養費」または「精神科訪問看護基本療養費」で始まるものを除外）
       const filteredServiceCodes = serviceCodes.filter(sc => 
-        !sc.serviceName.includes('基本療養費')
+        !sc.serviceName.startsWith('訪問看護基本療養費') && 
+        !sc.serviceName.startsWith('精神科訪問看護基本療養費')
       );
 
       if (filteredServiceCodes.length > 0) {
