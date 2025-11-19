@@ -5653,7 +5653,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           createdBy: true,
           approvedBy: true,
         },
-        orderBy: (careReports, { desc }) => [desc(careReports.reportDate)]
+        orderBy: (careReports, { desc }) => [
+          desc(careReports.reportDate),
+          desc(careReports.createdAt)
+        ]
       });
 
       res.json(reports);
@@ -5759,6 +5762,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requestData = { ...req.body };
       if (requestData.visitCount !== undefined) {
         requestData.visitCount = parseInt(requestData.visitCount);
+      }
+      // carePlanIdが空文字列の場合はnullに変換（計画書を削除する場合）
+      if (requestData.carePlanId === '') {
+        requestData.carePlanId = null;
       }
 
       const validatedData = updateCareReportSchema.parse(requestData);

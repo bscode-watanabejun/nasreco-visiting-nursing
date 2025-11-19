@@ -91,14 +91,19 @@ export default function CareReportManagement() {
 
   const patients = patientsResponse?.data;
 
-  // Fetch care plans for dropdown
+  // Fetch care plans for dropdown (filtered by selected patient)
   const { data: carePlans } = useQuery<CarePlan[]>({
-    queryKey: ["/api/care-plans"],
+    queryKey: ["/api/care-plans", selectedPatientIdForForm || editingReport?.patientId],
     queryFn: async () => {
-      const response = await fetch("/api/care-plans");
+      const patientId = selectedPatientIdForForm || editingReport?.patientId;
+      const url = patientId
+        ? `/api/care-plans?patientId=${patientId}`
+        : "/api/care-plans";
+      const response = await fetch(url);
       if (!response.ok) throw new Error("計画書の取得に失敗しました");
       return response.json();
     },
+    enabled: !!(selectedPatientIdForForm || editingReport?.patientId),
   });
 
   // Create mutation
@@ -148,7 +153,8 @@ export default function CareReportManagement() {
       formDataToSend.append('reportPeriodStart', data.reportPeriodStart);
       formDataToSend.append('reportPeriodEnd', data.reportPeriodEnd);
       formDataToSend.append('visitCount', data.visitCount.toString());
-      if (data.carePlanId) formDataToSend.append('carePlanId', data.carePlanId);
+      // carePlanIdは常に送信（undefinedの場合は空文字列、サーバー側でnullに変換）
+      formDataToSend.append('carePlanId', data.carePlanId || '');
       if (data.reportNumber) formDataToSend.append('reportNumber', data.reportNumber);
       if (data.patientCondition) formDataToSend.append('patientCondition', data.patientCondition);
       if (data.nursingOutcomes) formDataToSend.append('nursingOutcomes', data.nursingOutcomes);
@@ -224,7 +230,8 @@ export default function CareReportManagement() {
 
   const handleEdit = (report: CareReportWithRelations) => {
     setEditingReport(report);
-    setSelectedCarePlanIdForForm(report.carePlanId || "none");
+    // carePlanIdがnullまたはundefinedの場合は"none"に設定
+    setSelectedCarePlanIdForForm(report.carePlanId ?? "none");
     setFormData({
       reportNumber: report.reportNumber || "",
       reportDate: report.reportDate,
@@ -534,11 +541,35 @@ export default function CareReportManagement() {
               訪問看護報告書の情報を入力してください
             </DialogDescription>
           </DialogHeader>
+          {/* 編集時は利用者名を表示 */}
+          {editingReport && (
+            <div className="pb-2 border-b">
+              <p className="text-sm font-medium">
+                利用者: {editingReport.patient.lastName} {editingReport.patient.firstName}
+              </p>
+            </div>
+          )}
+          {/* 新規作成時で利用者が選択されている場合も表示 */}
+          {!editingReport && selectedPatientIdForForm && (
+            <div className="pb-2 border-b">
+              <p className="text-sm font-medium">
+                利用者: {patients?.find(p => p.id === selectedPatientIdForForm)?.lastName} {patients?.find(p => p.id === selectedPatientIdForForm)?.firstName}
+              </p>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             {!editingReport && (
               <div>
                 <Label htmlFor="patientId">利用者 *</Label>
-                <Select value={selectedPatientIdForForm} onValueChange={setSelectedPatientIdForForm} required>
+                <Select 
+                  value={selectedPatientIdForForm} 
+                  onValueChange={(value) => {
+                    setSelectedPatientIdForForm(value);
+                    // 利用者が変更されたら計画書の選択をリセット
+                    setSelectedCarePlanIdForForm("none");
+                  }} 
+                  required
+                >
                   <SelectTrigger id="patientId">
                     <SelectValue placeholder="利用者を選択" />
                   </SelectTrigger>
@@ -561,7 +592,7 @@ export default function CareReportManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">なし</SelectItem>
-                  {carePlans?.filter(cp => !editingReport || cp.patientId === editingReport.patientId).map((plan) => (
+                  {carePlans?.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       {plan.planNumber || plan.planDate} ({plan.planPeriodStart} ~ {plan.planPeriodEnd})
                     </SelectItem>
