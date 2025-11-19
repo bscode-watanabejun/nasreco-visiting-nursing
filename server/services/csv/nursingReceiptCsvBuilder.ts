@@ -452,16 +452,26 @@ export class NursingReceiptCsvBuilder {
     const recipientNumber = publicExpense.recipientNumber || '';      // 受給者番号（7桁可変）
 
     // 公費の実日数を計算（訪問記録から集計）
-    // 注意: 現在のデータ構造では訪問記録に公費IDが含まれていないため、
-    // 暫定的に全訪問記録から実日数を計算（将来的には公費IDでフィルタする必要がある）
+    // 恒久対応: 公費IDでフィルタして実日数を計算
+    // 後方互換性: publicExpenseIdがnullの場合は全訪問記録から計算（暫定対応）
+    const filteredRecords = data.nursingRecords.filter(r => {
+      // 公費IDが設定されている場合は、該当する公費IDのみ
+      if (r.publicExpenseId) {
+        return r.publicExpenseId === publicExpense.id;
+      }
+      // 公費IDがnullの場合は、全訪問記録がnullの場合のみ暫定対応として含める
+      // （既存データの後方互換性のため）
+      const allRecordsHaveNullPublicExpenseId = data.nursingRecords.every(rec => !rec.publicExpenseId);
+      return allRecordsHaveNullPublicExpenseId;
+    });
     const publicExpenseDays = new Set(
-      data.nursingRecords.map(r => formatDateToYYYYMMDD(r.visitDate))
+      filteredRecords.map(r => formatDateToYYYYMMDD(r.visitDate))
     ).size;
 
     // 公費の合計金額を計算（訪問記録の点数×10の合計）
-    // 注意: 現在のデータ構造では訪問記録に公費IDが含まれていないため、
-    // 暫定的に全訪問記録から合計金額を計算（将来的には公費IDでフィルタする必要がある）
-    const publicExpenseAmount = data.nursingRecords.reduce(
+    // 恒久対応: 公費IDでフィルタして合計金額を計算
+    // 後方互換性: publicExpenseIdがnullの場合は全訪問記録から計算（暫定対応）
+    const publicExpenseAmount = filteredRecords.reduce(
       (sum, r) => sum + (r.calculatedPoints || 0) * 10,
       0
     );

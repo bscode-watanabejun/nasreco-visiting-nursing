@@ -146,6 +146,8 @@ interface FormData {
   isServiceEnd: boolean // 今回で訪問終了
   serviceEndReasonCode: string // 訪問終了状況コード（別表15）
   serviceEndReasonText: string // 訪問終了状況文字データ（コード99の場合のみ）
+  // 公費ID（公費併用時のみ）
+  publicExpenseId: string // 公費ID（公費併用時のみ）
 }
 
 // Helper function to get full name
@@ -268,6 +270,8 @@ const convertFormDataToApiFormat = (
       serviceEndReasonCode: formData.serviceEndReasonCode || '',
       serviceEndReasonText: formData.serviceEndReasonCode === '99' ? (formData.serviceEndReasonText || '') : null,
     }),
+    // 公費ID
+    ...(formData.publicExpenseId && { publicExpenseId: formData.publicExpenseId }),
   }
 
   // スケジュールIDの紐付け - always include for proper tracking
@@ -388,7 +392,8 @@ const getInitialFormData = (): FormData => {
     // RJレコード用：訪問終了情報
     isServiceEnd: false,
     serviceEndReasonCode: '',
-    serviceEndReasonText: ''
+    serviceEndReasonText: '',
+    publicExpenseId: '',
   }
 }
 
@@ -507,6 +512,19 @@ export function NursingRecords() {
   const { data: staffQualificationCodes = [] } = useQuery({
     queryKey: ["staff-qualification-codes"],
     queryFn: () => masterDataApi.getStaffQualificationCodes(),
+  })
+
+  // 選択された記録の公費情報を取得
+  const { data: selectedRecordPublicExpense } = useQuery({
+    queryKey: ["public-expense-card", (selectedRecord as any)?.publicExpenseId],
+    queryFn: async () => {
+      const publicExpenseId = (selectedRecord as any)?.publicExpenseId;
+      if (!publicExpenseId) return null;
+      const response = await fetch(`/api/public-expense-cards/${publicExpenseId}`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!selectedRecord && !!(selectedRecord as any)?.publicExpenseId,
   })
 
   // Fetch nursing records from API with search filters
@@ -674,6 +692,36 @@ export function NursingRecords() {
 
   const patientSchedules = (patientSchedulesData?.data || []) as any[]
 
+  // 訪問日の時点で有効な公費情報を取得
+  const { data: validPublicExpensesData } = useQuery({
+    queryKey: ["validPublicExpenses", formData.patientId, formData.visitDate],
+    queryFn: async () => {
+      if (!formData.patientId || !formData.visitDate) return []
+
+      const response = await fetch(
+        `/api/public-expense-cards?patientId=${formData.patientId}`
+      )
+      if (!response.ok) return []
+      const allCards = await response.json()
+
+      // 訪問日の時点で有効な公費のみをフィルタ
+      const visitDate = new Date(formData.visitDate)
+      return allCards.filter((card: any) => {
+        if (!card.isActive) return false
+        const validFrom = new Date(card.validFrom)
+        const validUntil = card.validUntil ? new Date(card.validUntil) : null
+        return (
+          visitDate >= validFrom &&
+          (validUntil === null || visitDate <= validUntil)
+        )
+      })
+    },
+    enabled: !!formData.patientId && !!formData.visitDate && (isCreating || isEditing),
+  })
+
+  const validPublicExpenses = validPublicExpensesData || []
+  const hasPublicExpenses = validPublicExpenses.length > 0
+
   // Fetch the selected schedule if it exists and validate its date
   const { data: selectedScheduleData } = useQuery({
     queryKey: ["selectedSchedule", formData.selectedScheduleId, formData.visitDate],
@@ -728,6 +776,20 @@ export function NursingRecords() {
     prevVisitDateRef.current = formData.visitDate
     prevPatientIdRef.current = formData.patientId
   }, [formData.visitDate, formData.patientId, formData.selectedScheduleId, queryClient])
+
+  // 公費が1件のみの場合、自動選択
+  useEffect(() => {
+    if (
+      validPublicExpenses.length === 1 &&
+      !formData.publicExpenseId &&
+      (isCreating || isEditing)
+    ) {
+      setFormData(prev => ({
+        ...prev,
+        publicExpenseId: validPublicExpenses[0].id,
+      }))
+    }
+  }, [validPublicExpenses, isCreating, isEditing])
 
   // Auto-select schedule when only one is available
   useEffect(() => {
@@ -924,7 +986,8 @@ export function NursingRecords() {
       // RJレコード用：訪問終了情報
       isServiceEnd: (record as any).isServiceEnd || false,
       serviceEndReasonCode: (record as any).serviceEndReasonCode || '',
-      serviceEndReasonText: (record as any).serviceEndReasonText || ''
+      serviceEndReasonText: (record as any).serviceEndReasonText || '',
+      publicExpenseId: (record as any).publicExpenseId || '',
     })
 
   }
@@ -995,7 +1058,8 @@ export function NursingRecords() {
       // RJレコード用：訪問終了情報
       isServiceEnd: (record as any).isServiceEnd || false,
       serviceEndReasonCode: (record as any).serviceEndReasonCode || '',
-      serviceEndReasonText: (record as any).serviceEndReasonText || ''
+      serviceEndReasonText: (record as any).serviceEndReasonText || '',
+      publicExpenseId: (record as any).publicExpenseId || '',
     })
   }
 
@@ -1929,7 +1993,7 @@ export function NursingRecords() {
             </Card>
 
             {/* Receipt and Billing Information Card */}
-            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
+            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || (selectedRecord as any).publicExpenseId || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
               <Card>
                 <CardHeader>
                   <CardTitle>レセプト・加算情報</CardTitle>
@@ -2000,6 +2064,28 @@ export function NursingRecords() {
                           })()}
                         </div>
                       </div>
+
+                      {/* 適用公費 */}
+                      {(selectedRecord as any).publicExpenseId && (
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-1">適用公費</p>
+                          {selectedRecordPublicExpense ? (
+                            <div>
+                              <p className="text-base font-semibold">
+                                {selectedRecordPublicExpense.beneficiaryNumber} - {selectedRecordPublicExpense.legalCategoryNumber}
+                                {selectedRecordPublicExpense.recipientNumber && ` (受給者番号: ${selectedRecordPublicExpense.recipientNumber})`}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                優先順位: {selectedRecordPublicExpense.priority}
+                                {selectedRecordPublicExpense.validFrom && ` | 有効期間: ${new Date(selectedRecordPublicExpense.validFrom).toLocaleDateString('ja-JP')}`}
+                                {selectedRecordPublicExpense.validUntil && ` ～ ${new Date(selectedRecordPublicExpense.validUntil).toLocaleDateString('ja-JP')}`}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-base text-muted-foreground">読み込み中...</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2960,6 +3046,40 @@ export function NursingRecords() {
                       />
                       <p className="text-xs text-muted-foreground">
                         場所コード「99（その他）」を選択した場合のみ入力してください（最大130バイト）
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 公費選択（公費併用時のみ表示） */}
+                  {hasPublicExpenses && (
+                    <div className="space-y-2">
+                      <Label htmlFor="public-expense">適用公費</Label>
+                      <Select
+                        value={formData.publicExpenseId || "none"}
+                        onValueChange={(value) => 
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            publicExpenseId: value === "none" ? "" : value 
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="public-expense">
+                          <SelectValue placeholder="選択してください" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">公費なし</SelectItem>
+                          {validPublicExpenses
+                            .sort((a: any, b: any) => a.priority - b.priority)
+                            .map((expense: any) => (
+                              <SelectItem key={expense.id} value={expense.id}>
+                                {expense.beneficiaryNumber} - {expense.legalCategoryNumber} 
+                                (優先順位{expense.priority})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        訪問日の時点で有効な公費を選択してください。複数の公費がある場合は、優先順位が最も高いものを推奨します。
                       </p>
                     </div>
                   )}

@@ -102,6 +102,7 @@ export interface ReceiptCsvData {
   nursingRecords: Array<{
     id: string;
     visitDate: Date | string;
+    publicExpenseId?: string | null; // 公費ID（公費併用時のみ）
     actualStartTime: string;
     actualEndTime: string;
     serviceCode: string; // 9桁

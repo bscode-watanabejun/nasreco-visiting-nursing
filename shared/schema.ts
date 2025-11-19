@@ -310,6 +310,7 @@ export const nursingRecords = pgTable("nursing_records", {
   visitLocationCode: varchar("visit_location_code", { length: 2 }), // 訪問場所コード
   visitLocationCustom: text("visit_location_custom"), // 訪問場所詳細（場所コード99の場合のみ、RJレコード用）
   staffQualificationCode: varchar("staff_qualification_code", { length: 2 }), // 職員資格コード
+  publicExpenseId: varchar("public_expense_id").references(() => publicExpenseCards.id), // 公費ID（公費併用時のみ）
 
   // RJレコード用：訪問終了情報
   isServiceEnd: boolean("is_service_end").default(false), // 今回で訪問終了フラグ

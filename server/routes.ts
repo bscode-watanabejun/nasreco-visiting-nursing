@@ -9532,6 +9532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         nursingRecords: targetRecords.map(record => ({
           id: record.id,
           visitDate: record.visitDate,
+          publicExpenseId: record.publicExpenseId || null,
           actualStartTime: record.actualStartTime instanceof Date
             ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
             : (record.actualStartTime || ''),
@@ -9813,6 +9814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             nursingRecords: targetRecords.map(record => ({
               id: record.id,
               visitDate: record.visitDate,
+              publicExpenseId: record.publicExpenseId || null,
               actualStartTime: record.actualStartTime instanceof Date
                 ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
                 : (record.actualStartTime || ''),
