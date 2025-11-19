@@ -9458,6 +9458,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           visitCount: receipt.visitCount,
           totalPoints: receipt.totalPoints,
           totalAmount: receipt.totalAmount,
+          // 一部負担金額・減免情報
+          partialBurdenAmount: receipt.partialBurdenAmount || null,
+          reductionCategory: (receipt.reductionCategory === '1' || receipt.reductionCategory === '2' || receipt.reductionCategory === '3') 
+            ? receipt.reductionCategory 
+            : null,
+          reductionRate: receipt.reductionRate || null,
+          reductionAmount: receipt.reductionAmount || null,
+          certificateNumber: receipt.certificateNumber || null,
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',
@@ -9731,6 +9739,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               visitCount: receipt.visitCount,
               totalPoints: receipt.totalPoints,
               totalAmount: receipt.totalAmount,
+              // 一部負担金額・減免情報
+              partialBurdenAmount: receipt.partialBurdenAmount || null,
+              reductionCategory: (receipt.reductionCategory === '1' || receipt.reductionCategory === '2' || receipt.reductionCategory === '3') 
+                ? receipt.reductionCategory 
+                : null,
+              reductionRate: receipt.reductionRate || null,
+              reductionAmount: receipt.reductionAmount || null,
+              certificateNumber: receipt.certificateNumber || null,
             },
             facility: {
               facilityCode: facility.facilityCode || '0000000',

@@ -15,6 +15,12 @@ export interface ReceiptCsvData {
     visitCount: number;
     totalPoints: number;
     totalAmount: number;
+    // 一部負担金額・減免情報（HOレコード用）
+    partialBurdenAmount?: number | null;
+    reductionCategory?: '1' | '2' | '3' | null; // 別表9: 1=減額, 2=免除, 3=支払猶予
+    reductionRate?: number | null; // 減額割合（0-100）
+    reductionAmount?: number | null; // 減額金額
+    certificateNumber?: string | null; // 証明書番号（3桁）
   };
 
   // 施設情報

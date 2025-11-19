@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useRoute, useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,14 @@ import {
 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { masterDataApi, type NursingServiceCode } from "@/lib/api"
 
 interface MonthlyReceiptDetail {
@@ -75,6 +83,12 @@ interface MonthlyReceiptDetail {
   errorMessages: string[] | null
   warningMessages: string[] | null
   notes: string | null
+  // 一部負担金額・減免情報（HOレコード用）
+  partialBurdenAmount: number | null
+  reductionCategory: '1' | '2' | '3' | null
+  reductionRate: number | null
+  reductionAmount: number | null
+  certificateNumber: string | null
   patient: {
     id: string
     patientNumber: string
@@ -205,6 +219,76 @@ export default function MonthlyReceiptDetail() {
     staleTime: 0,              // データを常に古いものとして扱う
     refetchOnMount: 'always',  // マウント時に常に再取得（キャッシュがあっても最新情報を取得）
   })
+
+  // ローカル状態（一部負担金額・減免情報用）
+  const [localPartialBurdenAmount, setLocalPartialBurdenAmount] = useState<number | null>(null);
+  const [localReductionCategory, setLocalReductionCategory] = useState<'1' | '2' | '3' | null>(null);
+  const [localReductionRate, setLocalReductionRate] = useState<number | null>(null);
+  const [localReductionAmount, setLocalReductionAmount] = useState<number | null>(null);
+  const [localCertificateNumber, setLocalCertificateNumber] = useState<string | null>(null);
+
+  // receiptが変更されたときにローカル状態を更新
+  useEffect(() => {
+    if (receipt) {
+      setLocalPartialBurdenAmount(receipt.partialBurdenAmount || null);
+      setLocalReductionCategory(receipt.reductionCategory || null);
+      setLocalReductionRate(receipt.reductionRate || null);
+      setLocalReductionAmount(receipt.reductionAmount || null);
+      setLocalCertificateNumber(receipt.certificateNumber || null);
+    }
+  }, [receipt]);
+
+  // Update receipt mutation (一部負担金額・減免情報用)
+  const updateReceiptMutation = useMutation({
+    mutationFn: async (data: Partial<MonthlyReceiptDetail>) => {
+      const response = await fetch(`/api/monthly-receipts/${receiptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '更新に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+      toast({
+        title: "更新しました",
+        description: "一部負担金額・減免情報を更新しました",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // onBlur時の保存処理
+  const handleSaveBurdenInfo = () => {
+    if (!receipt) return;
+    
+    const hasChanges = 
+      localPartialBurdenAmount !== receipt.partialBurdenAmount ||
+      localReductionCategory !== receipt.reductionCategory ||
+      localReductionRate !== receipt.reductionRate ||
+      localReductionAmount !== receipt.reductionAmount ||
+      localCertificateNumber !== receipt.certificateNumber;
+
+    if (hasChanges) {
+      updateReceiptMutation.mutate({
+        partialBurdenAmount: localPartialBurdenAmount,
+        reductionCategory: localReductionCategory,
+        reductionRate: localReductionCategory === '1' ? localReductionRate : null,
+        reductionAmount: localReductionCategory === '1' ? localReductionAmount : null,
+        certificateNumber: localCertificateNumber,
+      });
+    }
+  };
 
   // Validate receipt mutation
   const validateMutation = useMutation({
@@ -929,6 +1013,143 @@ export default function MonthlyReceiptDetail() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 一部負担金額・減免情報セクション（医療保険のみ） */}
+      {receipt.insuranceType === 'medical' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              一部負担金額・減免情報（HOレコード用）
+            </CardTitle>
+            <CardDescription>
+              医療保険レセプトCSV出力用の情報です。確定済みのレセプトは編集できません。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* 証明書番号（国保の場合のみ表示） */}
+              {receipt.insuranceCard?.insurerNumber?.startsWith('06') && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="certificateNumber">証明書番号</Label>
+                    <Input
+                      id="certificateNumber"
+                      type="text"
+                      maxLength={3}
+                      value={localCertificateNumber || ''}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '');
+                        setLocalCertificateNumber(value || null);
+                      }}
+                      onBlur={handleSaveBurdenInfo}
+                      disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                      placeholder="3桁以内の数字"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      国民健康保険一部負担金減額、免除、徴収猶予証明書の証明書番号
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 一部負担金額・減免区分（横並び） */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="partialBurdenAmount">一部負担金額（円）</Label>
+                  <Input
+                    id="partialBurdenAmount"
+                    type="number"
+                    min="0"
+                    value={localPartialBurdenAmount || ''}
+                    onChange={(e) => {
+                      const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                      setLocalPartialBurdenAmount(value);
+                    }}
+                    onBlur={handleSaveBurdenInfo}
+                    disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                    placeholder="例: 50000"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="reductionCategory">減免区分</Label>
+                  <Select
+                    value={localReductionCategory || 'none'}
+                    onValueChange={(value) => {
+                      // CLAUDE.mdの推奨方法に従い、'none'を未選択として扱う
+                      const category = value === 'none' ? null : value as '1' | '2' | '3';
+                      setLocalReductionCategory(category);
+                      if (category !== '1') {
+                        setLocalReductionRate(null);
+                        setLocalReductionAmount(null);
+                      }
+                    }}
+                    onOpenChange={(open) => {
+                      // Selectが閉じたときに保存
+                      if (!open) {
+                        handleSaveBurdenInfo();
+                      }
+                    }}
+                    disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">未選択</SelectItem>
+                      <SelectItem value="1">減額</SelectItem>
+                      <SelectItem value="2">免除</SelectItem>
+                      <SelectItem value="3">支払猶予</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    別表9: 1=減額, 2=免除, 3=支払猶予
+                  </p>
+                </div>
+              </div>
+
+              {/* 減額割合・減額金額（減免区分が「減額」の場合のみ表示） */}
+              {localReductionCategory === '1' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="reductionRate">減額割合（%）</Label>
+                    <Input
+                      id="reductionRate"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={localReductionRate || ''}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        setLocalReductionRate(value);
+                      }}
+                      onBlur={handleSaveBurdenInfo}
+                      disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                      placeholder="例: 50"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="reductionAmount">減額金額（円）</Label>
+                    <Input
+                      id="reductionAmount"
+                      type="number"
+                      min="0"
+                      value={localReductionAmount || ''}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        setLocalReductionAmount(value);
+                      }}
+                      onBlur={handleSaveBurdenInfo}
+                      disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                      placeholder="例: 30000"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* サービスコード選択セクション（未選択・選択済み両方） */}
       {(() => {

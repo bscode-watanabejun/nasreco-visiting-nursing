@@ -409,6 +409,17 @@ export class NursingReceiptCsvBuilder {
     // 合計金額（必須）
     const totalAmount = data.receipt.totalAmount || 0;
 
+    // 一部負担金額・減免情報を取得
+    const certificateNumberForHO = data.receipt.certificateNumber || ''; // 証明書番号
+    const partialBurdenAmount = data.receipt.partialBurdenAmount || null;
+    const reductionCategory = data.receipt.reductionCategory || '';
+    const reductionRate = data.receipt.reductionRate 
+      ? String(data.receipt.reductionRate).padStart(3, '0')
+      : '';
+    const reductionAmount = data.receipt.reductionAmount 
+      ? String(data.receipt.reductionAmount).padStart(6, '0')
+      : '';
+
     const fields = [
       'HO',                                    // レコード識別情報
       insurerNumber.padStart(8, ' '),         // 保険者番号（8桁固定、スペース埋め）
@@ -417,11 +428,11 @@ export class NursingReceiptCsvBuilder {
       String(actualDays).padStart(2, '0'),   // 実日数（2桁可変、必須）
       String(totalAmount).padStart(8, '0'),   // 合計金額（8桁可変、必須）
       '',                                      // 職務上の事由（1桁可変）
-      '',                                      // 証明書番号（3桁可変）
-      '',                                      // 一部負担金額（8桁可変）
-      '',                                      // 減免区分（1桁可変）
-      '',                                      // 減額割合（3桁可変）
-      '',                                      // 減額金額（6桁可変）
+      certificateNumberForHO || '',            // 証明書番号（3桁可変）
+      partialBurdenAmount ? String(partialBurdenAmount).padStart(8, '0') : '', // 一部負担金額（8桁可変）
+      reductionCategory || '',                 // 減免区分（1桁可変）
+      reductionRate || '',                     // 減額割合（3桁可変）
+      reductionAmount || '',                   // 減額金額（6桁可変）
     ];
 
     this.lines.push(buildCsvLine(fields));

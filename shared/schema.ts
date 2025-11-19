@@ -849,6 +849,13 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   // 備考
   notes: text("notes"),
 
+  // 一部負担金額・減免情報（HOレコード用）
+  partialBurdenAmount: integer("partial_burden_amount"), // 一部負担金額（8桁可変、単位: 円）
+  reductionCategory: varchar("reduction_category", { length: 1 }), // 減免区分（別表9: '1'=減額, '2'=免除, '3'=支払猶予）
+  reductionRate: integer("reduction_rate"), // 減額割合（百分率、0-100）
+  reductionAmount: integer("reduction_amount"), // 減額金額（6桁可変、単位: 円）
+  certificateNumber: varchar("certificate_number", { length: 3 }), // 証明書番号（3桁可変、国保の場合のみ）
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
