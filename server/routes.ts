@@ -9466,6 +9466,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           reductionRate: receipt.reductionRate || null,
           reductionAmount: receipt.reductionAmount || null,
           certificateNumber: receipt.certificateNumber || null,
+          // ⭐ 追加: 公費一部負担情報（KOレコード用）
+          publicExpenseBurdenInfo: (receipt.publicExpenseBurdenInfo as any) || null,
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',
@@ -9507,6 +9509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         // Phase 3: 公費負担医療情報（優先順位順）
         publicExpenses: publicExpensesData.map(pe => ({
+          id: pe.id, // ⭐ 追加: 公費ID（publicExpenseBurdenInfoのキーとして使用）
           legalCategoryNumber: pe.legalCategoryNumber,
           beneficiaryNumber: pe.beneficiaryNumber,
           recipientNumber: pe.recipientNumber,
@@ -9747,6 +9750,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               reductionRate: receipt.reductionRate || null,
               reductionAmount: receipt.reductionAmount || null,
               certificateNumber: receipt.certificateNumber || null,
+              // ⭐ 追加: 公費一部負担情報（KOレコード用）
+              publicExpenseBurdenInfo: (receipt.publicExpenseBurdenInfo as any) || null,
             },
             facility: {
               facilityCode: facility.facilityCode || '0000000',
@@ -9785,6 +9790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 : null, // 一部負担金区分（別表7）
             },
             publicExpenses: publicExpensesData.map(pe => ({
+              id: pe.id, // ⭐ 追加: 公費ID（publicExpenseBurdenInfoのキーとして使用）
               legalCategoryNumber: pe.legalCategoryNumber,
               beneficiaryNumber: pe.beneficiaryNumber,
               recipientNumber: pe.recipientNumber,

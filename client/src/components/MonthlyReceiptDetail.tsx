@@ -89,6 +89,13 @@ interface MonthlyReceiptDetail {
   reductionRate: number | null
   reductionAmount: number | null
   certificateNumber: string | null
+  // ⭐ 追加: 公費一部負担情報（KOレコード用）
+  publicExpenseBurdenInfo: {
+    [publicExpenseCardId: string]: {
+      partialBurdenAmount: number | null
+      publicExpenseBurdenAmount: number | null
+    }
+  } | null
   patient: {
     id: string
     patientNumber: string
@@ -227,6 +234,14 @@ export default function MonthlyReceiptDetail() {
   const [localReductionAmount, setLocalReductionAmount] = useState<number | null>(null);
   const [localCertificateNumber, setLocalCertificateNumber] = useState<string | null>(null);
 
+  // ⭐ 追加: 公費一部負担情報のローカル状態（公費IDをキーとしたマップ）
+  const [localPublicExpenseBurdenInfo, setLocalPublicExpenseBurdenInfo] = useState<{
+    [publicExpenseCardId: string]: {
+      partialBurdenAmount: number | null;
+      publicExpenseBurdenAmount: number | null;
+    };
+  }>({});
+
   // receiptが変更されたときにローカル状態を更新
   useEffect(() => {
     if (receipt) {
@@ -235,6 +250,8 @@ export default function MonthlyReceiptDetail() {
       setLocalReductionRate(receipt.reductionRate || null);
       setLocalReductionAmount(receipt.reductionAmount || null);
       setLocalCertificateNumber(receipt.certificateNumber || null);
+      // ⭐ 追加: 公費一部負担情報のローカル状態を更新
+      setLocalPublicExpenseBurdenInfo(receipt.publicExpenseBurdenInfo || {});
     }
   }, [receipt]);
 
@@ -286,6 +303,34 @@ export default function MonthlyReceiptDetail() {
         reductionRate: localReductionCategory === '1' ? localReductionRate : null,
         reductionAmount: localReductionCategory === '1' ? localReductionAmount : null,
         certificateNumber: localCertificateNumber,
+      });
+    }
+  };
+
+  // ⭐ 追加: 公費一部負担情報の保存処理（onBlur時）
+  const handleSavePublicExpenseBurdenInfo = (publicExpenseCardId: string) => {
+    if (!receipt) return;
+
+    const currentInfo = receipt.publicExpenseBurdenInfo || {};
+    const localInfo = localPublicExpenseBurdenInfo[publicExpenseCardId] || { partialBurdenAmount: null, publicExpenseBurdenAmount: null };
+    const currentCardInfo = currentInfo[publicExpenseCardId] || { partialBurdenAmount: null, publicExpenseBurdenAmount: null };
+
+    const hasChanges = 
+      localInfo.partialBurdenAmount !== currentCardInfo.partialBurdenAmount ||
+      localInfo.publicExpenseBurdenAmount !== currentCardInfo.publicExpenseBurdenAmount;
+
+    if (hasChanges) {
+      // 既存の情報とマージ
+      const updatedInfo = {
+        ...currentInfo,
+        [publicExpenseCardId]: {
+          partialBurdenAmount: localInfo.partialBurdenAmount,
+          publicExpenseBurdenAmount: localInfo.publicExpenseBurdenAmount,
+        },
+      };
+
+      updateReceiptMutation.mutate({
+        publicExpenseBurdenInfo: updatedInfo,
       });
     }
   };
@@ -975,6 +1020,68 @@ export default function MonthlyReceiptDetail() {
                       </div>
                     )}
                   </div>
+
+                  {/* ⭐ 追加: 一部負担金額・公費給付情報（KOレコード用） */}
+                  <Separator className="my-4" />
+                  <div className="space-y-4">
+                    <div className="text-sm font-semibold text-muted-foreground">一部負担金額・公費給付情報（KOレコード用）</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor={`partialBurdenAmount-${card.id}`}>一部負担金額（円）</Label>
+                        <Input
+                          id={`partialBurdenAmount-${card.id}`}
+                          type="number"
+                          min="0"
+                          max="99999999"
+                          value={localPublicExpenseBurdenInfo[card.id]?.partialBurdenAmount || ''}
+                          onChange={(e) => {
+                            const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                            // 8桁制限（99,999,999まで）
+                            if (value !== null && (value < 0 || value > 99999999)) {
+                              return;
+                            }
+                            setLocalPublicExpenseBurdenInfo(prev => ({
+                              ...prev,
+                              [card.id]: {
+                                ...prev[card.id],
+                                partialBurdenAmount: value,
+                              },
+                            }));
+                          }}
+                          onBlur={() => handleSavePublicExpenseBurdenInfo(card.id)}
+                          disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                          placeholder="例: 50000（8桁以内）"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`publicExpenseBurdenAmount-${card.id}`}>公費給付対象一部負担金（円）</Label>
+                        <Input
+                          id={`publicExpenseBurdenAmount-${card.id}`}
+                          type="number"
+                          min="0"
+                          max="999999"
+                          value={localPublicExpenseBurdenInfo[card.id]?.publicExpenseBurdenAmount || ''}
+                          onChange={(e) => {
+                            const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                            // 6桁制限（999,999まで）
+                            if (value !== null && (value < 0 || value > 999999)) {
+                              return;
+                            }
+                            setLocalPublicExpenseBurdenInfo(prev => ({
+                              ...prev,
+                              [card.id]: {
+                                ...prev[card.id],
+                                publicExpenseBurdenAmount: value,
+                              },
+                            }));
+                          }}
+                          onBlur={() => handleSavePublicExpenseBurdenInfo(card.id)}
+                          disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                          placeholder="例: 30000（6桁以内）"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1061,14 +1168,19 @@ export default function MonthlyReceiptDetail() {
                     id="partialBurdenAmount"
                     type="number"
                     min="0"
+                    max="99999999"
                     value={localPartialBurdenAmount || ''}
                     onChange={(e) => {
                       const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                      // 8桁制限（99,999,999まで）
+                      if (value !== null && (value < 0 || value > 99999999)) {
+                        return;
+                      }
                       setLocalPartialBurdenAmount(value);
                     }}
                     onBlur={handleSaveBurdenInfo}
                     disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
-                    placeholder="例: 50000"
+                    placeholder="例: 50000（8桁以内）"
                   />
                 </div>
                 <div>
@@ -1121,11 +1233,15 @@ export default function MonthlyReceiptDetail() {
                       value={localReductionRate || ''}
                       onChange={(e) => {
                         const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        // 0-100%制限
+                        if (value !== null && (value < 0 || value > 100)) {
+                          return;
+                        }
                         setLocalReductionRate(value);
                       }}
                       onBlur={handleSaveBurdenInfo}
                       disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
-                      placeholder="例: 50"
+                      placeholder="例: 50（0-100%）"
                     />
                   </div>
                   <div>
@@ -1134,14 +1250,19 @@ export default function MonthlyReceiptDetail() {
                       id="reductionAmount"
                       type="number"
                       min="0"
+                      max="999999"
                       value={localReductionAmount || ''}
                       onChange={(e) => {
                         const value = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        // 6桁制限（999,999まで）
+                        if (value !== null && (value < 0 || value > 999999)) {
+                          return;
+                        }
                         setLocalReductionAmount(value);
                       }}
                       onBlur={handleSaveBurdenInfo}
                       disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
-                      placeholder="例: 30000"
+                      placeholder="例: 30000（6桁以内）"
                     />
                   </div>
                 </div>

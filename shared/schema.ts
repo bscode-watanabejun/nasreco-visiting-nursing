@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum, json, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, decimal, date, pgEnum, json, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -855,6 +855,10 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   reductionRate: integer("reduction_rate"), // 減額割合（百分率、0-100）
   reductionAmount: integer("reduction_amount"), // 減額金額（6桁可変、単位: 円）
   certificateNumber: varchar("certificate_number", { length: 3 }), // 証明書番号（3桁可変、国保の場合のみ）
+
+  // ⭐ 追加: 公費一部負担情報（KOレコード用）
+  // JSONB形式で公費IDをキーとしたマップ: { "公費ID": { partialBurdenAmount: number | null, publicExpenseBurdenAmount: number | null } }
+  publicExpenseBurdenInfo: jsonb("public_expense_burden_info"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

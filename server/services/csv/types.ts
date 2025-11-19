@@ -21,6 +21,13 @@ export interface ReceiptCsvData {
     reductionRate?: number | null; // 減額割合（0-100）
     reductionAmount?: number | null; // 減額金額
     certificateNumber?: string | null; // 証明書番号（3桁）
+    // ⭐ 追加: 公費一部負担情報（KOレコード用）
+    publicExpenseBurdenInfo?: {
+      [publicExpenseCardId: string]: {
+        partialBurdenAmount?: number | null;        // 一部負担金額（8桁可変、単位: 円）
+        publicExpenseBurdenAmount?: number | null;  // 公費給付対象一部負担金（6桁可変、単位: 円）
+      };
+    } | null;
   };
 
   // 施設情報
@@ -74,6 +81,7 @@ export interface ReceiptCsvData {
 
   // 公費負担医療情報（Phase 3: 動的判定用）
   publicExpenses: Array<{
+    id: string; // ⭐ 追加: 公費ID（publicExpenseBurdenInfoのキーとして使用）
     legalCategoryNumber: string;
     beneficiaryNumber: string;
     recipientNumber: string | null;

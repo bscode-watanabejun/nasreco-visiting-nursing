@@ -471,6 +471,11 @@ export class NursingReceiptCsvBuilder {
       ? recipientNumber.padStart(7, '0')
       : '';
 
+    // ⭐ 追加: 公費IDに対応する一部負担情報を取得
+    const burdenInfo = data.receipt.publicExpenseBurdenInfo?.[publicExpense.id] || {};
+    const partialBurdenAmount = burdenInfo.partialBurdenAmount || null;
+    const publicExpenseBurdenAmount = burdenInfo.publicExpenseBurdenAmount || null;
+
     // KOレコードは8フィールド構成（仕様書PDFページ11）
     const fields = [
       'KO',                                          // レコード識別情報
@@ -479,8 +484,8 @@ export class NursingReceiptCsvBuilder {
       '',                                            // 任意給付区分（国保のみ、通常は空欄）
       String(publicExpenseDays).padStart(2, '0'),  // 実日数（2桁可変、必須）
       String(publicExpenseAmount).padStart(8, '0'), // 合計金額（8桁可変、必須）
-      '',                                            // 一部負担金額（8桁可変）
-      '',                                            // 公費給付対象一部負担金（6桁可変）
+      partialBurdenAmount ? String(partialBurdenAmount).padStart(8, '0') : '', // ⭐ 一部負担金額（8桁可変）
+      publicExpenseBurdenAmount ? String(publicExpenseBurdenAmount).padStart(6, '0') : '', // ⭐ 公費給付対象一部負担金（6桁可変）
     ];
 
     this.lines.push(buildCsvLine(fields));
