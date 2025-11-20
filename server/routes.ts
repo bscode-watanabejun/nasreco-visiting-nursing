@@ -9430,6 +9430,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: "医療機関情報が見つかりません" });
       }
 
+      // 主治医への直近報告年月日を取得（レセプト対象月以前の報告書から）
+      // endDateを文字列形式（YYYY-MM-DD）に変換
+      const endDateStr = `${receipt.targetYear}-${String(receipt.targetMonth).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+      const lastReportDate = await db.query.careReports.findFirst({
+        where: and(
+          eq(careReports.patientId, receipt.patientId),
+          eq(careReports.facilityId, receipt.facilityId),
+          eq(careReports.isActive, true),
+          // レセプト対象月以前の報告書のみ（対象月の月末日以前）
+          lte(careReports.reportDate, endDateStr),
+          // sentToDoctorAtまたはreportDateが存在するもの
+          or(
+            isNotNull(careReports.sentToDoctorAt),
+            isNotNull(careReports.reportDate)
+          )
+        ),
+        orderBy: desc(careReports.reportDate),
+      });
+
+      // 直近報告日を決定（sentToDoctorAtがあれば優先、なければreportDate）
+      const lastReportDateValue = lastReportDate
+        ? (lastReportDate.sentToDoctorAt || lastReportDate.reportDate)
+        : null;
+
       // 加算履歴を取得（サービスコード選択済みのもののみ）
       const recordIds = targetRecords.map(r => r.id);
       let bonusHistoryData: Array<{
@@ -9475,6 +9499,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           certificateNumber: receipt.certificateNumber || null,
           // ⭐ 追加: 公費一部負担情報（KOレコード用）
           publicExpenseBurdenInfo: (receipt.publicExpenseBurdenInfo as any) || null,
+          // 高額療養費適用状況（MFレコード用）
+          highCostCategory: (receipt.highCostCategory === 'high_cost' || receipt.highCostCategory === 'high_cost_multiple')
+            ? receipt.highCostCategory
+            : null,
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',
@@ -9527,6 +9555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           prefectureCode: medicalInstitution.prefectureCode || '00',
           name: medicalInstitution.name,
           doctorName: medicalInstitution.doctorName,
+          lastReportDate: lastReportDateValue, // 主治医への直近報告年月日
         },
         doctorOrder: {
           id: validOrder.id,
@@ -9715,6 +9744,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
+          // 主治医への直近報告年月日を取得（レセプト対象月以前の報告書から）
+          // endDateを文字列形式（YYYY-MM-DD）に変換
+          const endDateStr = `${receipt.targetYear}-${String(receipt.targetMonth).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+          const lastReportDate = await db.query.careReports.findFirst({
+            where: and(
+              eq(careReports.patientId, receipt.patientId),
+              eq(careReports.facilityId, receipt.facilityId),
+              eq(careReports.isActive, true),
+              // レセプト対象月以前の報告書のみ（対象月の月末日以前）
+              lte(careReports.reportDate, endDateStr),
+              // sentToDoctorAtまたはreportDateが存在するもの
+              or(
+                isNotNull(careReports.sentToDoctorAt),
+                isNotNull(careReports.reportDate)
+              )
+            ),
+            orderBy: desc(careReports.reportDate),
+          });
+
+          // 直近報告日を決定（sentToDoctorAtがあれば優先、なければreportDate）
+          const lastReportDateValue = lastReportDate
+            ? (lastReportDate.sentToDoctorAt || lastReportDate.reportDate)
+            : null;
+
           // 加算履歴を取得（サービスコード選択済みのもののみ）
           const recordIds = targetRecords.map(r => r.id);
           let bonusHistoryData: Array<{
@@ -9760,6 +9813,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               certificateNumber: receipt.certificateNumber || null,
               // ⭐ 追加: 公費一部負担情報（KOレコード用）
               publicExpenseBurdenInfo: (receipt.publicExpenseBurdenInfo as any) || null,
+              // 高額療養費適用状況（MFレコード用）
+              highCostCategory: (receipt.highCostCategory === 'high_cost' || receipt.highCostCategory === 'high_cost_multiple')
+                ? receipt.highCostCategory
+                : null,
             },
             facility: {
               facilityCode: facility.facilityCode || '0000000',
@@ -9809,6 +9866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               prefectureCode: medicalInstitution.prefectureCode || '00',
               name: medicalInstitution.name,
               doctorName: medicalInstitution.doctorName,
+              lastReportDate: lastReportDateValue, // 主治医への直近報告年月日
             },
             doctorOrder: {
               id: validOrder.id,

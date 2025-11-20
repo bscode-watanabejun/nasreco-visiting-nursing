@@ -28,6 +28,8 @@ export interface ReceiptCsvData {
         publicExpenseBurdenAmount?: number | null;  // 公費給付対象一部負担金（6桁可変、単位: 円）
       };
     } | null;
+    // 高額療養費適用状況（MFレコード用）
+    highCostCategory?: 'high_cost' | 'high_cost_multiple' | null; // 'high_cost'=01, 'high_cost_multiple'=02
   };
 
   // 施設情報
@@ -62,6 +64,7 @@ export interface ReceiptCsvData {
     prefectureCode: string; // 2桁
     name: string;
     doctorName: string;
+    lastReportDate?: Date | string | null; // 主治医への直近報告年月日
   };
 
   // 保険証情報（Phase 3: 動的判定用）

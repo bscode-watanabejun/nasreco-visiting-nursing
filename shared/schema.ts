@@ -861,6 +861,9 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   // JSONB形式で公費IDをキーとしたマップ: { "公費ID": { partialBurdenAmount: number | null, publicExpenseBurdenAmount: number | null } }
   publicExpenseBurdenInfo: jsonb("public_expense_burden_info"),
 
+  // 高額療養費適用状況（MFレコード用）
+  highCostCategory: varchar("high_cost_category", { length: 20 }), // 'high_cost' | 'high_cost_multiple' | null
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

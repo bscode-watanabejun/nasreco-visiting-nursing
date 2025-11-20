@@ -96,6 +96,8 @@ interface MonthlyReceiptDetail {
       publicExpenseBurdenAmount: number | null
     }
   } | null
+  // 高額療養費適用状況（MFレコード用）
+  highCostCategory: 'high_cost' | 'high_cost_multiple' | null
   patient: {
     id: string
     patientNumber: string
@@ -242,6 +244,9 @@ export default function MonthlyReceiptDetail() {
     };
   }>({});
 
+  // 高額療養費適用状況のローカル状態（MFレコード用）
+  const [localHighCostCategory, setLocalHighCostCategory] = useState<'high_cost' | 'high_cost_multiple' | null>(null);
+
   // receiptが変更されたときにローカル状態を更新
   useEffect(() => {
     if (receipt) {
@@ -252,7 +257,14 @@ export default function MonthlyReceiptDetail() {
       setLocalCertificateNumber(receipt.certificateNumber || null);
       // ⭐ 追加: 公費一部負担情報のローカル状態を更新
       setLocalPublicExpenseBurdenInfo(receipt.publicExpenseBurdenInfo || {});
+      // 高額療養費適用状況のローカル状態を更新
+      // receiptの値とローカル状態が異なる場合のみ更新（APIリクエスト中の上書きを防ぐ）
+      const receiptValue = receipt.highCostCategory || null;
+      if (receiptValue !== localHighCostCategory) {
+        setLocalHighCostCategory(receiptValue);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt]);
 
   // Update receipt mutation (一部負担金額・減免情報用)
@@ -294,7 +306,8 @@ export default function MonthlyReceiptDetail() {
       localReductionCategory !== receipt.reductionCategory ||
       localReductionRate !== receipt.reductionRate ||
       localReductionAmount !== receipt.reductionAmount ||
-      localCertificateNumber !== receipt.certificateNumber;
+      localCertificateNumber !== receipt.certificateNumber ||
+      localHighCostCategory !== receipt.highCostCategory;
 
     if (hasChanges) {
       updateReceiptMutation.mutate({
@@ -303,6 +316,7 @@ export default function MonthlyReceiptDetail() {
         reductionRate: localReductionCategory === '1' ? localReductionRate : null,
         reductionAmount: localReductionCategory === '1' ? localReductionAmount : null,
         certificateNumber: localCertificateNumber,
+        highCostCategory: localHighCostCategory,
       });
     }
   };
@@ -1267,6 +1281,55 @@ export default function MonthlyReceiptDetail() {
                   </div>
                 </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 高額療養費適用状況セクション（医療保険のみ） */}
+      {receipt.insuranceType === 'medical' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              高額療養費適用状況（MFレコード用）
+            </CardTitle>
+            <CardDescription>
+              医療保険レセプトCSV出力用の情報です。確定済みのレセプトは編集できません。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="highCostCategory">高額療養費適用状況</Label>
+                <Select
+                  value={localHighCostCategory || 'none'}
+                  onValueChange={(value) => {
+                    // CLAUDE.mdの推奨方法に従い、'none'を未選択として扱う
+                    const category = value === 'none' ? null : value as 'high_cost' | 'high_cost_multiple';
+                    setLocalHighCostCategory(category);
+                  }}
+                  onOpenChange={(open) => {
+                    // Selectが閉じたときに保存
+                    if (!open) {
+                      handleSaveBurdenInfo();
+                    }
+                  }}
+                  disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選択してください" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">高額療養費該当なし</SelectItem>
+                    <SelectItem value="high_cost">高額療養費現物給付あり（多数回該当を除く）</SelectItem>
+                    <SelectItem value="high_cost_multiple">高額療養費現物給付あり（多数回該当）</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  高額療養費制度の適用状況を選択してください。
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

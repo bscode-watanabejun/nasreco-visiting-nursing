@@ -4,7 +4,7 @@
  * 「オンラインによる請求に係る記録条件仕様(訪問看護用)」令和6年6月版に準拠
  */
 
-import { buildCsvLine, buildCsvFile, toShiftJIS } from './csvUtils';
+import { buildCsvLine, buildCsvFile, toShiftJIS, formatDate } from './csvUtils';
 import type { ReceiptCsvData, MedicalInsuranceReceiptCsvData } from './types';
 import { determineReceiptTypeCode, determineBurdenClassificationCode, determineInstructionTypeCode } from './receiptClassification';
 
@@ -589,17 +589,21 @@ export class NursingReceiptCsvBuilder {
    * 7. MF: 窓口負担額レコード
    */
   private addMFRecord(data: ReceiptCsvData): void {
-    // TODO: 窓口負担額区分（別表26）の完全実装
     // 別表26: 窓口負担額区分コード
-    // 00: 高額療養費の現物給付なし（現在はこれで固定、暫定対応）
+    // 00: 高額療養費の現物給付なし（使用しない）
     // 01: 高額療養費現物給付あり（多数回該当を除く）
     // 02: 高額療養費現物給付あり（多数回該当）
-    // 将来的には monthlyReceipts.highCostBenefitApplied, highCostBenefitMultiple フィールドを追加して対応
-    const windowBurdenCategory = '00';  // 暫定: 00固定（高額療養費制度未対応）
+    const highCostCategory = data.receipt.highCostCategory;
+    
+    // 高額療養費適用状況に応じてコードを設定
+    // 該当なしの場合は00を出力（既存の暫定対応と同様の動作を維持）
+    const windowBurdenCategory = highCostCategory === 'high_cost' ? '01' :
+                                 highCostCategory === 'high_cost_multiple' ? '02' :
+                                 '00'; // 該当なし
 
     const fields = [
       'MF',                  // レコード識別
-      windowBurdenCategory,  // 窓口負担額区分（別表26: 暫定'00'固定）
+      windowBurdenCategory,  // 窓口負担額区分（別表26）
       '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',  // 予備 1-15
       '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',  // 予備 16-30
       '',       // 予備 31
@@ -614,6 +618,11 @@ export class NursingReceiptCsvBuilder {
   private addIHRecord(data: ReceiptCsvData): void {
     const medicalInstitution = data.medicalInstitution;
 
+    // 日付フォーマット（YYYYMMDD形式、存在しない場合は空文字列）
+    const lastReportDateStr = medicalInstitution.lastReportDate
+      ? formatDate(medicalInstitution.lastReportDate)
+      : '';
+
     const fields = [
       'IH',                                               // レコード識別
       medicalInstitution.prefectureCode || '',           // 医療機関都道府県
@@ -621,7 +630,7 @@ export class NursingReceiptCsvBuilder {
       medicalInstitution.institutionCode || '',          // 医療機関コード (7桁)
       medicalInstitution.name || '',                     // 医療機関名称
       medicalInstitution.doctorName || '',               // 主治医氏名
-      '',                                                 // 主治医への直近報告年月日
+      lastReportDateStr,                                 // 主治医への直近報告年月日
     ];
 
     this.lines.push(buildCsvLine(fields));
