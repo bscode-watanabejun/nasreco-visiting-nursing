@@ -52,6 +52,7 @@ export interface CreateFacilityRequest {
   // Phase3: レセプトCSV対応
   facilityCode?: string;
   prefectureCode?: string;
+  careInsuranceFacilityNumber?: string; // 10桁の指定事業所番号（介護保険レセプト用）
 }
 
 export interface UpdateFacilityRequest {
@@ -70,6 +71,7 @@ export interface UpdateFacilityRequest {
   // Phase3: レセプトCSV対応
   facilityCode?: string;
   prefectureCode?: string;
+  careInsuranceFacilityNumber?: string; // 10桁の指定事業所番号（介護保険レセプト用）
 }
 
 export interface PrefectureCode {

@@ -91,6 +91,7 @@ export const facilities = pgTable("facilities", {
   // レセプトCSV出力用フィールド
   facilityCode: varchar("facility_code", { length: 7 }), // 7桁の施設コード（既存データ考慮でNULLABLE）
   prefectureCode: varchar("prefecture_code", { length: 2 }), // 都道府県コード（既存データ考慮でNULLABLE）
+  careInsuranceFacilityNumber: varchar("care_insurance_facility_number", { length: 10 }), // 10桁の指定事業所番号（介護保険レセプト用）
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

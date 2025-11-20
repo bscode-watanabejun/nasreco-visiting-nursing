@@ -63,6 +63,7 @@ interface FacilityFormData {
   // Phase3: レセプトCSV対応
   facilityCode: string;
   prefectureCode: string;
+  careInsuranceFacilityNumber: string; // 10桁の指定事業所番号（介護保険レセプト用）
 }
 
 const initialFormData: FacilityFormData = {
@@ -81,6 +82,7 @@ const initialFormData: FacilityFormData = {
   // Phase3: レセプトCSV対応初期値
   facilityCode: "",
   prefectureCode: "",
+  careInsuranceFacilityNumber: "",
 };
 
 export function FacilityManagement() {
@@ -141,6 +143,7 @@ export function FacilityManagement() {
         isHeadquarters: formData.isHeadquarters,
         facilityCode: formData.facilityCode || undefined,
         prefectureCode: formData.prefectureCode || undefined,
+        careInsuranceFacilityNumber: formData.careInsuranceFacilityNumber || undefined,
       };
 
       await facilityApi.createFacility(facilityData);
@@ -182,6 +185,7 @@ export function FacilityManagement() {
       // Phase3: レセプトCSV対応フィールドをロード
       facilityCode: facility.facilityCode || "",
       prefectureCode: facility.prefectureCode || "",
+      careInsuranceFacilityNumber: facility.careInsuranceFacilityNumber || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -219,6 +223,7 @@ export function FacilityManagement() {
         // Phase3: レセプトCSV対応
         facilityCode: formData.facilityCode || undefined,
         prefectureCode: formData.prefectureCode || undefined,
+        careInsuranceFacilityNumber: formData.careInsuranceFacilityNumber || undefined,
       });
       setIsEditDialogOpen(false);
       setShowSlugWarning(false);
@@ -597,7 +602,7 @@ function FacilityFormDialog({
   prefectureCodes = [],
 }: FacilityFormDialogProps) {
   return (
-    <DialogContent className="sm:max-w-[500px]">
+    <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
@@ -703,6 +708,21 @@ function FacilityFormDialog({
               レセプトCSV出力に必要です（任意）
             </p>
           </div>
+        </div>
+
+        {/* 指定事業所番号（介護保険レセプト用） */}
+        <div className="space-y-2">
+          <Label htmlFor="careInsuranceFacilityNumber">指定事業所番号（介護保険）</Label>
+          <Input
+            id="careInsuranceFacilityNumber"
+            value={formData.careInsuranceFacilityNumber}
+            onChange={(e) => onInputChange('careInsuranceFacilityNumber', e.target.value)}
+            placeholder="10桁 (例: 1312345678)"
+            maxLength={10}
+          />
+          <p className="text-xs text-muted-foreground">
+            介護保険レセプトCSV出力に必要です（任意）。都道府県番号(2桁) + 市町村番号(3桁) + 事業所番号(5桁)
+          </p>
         </div>
 
         <div className="flex items-center space-x-2">

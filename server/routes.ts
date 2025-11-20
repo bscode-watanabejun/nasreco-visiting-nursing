@@ -7725,10 +7725,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "施設情報が見つかりません" });
       }
 
-      // 事業所番号を10桁に拡張（7桁のfacilityCodeを10桁にパディング）
-      const facilityCode10 = facility.facilityCode 
-        ? facility.facilityCode.padEnd(10, '0').substring(0, 10)
-        : '0000000000';
+      // 指定事業所番号を優先使用、未設定時は既存のfacilityCodeから生成（後方互換性）
+      const facilityCode10 = facility.careInsuranceFacilityNumber 
+        || (facility.facilityCode 
+          ? facility.facilityCode.padEnd(10, '0').substring(0, 10)
+          : '0000000000');
 
       // サービスコードを6桁から2桁+4桁に分解する関数
       const processServiceCode = (serviceCode: string | null): { typeCode: string; itemCode: string } => {
@@ -10020,10 +10021,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "施設情報が見つかりません" });
       }
 
-      // 事業所番号を10桁に拡張（7桁のfacilityCodeを10桁にパディング）
-      const facilityCode10 = facility.facilityCode 
-        ? facility.facilityCode.padEnd(10, '0').substring(0, 10)
-        : '0000000000';
+      // 指定事業所番号を優先使用、未設定時は既存のfacilityCodeから生成（後方互換性）
+      const facilityCode10 = facility.careInsuranceFacilityNumber 
+        || (facility.facilityCode 
+          ? facility.facilityCode.padEnd(10, '0').substring(0, 10)
+          : '0000000000');
 
       // サービスコードを6桁から2桁+4桁に分解する関数
       const processServiceCode = (serviceCode: string | null): { typeCode: string; itemCode: string } => {

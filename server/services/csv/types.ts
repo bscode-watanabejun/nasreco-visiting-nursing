@@ -321,7 +321,7 @@ export interface CareInsurancePatientData {
 export interface CareInsuranceReceiptCsvData {
   // 施設情報
   facility: {
-    facilityCode: string; // 10桁の事業所番号（現在は7桁のfacilityCodeを10桁に拡張）
+    facilityCode: string; // 10桁の指定事業所番号（careInsuranceFacilityNumberを優先、未設定時はfacilityCodeから生成）
     prefectureCode: string; // 2桁
     name: string;
   };
