@@ -1463,6 +1463,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "他のユーザーの情報を変更する権限がありません。自分自身の情報のみ変更できます。" });
       }
       
+      // Check for email uniqueness if email is being changed
+      if ('email' in validatedData && validatedData.email) {
+        const emailValue = validatedData.email as string;
+        if (emailValue !== targetUser.email) {
+          const existingUserByEmail = await storage.getUserByEmail(emailValue);
+          if (existingUserByEmail && existingUserByEmail.id !== id) {
+            return res.status(400).json({ 
+              error: "このメールアドレスは既に使用されています" 
+            });
+          }
+        }
+      }
+
+      // Check for username uniqueness if username is being changed
+      if ('username' in validatedData && validatedData.username) {
+        const usernameValue = validatedData.username as string;
+        if (usernameValue !== targetUser.username) {
+          const existingUserByUsername = await storage.getUserByUsername(usernameValue);
+          if (existingUserByUsername && existingUserByUsername.id !== id) {
+            return res.status(400).json({ 
+              error: "このユーザー名は既に使用されています" 
+            });
+          }
+        }
+      }
+
       // Hash password if provided
       if (validatedData.password) {
         validatedData.password = await bcrypt.hash(validatedData.password, 10);

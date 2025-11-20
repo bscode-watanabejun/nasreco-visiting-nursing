@@ -300,6 +300,11 @@ export function UserManagement() {
     // Nurse cannot manage anyone
     if (currentUser.role === 'nurse') return false
 
+    // Corporate Admin can manage everyone (including other corporate admins)
+    if (currentUser.role === 'corporate_admin' && currentUser.accessLevel === 'corporate') {
+      return true
+    }
+
     // Admin can manage everyone
     if (currentUser.role === 'admin') return true
 
