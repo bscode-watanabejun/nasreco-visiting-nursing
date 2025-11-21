@@ -137,25 +137,29 @@ async function comprehensiveDiffCheck() {
     console.log('─'.repeat(80));
     
     const prodFacilities = await prodPool.query(`
-      SELECT id, name, facility_code, prefecture_code, company_id
+      SELECT id, name, facility_code, prefecture_code, company_id, is_headquarters
       FROM facilities
+      WHERE is_active = true
       ORDER BY name
     `);
     
     const devFacilities = await devPool.query(`
-      SELECT id, name, facility_code, prefecture_code, company_id
+      SELECT id, name, facility_code, prefecture_code, company_id, is_headquarters
       FROM facilities
+      WHERE is_active = true
       ORDER BY name
     `);
     
     console.log(`   本番環境: ${prodFacilities.rows.length}件`);
     prodFacilities.rows.forEach((f: any) => {
-      console.log(`      - ${f.name} (ID: ${f.id.substring(0, 8)}..., コード: ${f.facility_code || '未設定'})`);
+      const typeLabel = f.is_headquarters ? '[本社]' : '[通常テナント]';
+      console.log(`      - ${typeLabel} ${f.name} (ID: ${f.id.substring(0, 8)}..., コード: ${f.facility_code || '未設定'})`);
     });
     
     console.log(`\n   開発環境: ${devFacilities.rows.length}件`);
     devFacilities.rows.forEach((f: any) => {
-      console.log(`      - ${f.name} (ID: ${f.id.substring(0, 8)}..., コード: ${f.facility_code || '未設定'})`);
+      const typeLabel = f.is_headquarters ? '[本社]' : '[通常テナント]';
+      console.log(`      - ${typeLabel} ${f.name} (ID: ${f.id.substring(0, 8)}..., コード: ${f.facility_code || '未設定'})`);
     });
     
     // ソレア春日部の特定
@@ -168,8 +172,10 @@ async function comprehensiveDiffCheck() {
     );
     
     if (soleraProd) {
+      const soleraTypeLabel = soleraProd.is_headquarters ? '本社' : '通常テナント';
       console.log(`\n   ✅ 本番環境で「訪問看護ステーションソレア春日部」を確認:`);
       console.log(`      名称: ${soleraProd.name}`);
+      console.log(`      種別: ${soleraTypeLabel}`);
       console.log(`      ID: ${soleraProd.id}`);
       console.log(`      施設コード: ${soleraProd.facility_code || '未設定'}`);
       console.log(`      都道府県コード: ${soleraProd.prefecture_code || '未設定'}`);
