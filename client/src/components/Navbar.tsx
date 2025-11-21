@@ -34,6 +34,7 @@ export function Navbar({
   onLogout = () => console.log('Logout clicked')
 }: NavbarProps) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false)
+  const [isFacilityPopoverOpen, setIsFacilityPopoverOpen] = useState(false)
 
   // Fetch notification count
   const { data: notificationData } = useQuery<{
@@ -67,19 +68,36 @@ export function Navbar({
         {/* Facility Selector and User Menu */}
         <div className="flex items-center gap-1 sm:gap-2 lg:gap-4 flex-shrink-0">
           {/* Facility Selector */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onFacilityChange && onFacilityChange(currentFacility || "")}
-            className="gap-1.5 h-8 sm:h-9"
-            data-testid="button-facility-switch"
-          >
-            <Building2 className="h-4 w-4 flex-shrink-0" />
-            <span className="hidden md:inline text-xs max-w-32 xl:max-w-48 truncate">
-              {currentFacility}
-            </span>
-            <ChevronDown className="h-3 w-3 flex-shrink-0" />
-          </Button>
+          <Popover open={isFacilityPopoverOpen} onOpenChange={setIsFacilityPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // モバイル画面ではPopoverを開く、デスクトップでは施設変更を実行
+                  if (window.innerWidth < 768) {
+                    setIsFacilityPopoverOpen(true)
+                  } else {
+                    onFacilityChange && onFacilityChange(currentFacility || "")
+                  }
+                }}
+                className="gap-1.5 h-8 sm:h-9 md:cursor-pointer"
+                data-testid="button-facility-switch"
+              >
+                <Building2 className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden md:inline text-xs max-w-32 xl:max-w-48 truncate">
+                  {currentFacility}
+                </span>
+                <ChevronDown className="h-3 w-3 flex-shrink-0" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-3 w-64" align="start">
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">現在の施設</div>
+                <div className="text-sm font-semibold">{currentFacility}</div>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           {/* Notifications */}
           <Popover open={isNotificationOpen} onOpenChange={setIsNotificationOpen}>

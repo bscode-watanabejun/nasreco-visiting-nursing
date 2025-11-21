@@ -2,10 +2,14 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { NotificationPanel } from "@/components/NotificationPanel"
 import {
   Users,
   Calendar,
@@ -27,6 +31,8 @@ interface PatientVisit {
   type: string
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
   nurse: string
+  patient: Patient | null
+  schedule: Schedule
 }
 
 // Helper function to get full name
@@ -74,6 +80,9 @@ export function Dashboard() {
   const queryClient = useQueryClient()
   const [, setLocation] = useLocation()
   const basePath = useBasePath()
+  const { data: currentUser } = useCurrentUser()
+  const [activeTab, setActiveTab] = useState("visits")
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false)
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: 'long',
@@ -206,6 +215,78 @@ export function Dashboard() {
     },
   })
 
+  // Fetch notification count
+  const { data: notificationData } = useQuery<{
+    total: number
+    schedulesWithoutRecords: number
+    expiringDoctorOrders: number
+    expiringInsuranceCards: number
+  }>({
+    queryKey: ["/api/notifications/count"],
+    refetchInterval: 60000, // Refetch every 60 seconds
+  })
+
+  const notificationCount = notificationData?.total || 0
+
+  // Fetch nursing records for current user to calculate assigned patients
+  const { data: myNursingRecordsData } = useQuery<PaginatedResult<NursingRecord>>({
+    queryKey: ["nursing-records", "my-records", currentUser?.id],
+    queryFn: async () => {
+      if (!currentUser?.id) return { data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }
+      const response = await fetch(`/api/nursing-records?nurseId=${currentUser.id}&limit=1000`)
+      if (!response.ok) {
+        throw new Error("看護記録の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!currentUser?.id,
+  })
+
+  // Fetch all schedules for current user to calculate assigned patients
+  const { data: mySchedulesData } = useQuery<PaginatedResult<Schedule>>({
+    queryKey: ["schedules", "my-schedules", currentUser?.id],
+    queryFn: async () => {
+      if (!currentUser?.id) return { data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }
+      // Get schedules from the past year to include all assigned patients
+      const oneYearAgo = new Date()
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+      const oneYearLater = new Date()
+      oneYearLater.setFullYear(oneYearLater.getFullYear() + 1)
+      
+      const response = await fetch(`/api/schedules?startDate=${oneYearAgo.toISOString()}&endDate=${oneYearLater.toISOString()}&nurseId=${currentUser.id}&limit=1000`)
+      if (!response.ok) {
+        throw new Error("スケジュールデータの取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!currentUser?.id,
+  })
+
+  // Fetch nursing records from last month for comparison
+  const { data: lastMonthNursingRecordsData } = useQuery<PaginatedResult<NursingRecord>>({
+    queryKey: ["nursing-records", "last-month", currentUser?.id],
+    queryFn: async () => {
+      if (!currentUser?.id) return { data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }
+      const now = new Date()
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+      
+      const params = new URLSearchParams({
+        nurseId: currentUser.id,
+        dateFrom: lastMonthStart.toISOString(),
+        dateTo: lastMonthEnd.toISOString(),
+        limit: '1000'
+      })
+      
+      const response = await fetch(`/api/nursing-records/search?${params}`)
+      if (!response.ok) {
+        throw new Error("先月の看護記録の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!currentUser?.id,
+  })
+
   // Check for errors
   const firstError = schedulesError || patientsError || usersError || schedulesWithoutRecordsError ||
                      contractsError || expiringDoctorOrdersError || expiringInsuranceCardsError ||
@@ -228,6 +309,49 @@ export function Dashboard() {
   const pendingRecordsCount = schedulesWithoutRecords?.length || 0
   const recentRecords = recentRecordsData || []
   const criticalPatients = criticalPatientsData || []
+
+  // Calculate assigned patients count for current user
+  const myNursingRecords = myNursingRecordsData?.data || []
+  const mySchedules = mySchedulesData?.data || []
+  const lastMonthNursingRecords = lastMonthNursingRecordsData?.data || []
+
+  // Get unique patient IDs from nursing records
+  const patientIdsFromRecords = new Set(
+    myNursingRecords
+      .map(record => record.patientId)
+      .filter(Boolean)
+  )
+
+  // Get unique patient IDs from schedules
+  const patientIdsFromSchedules = new Set(
+    mySchedules
+      .map(schedule => schedule.patientId)
+      .filter(Boolean)
+  )
+
+  // Combine both sets to get all assigned patients
+  const allAssignedPatientIds = new Set([
+    ...Array.from(patientIdsFromRecords),
+    ...Array.from(patientIdsFromSchedules)
+  ])
+
+  const assignedPatientsCount = allAssignedPatientIds.size
+
+  // Calculate last month's assigned patients count
+  const lastMonthPatientIds = new Set(
+    lastMonthNursingRecords
+      .map(record => record.patientId)
+      .filter(Boolean)
+  )
+  const lastMonthAssignedPatientsCount = lastMonthPatientIds.size
+
+  // Calculate difference
+  const assignedPatientsDiff = assignedPatientsCount - lastMonthAssignedPatientsCount
+  const assignedPatientsDiffText = assignedPatientsDiff > 0 
+    ? `+${assignedPatientsDiff}名`
+    : assignedPatientsDiff < 0
+    ? `${assignedPatientsDiff}名`
+    : '±0名'
 
   // Calculate expiring contracts (within 30 days or already expired)
   const nowDate = new Date()
@@ -265,6 +389,18 @@ export function Dashboard() {
     },
   })
 
+  // Helper function to calculate age from date of birth
+  const calculateAge = (dateOfBirth: string | Date): number => {
+    const birthDate = new Date(dateOfBirth)
+    const today = new Date()
+    let age = today.getFullYear() - birthDate.getFullYear()
+    const monthDiff = today.getMonth() - birthDate.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--
+    }
+    return age
+  }
+
   // Convert schedules to PatientVisit format
   const visits: PatientVisit[] = schedules
     .sort((a, b) => new Date(a.scheduledStartTime).getTime() - new Date(b.scheduledStartTime).getTime())
@@ -279,6 +415,8 @@ export function Dashboard() {
         type: schedule.visitType || schedule.purpose,
         status: schedule.status || 'scheduled',
         nurse: nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当',
+        patient: patient || null,
+        schedule: schedule,
       }
     })
 
@@ -370,7 +508,8 @@ export function Dashboard() {
   const totalVisits = visits.length
 
   return (
-    <div className="w-full max-w-full space-y-4 p-4 overflow-x-hidden">
+    <TooltipProvider>
+      <div className="w-full max-w-full space-y-4 p-4 overflow-x-hidden">
       {/* Header */}
       <div className="space-y-3 sm:space-y-0">
         <div className="sm:flex sm:items-center sm:justify-between sm:gap-4">
@@ -396,16 +535,27 @@ export function Dashboard() {
 
         {/* Action buttons row - Mobile only */}
         <div className="flex items-center gap-3 sm:hidden">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1 px-3 py-1.5"
-            data-testid="button-notifications"
-          >
-            <Bell className="h-4 w-4" />
-            <span className="text-sm">通知</span>
-            <Badge className="ml-1 bg-orange-500 text-white px-1.5 py-0 h-5 rounded-full text-xs">3</Badge>
-          </Button>
+          <Popover open={isNotificationOpen} onOpenChange={setIsNotificationOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex items-center gap-1 px-3 py-1.5"
+                data-testid="button-notifications"
+              >
+                <Bell className="h-4 w-4" />
+                <span className="text-sm">通知</span>
+                {notificationCount > 0 && (
+                  <Badge className="ml-1 bg-orange-500 text-white px-1.5 py-0 h-5 rounded-full text-xs">
+                    {notificationCount}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[calc(100vw-2rem)] max-w-sm" align="start">
+              <NotificationPanel onClose={() => setIsNotificationOpen(false)} />
+            </PopoverContent>
+          </Popover>
           <Button
             size="sm"
             className="ml-auto bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5"
@@ -420,91 +570,126 @@ export function Dashboard() {
 
       {/* Stats Cards */}
       <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-4">
-        <Card className="p-3 sm:p-auto">
-          <div className="flex flex-col sm:block">
-            <div className="flex items-center justify-between mb-2 sm:hidden">
-              <span className="text-xs text-muted-foreground">本日の訪問予定</span>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">本日の訪問</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="sm:pt-0">
-              <div className="text-2xl font-bold">{totalVisits}件</div>
-              <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                <span className="sm:hidden">残り {totalVisits - completedVisits} 件</span>
-                <span className="hidden sm:inline">完了: {completedVisits}件</span>
-              </p>
-            </CardContent>
-          </div>
-        </Card>
-
-        <Card className="p-3 sm:p-auto">
-          <div className="flex flex-col sm:block">
-            <div className="flex items-center justify-between mb-2 sm:hidden">
-              <span className="text-xs text-muted-foreground">担当患者数</span>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">担当患者</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="sm:pt-0">
-              <div className="text-xl sm:text-2xl font-bold">
-                <span className="sm:hidden">12名</span>
-                <span className="hidden sm:inline">28名</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Card className="p-3 sm:p-auto cursor-help">
+              <div className="flex flex-col sm:block">
+                <div className="flex items-center justify-between mb-2 sm:hidden">
+                  <span className="text-xs text-muted-foreground">本日の訪問予定</span>
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">本日の訪問</CardTitle>
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="sm:pt-0">
+                  <div className="text-2xl font-bold">{totalVisits}件</div>
+                  <p className="text-xs text-muted-foreground mt-1 sm:mt-0">
+                    <span className="sm:hidden">残り {totalVisits - completedVisits} 件</span>
+                    <span className="hidden sm:inline">完了: {completedVisits}件</span>
+                  </p>
+                </CardContent>
               </div>
-              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
-                <span className="sm:hidden">+2名</span>
-                <span className="hidden sm:inline">先月比 +3名</span>
-              </p>
-            </CardContent>
-          </div>
-        </Card>
+            </Card>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="text-sm">本日のスケジュール総数です。完了済みと未完了を含みます。</p>
+          </TooltipContent>
+        </Tooltip>
 
-        <Card className="p-3 sm:p-auto">
-          <div className="flex flex-col sm:block">
-            <div className="flex items-center justify-between mb-2 sm:hidden">
-              <span className="text-xs text-muted-foreground">未完了の記録</span>
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">未完了記録</CardTitle>
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="sm:pt-0">
-              <div className="text-xl sm:text-2xl font-bold">{pendingRecordsCount}件</div>
-              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
-                <span className="sm:hidden">7日間</span>
-                <span className="hidden sm:inline">過去7日間の記録未作成</span>
-              </p>
-            </CardContent>
-          </div>
-        </Card>
-
-        <Card className="p-3 sm:p-auto">
-          <div className="flex flex-col sm:block">
-            <div className="flex items-center justify-between mb-2 sm:hidden">
-              <span className="text-xs text-muted-foreground">重要アラート</span>
-              <AlertTriangle className="h-4 w-4 text-orange-500" />
-            </div>
-            <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">重要アラート</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent className="sm:pt-0">
-              <div className="text-xl sm:text-2xl font-bold text-orange-500 sm:text-destructive">
-                {(pendingRecordsCount + expiredContracts.length + (expiringDoctorOrders?.length || 0) + (expiringInsuranceCards?.length || 0))}件
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Card className="p-3 sm:p-auto cursor-help">
+              <div className="flex flex-col sm:block">
+                <div className="flex items-center justify-between mb-2 sm:hidden">
+                  <span className="text-xs text-muted-foreground">担当患者数</span>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">担当患者</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="sm:pt-0">
+                  <div className="text-2xl font-bold">
+                    {assignedPatientsCount}名
+                  </div>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
+                    <span className="sm:hidden">{assignedPatientsDiffText}</span>
+                    <span className="hidden sm:inline">先月比 {assignedPatientsDiffText}</span>
+                  </p>
+                </CardContent>
               </div>
-              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0 line-clamp-2 sm:line-clamp-none">
-                記録: {pendingRecordsCount} / 契約: {expiredContracts.length}
-                {(expiringDoctorOrders?.length || 0) > 0 && <span> / 指示書: {expiringDoctorOrders?.length}</span>}
-                {(expiringInsuranceCards?.length || 0) > 0 && <span className="hidden sm:inline"> / 保険証: {expiringInsuranceCards?.length}</span>}
-              </p>
-            </CardContent>
-          </div>
-        </Card>
+            </Card>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="text-sm">あなたが担当する患者の数です。スケジュールまたは看護記録から算出されます。</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Card className="p-3 sm:p-auto cursor-help">
+              <div className="flex flex-col sm:block">
+                <div className="flex items-center justify-between mb-2 sm:hidden">
+                  <span className="text-xs text-muted-foreground">未完了の記録</span>
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">未完了記録</CardTitle>
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="sm:pt-0">
+                  <div className="text-2xl font-bold">{pendingRecordsCount}件</div>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
+                    <span className="sm:hidden">7日間</span>
+                    <span className="hidden sm:inline">過去7日間の記録未作成</span>
+                  </p>
+                </CardContent>
+              </div>
+            </Card>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="text-sm">過去7日間のスケジュールで、対応する看護記録が未作成の件数です。</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Card className="p-3 sm:p-auto cursor-help">
+              <div className="flex flex-col sm:block">
+                <div className="flex items-center justify-between mb-2 sm:hidden">
+                  <span className="text-xs text-muted-foreground">重要アラート</span>
+                  <AlertTriangle className="h-4 w-4 text-orange-500" />
+                </div>
+                <CardHeader className="hidden sm:flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">重要アラート</CardTitle>
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                </CardHeader>
+                <CardContent className="sm:pt-0">
+                  <div className="text-2xl font-bold text-orange-500 sm:text-destructive">
+                    {(pendingRecordsCount + expiredContracts.length + (expiringDoctorOrders?.length || 0) + (expiringInsuranceCards?.length || 0))}件
+                  </div>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0 line-clamp-2 sm:line-clamp-none">
+                    記録: {pendingRecordsCount} / 契約: {expiredContracts.length}
+                    {(expiringDoctorOrders?.length || 0) > 0 && <span> / 指示書: {expiringDoctorOrders?.length}</span>}
+                    {(expiringInsuranceCards?.length || 0) > 0 && <span className="hidden sm:inline"> / 保険証: {expiringInsuranceCards?.length}</span>}
+                  </p>
+                </CardContent>
+              </div>
+            </Card>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <div className="text-sm space-y-1">
+              <p className="font-medium mb-2">重要アラートの内訳:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>未完了記録: 過去7日間の記録未作成</li>
+                <li>期限切れ契約: 契約書の有効期限が切れたもの</li>
+                <li>指示書期限切れ間近: 30日以内に期限切れになる訪問看護指示書</li>
+                <li>保険証期限切れ間近: 30日以内に期限切れになる保険証</li>
+              </ul>
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Expiring Doctor Orders Alert */}
@@ -669,14 +854,41 @@ export function Dashboard() {
       )}
 
       {/* Quick Navigation Tabs - Mobile */}
-      <div className="flex justify-center gap-6 py-2 sm:hidden">
-        <button className="text-sm text-muted-foreground hover:text-primary">訪問スケジュール</button>
-        <button className="text-sm text-muted-foreground hover:text-primary">重要患者</button>
-        <button className="text-sm text-muted-foreground hover:text-primary">最近の記録</button>
+      <div className="flex justify-center gap-6 py-2 sm:hidden border-b">
+        <button 
+          onClick={() => setActiveTab("visits")}
+          className={`text-sm transition-colors pb-2 border-b-2 ${
+            activeTab === "visits" 
+              ? "text-primary font-medium border-primary" 
+              : "text-muted-foreground border-transparent hover:text-primary"
+          }`}
+        >
+          訪問スケジュール
+        </button>
+        <button 
+          onClick={() => setActiveTab("alerts")}
+          className={`text-sm transition-colors pb-2 border-b-2 ${
+            activeTab === "alerts" 
+              ? "text-primary font-medium border-primary" 
+              : "text-muted-foreground border-transparent hover:text-primary"
+          }`}
+        >
+          重要患者
+        </button>
+        <button 
+          onClick={() => setActiveTab("recent")}
+          className={`text-sm transition-colors pb-2 border-b-2 ${
+            activeTab === "recent" 
+              ? "text-primary font-medium border-primary" 
+              : "text-muted-foreground border-transparent hover:text-primary"
+          }`}
+        >
+          最近の記録
+        </button>
       </div>
 
       {/* Main Content Tabs */}
-      <Tabs defaultValue="visits" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="hidden sm:grid w-full grid-cols-3 h-10">
           <TabsTrigger value="visits" data-testid="tab-visits">本日の訪問</TabsTrigger>
           <TabsTrigger value="alerts" data-testid="tab-alerts">重要患者</TabsTrigger>
@@ -711,12 +923,16 @@ export function Dashboard() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-lg font-bold">{visit.time}</span>
                             <span className="text-sm font-medium">{visit.patientName}</span>
-                            <span className="text-xs px-2 py-0.5 bg-gray-100 rounded text-muted-foreground">
-                              {visit.id === '1' ? '68歳' : visit.id === '2' ? '75歳' : visit.id === '3' ? '82歳' : '73歳'}
-                            </span>
+                            {visit.patient?.dateOfBirth && (
+                              <span className="text-xs px-2 py-0.5 bg-gray-100 rounded text-muted-foreground">
+                                {calculateAge(visit.patient.dateOfBirth)}歳
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>{visit.id === '1' || visit.id === '3' ? '60分' : '45分'}</span>
+                            {visit.schedule.duration && (
+                              <span>{visit.schedule.duration}分</span>
+                            )}
                             <span>·</span>
                             <span>{visit.type}</span>
                           </div>
@@ -757,12 +973,9 @@ export function Dashboard() {
                         </div>
                       )}
 
-                      {(visit.status === 'scheduled' || visit.status === 'in_progress') && (
+                      {(visit.status === 'scheduled' || visit.status === 'in_progress') && visit.schedule.notes && (
                         <div className="text-xs text-muted-foreground">
-                          備考: {visit.id === '1' ? '定期訪問 - バイタルチェックと服薬確認' :
-                                 visit.id === '2' ? 'アセスメント訪問 - 状態評価と計画見直し' :
-                                 visit.id === '3' ? '定期訪問 - 創傷処置' :
-                                 '定期訪問 - バイタルチェックと服薬確認'}
+                          備考: {visit.schedule.notes}
                         </div>
                       )}
                     </div>
@@ -901,6 +1114,7 @@ export function Dashboard() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
