@@ -45,6 +45,7 @@ interface PublicExpenseCard {
   recipientNumber: string | null
   legalCategoryNumber: string
   priority: number
+  benefitRate: number | null
   validFrom: string
   validUntil: string | null
   notes: string | null

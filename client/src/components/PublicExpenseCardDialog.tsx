@@ -38,6 +38,7 @@ interface PublicExpenseCard {
   recipientNumber: string | null
   legalCategoryNumber: string
   priority: number
+  benefitRate: number | null
   validFrom: string
   validUntil: string | null
   notes: string | null
@@ -51,6 +52,7 @@ interface PublicExpenseCardFormData {
   recipientNumber?: string
   legalCategoryNumber: string
   priority: string
+  benefitRate?: string
   validFrom: string
   validUntil?: string
   notes?: string
@@ -109,6 +111,7 @@ export function PublicExpenseCardDialog({
       recipientNumber: "",
       legalCategoryNumber: "",
       priority: "1",
+      benefitRate: "",
       validFrom: "",
       validUntil: "",
       notes: "",
@@ -118,6 +121,12 @@ export function PublicExpenseCardDialog({
   // ダイアログが開いたとき、またはeditingCardが変更されたときにフォームをリセット
   useEffect(() => {
     if (open) {
+      // 使用可能な優先順位を再計算（この時点での最新値を使用）
+      const usedPriorities = existingCards
+        .filter(card => card.id !== editingCard?.id)
+        .map(card => card.priority)
+      const availablePriorities = [1, 2, 3, 4].filter(p => !usedPriorities.includes(p))
+
       if (editingCard) {
         // 編集モード: 既存のデータでフォームを埋める
         form.reset({
@@ -125,6 +134,7 @@ export function PublicExpenseCardDialog({
           recipientNumber: editingCard.recipientNumber || "",
           legalCategoryNumber: editingCard.legalCategoryNumber,
           priority: editingCard.priority.toString(),
+          benefitRate: editingCard.benefitRate?.toString() || "",
           validFrom: editingCard.validFrom,
           validUntil: editingCard.validUntil || "",
           notes: editingCard.notes || "",
@@ -140,13 +150,14 @@ export function PublicExpenseCardDialog({
           recipientNumber: "",
           legalCategoryNumber: "",
           priority: defaultPriority,
+          benefitRate: "",
           validFrom: "",
           validUntil: "",
           notes: "",
         })
       }
     }
-  }, [open, editingCard, form, availablePriorities])
+  }, [open, editingCard, existingCards])
 
   const onSubmit = async (data: PublicExpenseCardFormData) => {
     try {
@@ -157,6 +168,7 @@ export function PublicExpenseCardDialog({
         recipientNumber: data.recipientNumber || null,
         legalCategoryNumber: data.legalCategoryNumber,
         priority: parseInt(data.priority),
+        benefitRate: data.benefitRate ? parseInt(data.benefitRate) : null,
         validFrom: data.validFrom,
         validUntil: data.validUntil || null,
         notes: data.notes || null,
@@ -192,6 +204,7 @@ export function PublicExpenseCardDialog({
         recipientNumber: "",
         legalCategoryNumber: "",
         priority: "1",
+        benefitRate: "",
         validFrom: "",
         validUntil: "",
         notes: "",
@@ -353,6 +366,39 @@ export function PublicExpenseCardDialog({
                   </FormControl>
                   <FormDescription>
                     7桁の受給者番号（※医療観察法（法別30）の場合は不要）
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="benefitRate"
+              rules={{
+                min: {
+                  value: 0,
+                  message: "0以上の値を入力してください",
+                },
+                max: {
+                  value: 100,
+                  message: "100以下の値を入力してください",
+                },
+              }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>公費給付率（%）</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      placeholder="例: 100, 80, 70"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    公費給付率を百分率で入力してください（0-100）。未入力の場合は0が出力されます。
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

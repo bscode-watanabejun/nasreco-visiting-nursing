@@ -30,6 +30,8 @@ interface FormData {
   certificationDate: string
   certificationPeriodStart: string
   certificationPeriodEnd: string
+  creatorType: string  // '1' | '2' | '3' | ''
+  careManagerOfficeNumber: string  // 10桁英数字
   userIntention: string
   familyIntention: string
   comprehensivePolicy: string
@@ -45,6 +47,8 @@ const getInitialFormData = (plan?: ServiceCarePlan | null): FormData => ({
   certificationDate: plan?.certificationDate || '',
   certificationPeriodStart: plan?.certificationPeriodStart || '',
   certificationPeriodEnd: plan?.certificationPeriodEnd || '',
+  creatorType: plan?.creatorType || '1',  // デフォルト値「1」
+  careManagerOfficeNumber: plan?.careManagerOfficeNumber || '',
   userIntention: plan?.userIntention || '',
   familyIntention: plan?.familyIntention || '',
   comprehensivePolicy: plan?.comprehensivePolicy || '',
@@ -77,6 +81,38 @@ export function ServiceCarePlanDialog({ open, onOpenChange, patientId, plan }: S
       return
     }
 
+    // 作成区分のバリデーション
+    if (!formData.creatorType) {
+      toast({
+        title: "エラー",
+        description: "居宅サービス計画作成区分を選択してください",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // 事業所番号の条件付き必須チェック
+    if ((formData.creatorType === '1' || formData.creatorType === '3') && 
+        !formData.careManagerOfficeNumber) {
+      toast({
+        title: "エラー",
+        description: "居宅介護支援事業所番号を入力してください（作成区分が「居宅介護支援事業所作成」または「介護予防支援事業所・地域包括支援センター作成」の場合は必須です）",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // 事業所番号の形式チェック（10桁）
+    if (formData.careManagerOfficeNumber && 
+        formData.careManagerOfficeNumber.length !== 10) {
+      toast({
+        title: "エラー",
+        description: "居宅介護支援事業所番号は10桁で入力してください",
+        variant: "destructive"
+      })
+      return
+    }
+
     setIsSaving(true)
 
     try {
@@ -100,6 +136,10 @@ export function ServiceCarePlanDialog({ open, onOpenChange, patientId, plan }: S
         if (formData.familyIntention) multipartData.append('familyIntention', formData.familyIntention)
         if (formData.comprehensivePolicy) multipartData.append('comprehensivePolicy', formData.comprehensivePolicy)
         if (formData.remarks) multipartData.append('remarks', formData.remarks)
+        multipartData.append('creatorType', formData.creatorType)
+        if (formData.careManagerOfficeNumber) {
+          multipartData.append('careManagerOfficeNumber', formData.careManagerOfficeNumber)
+        }
         multipartData.append('file', formData.file)
 
         response = await fetch(url, {
@@ -121,6 +161,10 @@ export function ServiceCarePlanDialog({ open, onOpenChange, patientId, plan }: S
           ...(formData.familyIntention && { familyIntention: formData.familyIntention }),
           ...(formData.comprehensivePolicy && { comprehensivePolicy: formData.comprehensivePolicy }),
           ...(formData.remarks && { remarks: formData.remarks }),
+          creatorType: formData.creatorType,
+          ...(formData.careManagerOfficeNumber && { 
+            careManagerOfficeNumber: formData.careManagerOfficeNumber 
+          }),
         }
 
         response = await fetch(url, {
@@ -242,6 +286,67 @@ export function ServiceCarePlanDialog({ open, onOpenChange, patientId, plan }: S
                   onChange={(e) => setFormData({ ...formData, certificationPeriodEnd: e.target.value })}
                 />
               </div>
+            </div>
+          </div>
+
+          {/* 居宅サービス計画作成情報 */}
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+            <div>
+              <Label htmlFor="creatorType">
+                居宅サービス計画作成区分 <span className="text-red-500">*</span>
+              </Label>
+              <Select 
+                value={formData.creatorType} 
+                onValueChange={(value) => {
+                  setFormData({ ...formData, creatorType: value })
+                  // 作成区分が「2」のとき、事業所番号をクリア
+                  if (value === '2') {
+                    setFormData(prev => ({ ...prev, careManagerOfficeNumber: '' }))
+                  }
+                }}
+              >
+                <SelectTrigger id="creatorType">
+                  <SelectValue placeholder="作成区分を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">居宅介護支援事業所作成</SelectItem>
+                  <SelectItem value="2">自己作成</SelectItem>
+                  <SelectItem value="3">介護予防支援事業所・地域包括支援センター作成</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="careManagerOfficeNumber">
+                居宅介護支援事業所番号
+                {(formData.creatorType === '1' || formData.creatorType === '3') && (
+                  <span className="text-red-500"> *</span>
+                )}
+              </Label>
+              <Input
+                id="careManagerOfficeNumber"
+                value={formData.careManagerOfficeNumber}
+                onChange={(e) => {
+                  // 10桁の英数字のみ許可
+                  const value = e.target.value.replace(/[^0-9A-Za-z]/g, '').slice(0, 10)
+                  setFormData({ ...formData, careManagerOfficeNumber: value })
+                }}
+                placeholder="10桁の事業所番号"
+                maxLength={10}
+                disabled={formData.creatorType === '2'}  // 自己作成のときは無効化
+                className={formData.creatorType === '2' ? 'bg-gray-100' : ''}
+              />
+              {formData.creatorType === '2' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  自己作成の場合は事業所番号は不要です
+                </p>
+              )}
+              {(formData.creatorType === '1' || formData.creatorType === '3') && 
+               !formData.careManagerOfficeNumber && (
+                <p className="text-xs text-red-500 mt-1">
+                  事業所番号は必須です
+                </p>
+              )}
             </div>
           </div>
 

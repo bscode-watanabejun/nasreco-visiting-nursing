@@ -7950,6 +7950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             legalCategoryNumber: pe.legalCategoryNumber,
             beneficiaryNumber: pe.beneficiaryNumber,
             recipientNumber: pe.recipientNumber,
+            benefitRate: pe.benefitRate,
             validFrom: pe.validFrom,
             validUntil: pe.validUntil,
           })),
@@ -7959,8 +7960,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             certificationPeriodEnd: serviceCarePlanData[0]?.certificationPeriodEnd || null,
             planPeriodStart: serviceStartDate || null, // サービス開始年月日（訪問記録の最初の日付）
             planPeriodEnd: null, // サービス終了年月日（訪問看護では通常不要）
-            creatorType: '1' as const, // デフォルト値（居宅介護支援事業所作成）
-            careManagerOfficeNumber: '0000000000', // 仮値10桁
+            creatorType: (serviceCarePlanData[0]?.creatorType as '1' | '2' | '3' | null) || '1', // DBから取得、なければデフォルト値「1」
+            careManagerOfficeNumber: serviceCarePlanData[0]?.careManagerOfficeNumber || null, // DBから取得
           },
           nursingRecords: Array.from(recordGroups.values()).map(group => ({
             id: '',
@@ -10254,6 +10255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               legalCategoryNumber: pe.legalCategoryNumber,
               beneficiaryNumber: pe.beneficiaryNumber,
               recipientNumber: pe.recipientNumber,
+              benefitRate: pe.benefitRate,
               validFrom: pe.validFrom,
               validUntil: pe.validUntil,
             })),
@@ -10263,8 +10265,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               certificationPeriodEnd: serviceCarePlanData[0]?.certificationPeriodEnd || null,
               planPeriodStart: serviceStartDate || null,
               planPeriodEnd: null,
-              creatorType: '1' as const,
-              careManagerOfficeNumber: '0000000000',
+              creatorType: (serviceCarePlanData[0]?.creatorType as '1' | '2' | '3' | null) || '1', // DBから取得、なければデフォルト値「1」
+              careManagerOfficeNumber: serviceCarePlanData[0]?.careManagerOfficeNumber || null, // DBから取得
             },
             nursingRecords: Array.from(recordGroups.values()).map(group => ({
               id: '',

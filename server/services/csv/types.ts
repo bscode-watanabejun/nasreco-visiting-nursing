@@ -272,6 +272,7 @@ export interface CareInsurancePatientData {
     legalCategoryNumber: string; // 法別番号
     beneficiaryNumber: string; // 負担者番号（8桁）
     recipientNumber: string | null; // 受給者番号（7桁、医療観察法は不要）
+    benefitRate: number | null; // 公費給付率（百分率、0-100）
     validFrom: Date | string;
     validUntil: Date | string | null;
   }>;

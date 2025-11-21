@@ -481,6 +481,9 @@ export const publicExpenseCards = pgTable("public_expense_cards", {
   // 優先順位（複数公費併用時の順序: 1=第一公費, 2=第二公費, 3=第三公費, 4=第四公費）
   priority: integer("priority").notNull(),
 
+  // 給付率（百分率、0-100、NULL許可）
+  benefitRate: integer("benefit_rate"), // 公費給付率（例：100, 80, 70）
+
   // 有効期間
   validFrom: date("valid_from").notNull(),
   validUntil: date("valid_until"),
@@ -535,6 +538,10 @@ export const serviceCarePlans = pgTable("service_care_plans", {
   certificationDate: date("certification_date"), // 認定日
   certificationPeriodStart: date("certification_period_start"), // 認定有効期間開始
   certificationPeriodEnd: date("certification_period_end"), // 認定有効期間終了
+
+  // 居宅サービス計画作成情報（レセプトCSV出力用）
+  creatorType: varchar("creator_type", { length: 1 }), // 作成区分コード（1=居宅介護支援事業所, 2=自己作成, 3=介護予防支援事業所）
+  careManagerOfficeNumber: text("care_manager_office_number"), // 居宅介護支援事業所番号（10桁、作成区分が1または3のとき必須）
 
   // 利用者・家族の意向
   userIntention: text("user_intention"), // 利用者の生活に対する意向

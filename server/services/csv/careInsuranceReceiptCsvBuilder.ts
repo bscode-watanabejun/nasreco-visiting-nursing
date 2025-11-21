@@ -277,10 +277,21 @@ export class CareInsuranceReceiptCsvBuilder {
       : 10;
     const benefitRate = padLeft(100 - copaymentRate, 3); // 給付率（90, 80, 70）
 
-    // 公費給付率（簡易実装では0）
-    const publicExpense1Rate = '0';
-    const publicExpense2Rate = '0';
-    const publicExpense3Rate = '0';
+    // 公費情報（優先順位1-3）
+    const publicExpense1 = patientData.publicExpenses.find(pe => pe.priority === 1);
+    const publicExpense2 = patientData.publicExpenses.find(pe => pe.priority === 2);
+    const publicExpense3 = patientData.publicExpenses.find(pe => pe.priority === 3);
+
+    // 公費給付率の取得（NULLまたは未設定の場合は0）
+    const publicExpense1Rate = publicExpense1?.benefitRate != null 
+      ? padLeft(publicExpense1.benefitRate, 3) 
+      : '0';
+    const publicExpense2Rate = publicExpense2?.benefitRate != null 
+      ? padLeft(publicExpense2.benefitRate, 3) 
+      : '0';
+    const publicExpense3Rate = publicExpense3?.benefitRate != null 
+      ? padLeft(publicExpense3.benefitRate, 3) 
+      : '0';
 
     // 認定有効期間（保険証情報の有効期間開始日、有効期限）
     const certificationStart = patientData.insuranceCard.validFrom
@@ -297,16 +308,27 @@ export class CareInsuranceReceiptCsvBuilder {
           ? formatDate(patientData.nursingRecords[0].visitDate)
           : '');
 
-    // 居宅サービス計画作成区分コード（デフォルト値「1」）
+    // 居宅サービス計画作成区分コード
     const servicePlanCreatorCode = patientData.serviceCarePlan.creatorType || '1';
 
-    // 居宅介護支援事業所番号（仮値10桁）
-    const careManagerOfficeNumber = patientData.serviceCarePlan.careManagerOfficeNumber || '0000000000';
+    // 居宅介護支援事業所番号（条件付き必須）
+    let careManagerOfficeNumber = patientData.serviceCarePlan.careManagerOfficeNumber || '';
 
-    // 公費情報（優先順位1-3）
-    const publicExpense1 = patientData.publicExpenses.find(pe => pe.priority === 1);
-    const publicExpense2 = patientData.publicExpenses.find(pe => pe.priority === 2);
-    const publicExpense3 = patientData.publicExpenses.find(pe => pe.priority === 3);
+    // バリデーション: 作成区分が1または3のとき、事業所番号が必須
+    if ((servicePlanCreatorCode === '1' || servicePlanCreatorCode === '3') && !careManagerOfficeNumber) {
+      throw new Error(
+        `居宅介護支援事業所番号が未入力です（作成区分: ${servicePlanCreatorCode}）。` +
+        `患者ID: ${patientData.patient.id}, 被保険者番号: ${patientData.insuranceCard.insuredNumber}`
+      );
+    }
+
+    // 作成区分が2のときは空欄
+    if (servicePlanCreatorCode === '2') {
+      careManagerOfficeNumber = '';
+    }
+
+    // 10桁にパディング（空欄の場合は空文字列のまま）
+    const paddedOfficeNumber = careManagerOfficeNumber ? padRight(careManagerOfficeNumber, 10) : '';
 
     // 合計情報の計算
     const totalUnits = patientData.receipt.totalPoints;
@@ -335,7 +357,7 @@ export class CareInsuranceReceiptCsvBuilder {
       certificationStart, // 認定有効期間 開始年月日（YYYYMMDD）
       certificationEnd, // 認定有効期間 終了年月日（YYYYMMDD）
       servicePlanCreatorCode, // 居宅サービス計画作成区分コード
-      padRight(careManagerOfficeNumber, 10), // 居宅介護支援事業所番号（10桁）
+      paddedOfficeNumber, // 居宅介護支援事業所番号（10桁、作成区分が2のときは空欄）
       serviceStartDate, // 開始年月日（YYYYMMDD）
       '', // 中止年月日（空欄）
       '', // 中止理由・入所(院)前の状況コード（空欄）
