@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 import { InsuranceCardDialog } from "@/components/InsuranceCardDialog"
 import { DoctorOrderDialog } from "@/components/DoctorOrderDialog"
+import { PatientForm } from "@/components/PatientForm"
 import {
   Dialog,
   DialogContent,
@@ -210,6 +211,7 @@ export default function MonthlyReceiptDetail() {
   // Dialog states
   const [insuranceCardDialogOpen, setInsuranceCardDialogOpen] = useState(false)
   const [doctorOrderDialogOpen, setDoctorOrderDialogOpen] = useState(false)
+  const [patientFormOpen, setPatientFormOpen] = useState(false)
   const [validationDialogOpen, setValidationDialogOpen] = useState(false)
   const [validationErrors, setValidationErrors] = useState<Array<{ recordType: string; message: string }>>([])
   const [validationWarnings, setValidationWarnings] = useState<Array<{ recordType: string; message: string }>>([])
@@ -227,6 +229,19 @@ export default function MonthlyReceiptDetail() {
     enabled: !!receiptId,
     staleTime: 0,              // データを常に古いものとして扱う
     refetchOnMount: 'always',  // マウント時に常に再取得（キャッシュがあっても最新情報を取得）
+  })
+
+  // Fetch patient data for editing
+  const { data: patientData } = useQuery({
+    queryKey: [`/api/patients/${receipt?.patientId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/patients/${receipt?.patientId}`)
+      if (!response.ok) {
+        throw new Error("患者データの取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!receipt?.patientId,
   })
 
   // ローカル状態（一部負担金額・減免情報用）
@@ -764,15 +779,26 @@ export default function MonthlyReceiptDetail() {
       {/* Patient Information */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="w-5 h-5" />
-            利用者情報
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5" />
+              利用者情報
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPatientFormOpen(true)}
+              className="gap-2"
+            >
+              <Edit className="w-4 h-4" />
+              編集
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <div className="text-sm text-muted-foreground">利用者番号</div>
+              <div className="text-sm text-muted-foreground">患者番号</div>
               <div className="font-medium">{receipt.patient.patientNumber}</div>
             </div>
             <div>
@@ -1535,6 +1561,20 @@ export default function MonthlyReceiptDetail() {
       )}
 
       {/* Edit Dialogs */}
+      {/* Patient Form Dialog */}
+      {receipt && (
+        <PatientForm
+          isOpen={patientFormOpen}
+          onClose={() => {
+            setPatientFormOpen(false)
+            // 編集完了後はレセプトデータを再取得
+            queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+          }}
+          patient={patientData || null}
+          mode="edit"
+        />
+      )}
+
       {receipt.insuranceCard && (
         <InsuranceCardDialog
           open={insuranceCardDialogOpen}
