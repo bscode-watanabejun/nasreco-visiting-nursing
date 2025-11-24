@@ -30,6 +30,7 @@ interface Patient {
   id: string;
   buildingId?: string | null;
   careLevel?: string | null;
+  specialManagementTypes?: string[] | null;
 }
 
 interface DoctorOrder {
@@ -564,14 +565,15 @@ export function detectMissingBonuses(
     }
   });
 
-  // Check for special management bonus based on care level
-  if (patient.careLevel && (patient.careLevel === 'care4' || patient.careLevel === 'care5')) {
+  // Check for special management bonus based on patient's special management types
+  // PDFの正式条件に基づき、要介護度ではなく特別管理項目の有無で判定
+  if (patient.specialManagementTypes && patient.specialManagementTypes.length > 0) {
     const hasSpecialManagementBonus = appliedBonusCodesWithServiceCode.has('special_management_1') ||
                                        appliedBonusCodesWithServiceCode.has('special_management_2');
     if (!hasSpecialManagementBonus) {
       suggestions.push({
         code: 'MISSING_SPECIAL_MANAGEMENT_BONUS',
-        message: '要介護4または5の患者ですが、特別管理加算が未算定の可能性があります',
+        message: '特別管理項目が設定されていますが、特別管理加算が未算定の可能性があります',
         severity: 'warning',
         field: 'bonusCalculations',
       });
