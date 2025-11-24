@@ -17,10 +17,11 @@ import {
   nursingServiceCodes,
   facilities,
   users,
+  specialManagementDefinitions,
   BonusMaster,
   InsertBonusCalculationHistory,
 } from "@shared/schema";
-import { eq, and, lte, or, isNull, gte, isNotNull, ne, like } from "drizzle-orm";
+import { eq, and, lte, or, isNull, gte, isNotNull, ne, like, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 // ========== Type Definitions ==========
@@ -603,6 +604,52 @@ function evaluatePatientHasSpecialManagement(context: BonusCalculationContext): 
     passed: false,
     reason: "特別管理対象外",
   };
+}
+
+/**
+ * Phase 4: 特別管理項目のinsuranceTypeに基づいて適切な加算コードを判定
+ * 
+ * @param context 計算コンテキスト
+ * @returns 適用すべき加算コード ('special_management_1' | 'special_management_2' | null)
+ */
+async function evaluateSpecialManagementBonusType(
+  context: BonusCalculationContext
+): Promise<'special_management_1' | 'special_management_2' | null> {
+  const specialManagementTypes = context.specialManagementTypes || [];
+  
+  if (specialManagementTypes.length === 0) {
+    return null;
+  }
+
+  // 患者の特別管理項目のカテゴリから、対応する特別管理定義を取得
+  const definitions = await db.query.specialManagementDefinitions.findMany({
+    where: and(
+      inArray(specialManagementDefinitions.category, specialManagementTypes),
+      eq(specialManagementDefinitions.isActive, true),
+      or(
+        eq(specialManagementDefinitions.facilityId, context.facilityId),
+        isNull(specialManagementDefinitions.facilityId)
+      )
+    ),
+  });
+
+  if (definitions.length === 0) {
+    // 定義が見つからない場合は、デフォルトでspecial_management_2を返す
+    return 'special_management_2';
+  }
+
+  // 保険種別に応じた適切な加算コードを判定
+  if (context.insuranceType === 'medical') {
+    // 医療保険の場合: medical_5000があればspecial_management_1、なければspecial_management_2
+    const hasMedical5000 = definitions.some(def => def.insuranceType === 'medical_5000');
+    return hasMedical5000 ? 'special_management_1' : 'special_management_2';
+  } else if (context.insuranceType === 'care') {
+    // 介護保険の場合: care_500があればspecial_management_1、なければspecial_management_2
+    const hasCare500 = definitions.some(def => def.insuranceType === 'care_500');
+    return hasCare500 ? 'special_management_1' : 'special_management_2';
+  }
+
+  return null;
 }
 
 /**
@@ -1362,6 +1409,9 @@ export async function calculateBonuses(
   // 第1フェーズ: 他の加算に依存しない加算を評価
   // 第2フェーズ: 他の加算の算定結果に依存する加算を評価（例: 特別管理指導加算）
 
+  // 特別管理加算の判定: 患者の特別管理項目のinsuranceTypeに基づいて適切な加算コードを決定
+  const specialManagementBonusType = await evaluateSpecialManagementBonusType(context);
+  
   const phase1Bonuses = applicableBonuses.filter(
     bonus => bonus.bonusCode !== 'discharge_special_management_guidance'
   );
@@ -1374,6 +1424,18 @@ export async function calculateBonuses(
   for (const bonus of phase1Bonuses) {
     try {
       console.log(`[calculateBonuses] Evaluating bonus: ${bonus.bonusCode}`);
+
+      // 2.0 特別管理加算の特別処理: 患者の特別管理項目に基づいて適切な加算コードのみを評価
+      if (bonus.bonusCode === 'special_management_1' || bonus.bonusCode === 'special_management_2') {
+        if (!specialManagementBonusType) {
+          console.log(`Skipping ${bonus.bonusCode}: 特別管理項目が設定されていません`);
+          continue;
+        }
+        if (bonus.bonusCode !== specialManagementBonusType) {
+          console.log(`Skipping ${bonus.bonusCode}: 患者の特別管理項目に基づき、${specialManagementBonusType}が適用されます`);
+          continue;
+        }
+      }
 
       // 2.1 併算定チェック
       const combinationCheck = checkCombination(bonus.bonusCode, bonus, appliedBonusCodes);
