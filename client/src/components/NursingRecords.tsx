@@ -619,7 +619,7 @@ export function NursingRecords() {
       if (!response.ok) return []
       return response.json()
     },
-    enabled: isCreating || isEditing,
+    // 編集画面だけでなく、詳細画面でも特管記録を表示するため、常に取得
   })
 
   // Fetch latest nursing record for selected patient
@@ -1959,12 +1959,17 @@ export function NursingRecords() {
                     <div className="text-xs text-yellow-800 mt-1">
                       <p>対象項目:</p>
                       <ul className="list-disc list-inside ml-2 mt-1">
-                        {selectedPatient.specialManagementTypes.map((typeCode, index) => {
-                          const definition = specialManagementDefinitions.find(d => d.category === typeCode)
-                          return (
-                            <li key={index}>{definition?.displayName || typeCode}</li>
-                          )
-                        })}
+                        {Array.from(new Set(selectedPatient.specialManagementTypes))
+                          .filter(typeCode => {
+                            const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                            return definition && definition.isActive
+                          })
+                          .map((typeCode) => {
+                            const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                            return (
+                              <li key={typeCode}>{definition?.displayName || typeCode}</li>
+                            )
+                          })}
                       </ul>
                     </div>
                   </div>
@@ -2190,6 +2195,66 @@ export function NursingRecords() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Special Management Record Card */}
+            {selectedRecord.specialManagementData && Object.keys(selectedRecord.specialManagementData as Record<string, any>).length > 0 && (() => {
+              const specialData = selectedRecord.specialManagementData as Record<string, any>
+              const selectedPatient = patients.find(p => p.id === selectedRecord.patientId)
+              const patientSpecialTypes = selectedPatient?.specialManagementTypes || []
+              
+              // 有効な特別管理定義のみをフィルタリング
+              const validSpecialTypes = Array.from(new Set(patientSpecialTypes))
+                .filter(typeCode => {
+                  const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                  return definition && definition.isActive
+                })
+
+              if (validSpecialTypes.length === 0) return null
+
+              return (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>特管記録</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {validSpecialTypes.map(typeValue => {
+                      const typeConfig = specialManagementDefinitions.find(t => t.category === typeValue)
+                      if (!typeConfig || !typeConfig.fields) return null
+
+                      // この特管項目のデータを取得
+                      const hasData = typeConfig.fields.some(field => {
+                        const fieldKey = `${typeValue}_${field.fieldName}`
+                        const value = specialData[fieldKey]
+                        return value !== undefined && value !== null && value !== ''
+                      })
+
+                      if (!hasData) return null
+
+                      return (
+                        <div key={typeValue} className="border rounded-lg p-4">
+                          <h3 className="font-semibold mb-4 text-base">{typeConfig.displayName}</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {typeConfig.fields.map(field => {
+                              const fieldKey = `${typeValue}_${field.fieldName}`
+                              const value = specialData[fieldKey]
+
+                              if (value === undefined || value === null || value === '') return null
+
+                              return (
+                                <div key={fieldKey} className="space-y-1">
+                                  <p className="text-sm font-medium text-muted-foreground">{field.fieldLabel}</p>
+                                  <p className="text-base whitespace-pre-wrap">{String(value)}</p>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              )
+            })()}
 
             {/* Receipt and Billing Information Card */}
             {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || (selectedRecord as any).publicExpenseId || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
@@ -2994,95 +3059,6 @@ export function NursingRecords() {
               </div>
             </TabsContent>
 
-            {/* 特管記録タブ */}
-            <TabsContent value="special" className="mt-4">
-              {(() => {
-                const selectedPatient = patientsData?.data.find(p => p.id === formData.patientId)
-                const specialTypes = selectedPatient?.specialManagementTypes || []
-
-                if (specialTypes.length === 0) {
-                  return (
-                    <Alert>
-                      <Info className="h-4 w-4" />
-                      <AlertTitle>特別管理加算の設定がありません</AlertTitle>
-                      <AlertDescription>
-                        この患者には特別管理加算の設定がありません。患者情報画面から特別管理加算を設定してください。
-                      </AlertDescription>
-                    </Alert>
-                  )
-                }
-
-                return (
-                  <div className="space-y-4">
-                    <Alert>
-                      <Info className="h-4 w-4" />
-                      <AlertTitle>特別管理加算記録</AlertTitle>
-                      <AlertDescription>
-                        この患者には以下の特別管理加算が設定されています：{specialTypes.join('、')}
-                      </AlertDescription>
-                    </Alert>
-
-                    {specialTypes.map((type, index) => {
-                      const dataKey = `special_${type.replace(/\s+/g, '_')}`
-                      const currentData = formData.specialManagementData?.[dataKey] || {}
-
-                      return (
-                        <Card key={index}>
-                          <CardHeader>
-                            <CardTitle className="text-base">{type}</CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
-                            <div className="space-y-2">
-                              <Label htmlFor={`${dataKey}-care`}>実施した管理・ケア内容</Label>
-                              <Textarea
-                                id={`${dataKey}-care`}
-                                placeholder="実施した特別管理の内容を記録してください"
-                                value={currentData.care || ''}
-                                onChange={(e) => {
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    specialManagementData: {
-                                      ...prev.specialManagementData,
-                                      [dataKey]: {
-                                        ...currentData,
-                                        care: e.target.value
-                                      }
-                                    }
-                                  }))
-                                }}
-                                className="min-h-[100px] resize-none"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor={`${dataKey}-observation`}>観察事項</Label>
-                              <Textarea
-                                id={`${dataKey}-observation`}
-                                placeholder="特別管理に関連する観察事項を記録してください"
-                                value={currentData.observation || ''}
-                                onChange={(e) => {
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    specialManagementData: {
-                                      ...prev.specialManagementData,
-                                      [dataKey]: {
-                                        ...currentData,
-                                        observation: e.target.value
-                                      }
-                                    }
-                                  }))
-                                }}
-                                className="min-h-[80px] resize-none"
-                              />
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
-            </TabsContent>
 
             {/* レセプト・加算タブ（新規） */}
             <TabsContent value="receipt" className="space-y-4 mt-4">
@@ -3737,13 +3713,21 @@ export function NursingRecords() {
               </div>
             </TabsContent>
 
-            {/* 特管記録タブ（保留） */}
+            {/* 特管記録タブ */}
             <TabsContent value="special" className="mt-4">
               {(() => {
                 const selectedPatient = patientsData?.data.find(p => p.id === formData.patientId)
-                const specialTypes = selectedPatient?.specialManagementTypes || []
+                const patientSpecialTypes = selectedPatient?.specialManagementTypes || []
 
-                if (specialTypes.length === 0) {
+                // 有効な特別管理定義のみをフィルタリング
+                // 重複を排除し、有効な定義に存在するもののみを表示
+                const validSpecialTypes = Array.from(new Set(patientSpecialTypes))
+                  .filter(typeCode => {
+                    const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                    return definition && definition.isActive
+                  })
+
+                if (validSpecialTypes.length === 0) {
                   return (
                     <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
                       <p className="text-sm">この患者には特別管理加算の設定がありません</p>
@@ -3753,7 +3737,7 @@ export function NursingRecords() {
 
                 return (
                   <div className="space-y-6">
-                    {specialTypes.map(typeValue => {
+                    {validSpecialTypes.map(typeValue => {
                       const typeConfig = specialManagementDefinitions.find(t => t.category === typeValue)
                       if (!typeConfig || !typeConfig.fields) return null
 
