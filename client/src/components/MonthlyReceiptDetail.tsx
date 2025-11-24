@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast"
 import { InsuranceCardDialog } from "@/components/InsuranceCardDialog"
 import { DoctorOrderDialog } from "@/components/DoctorOrderDialog"
 import { PatientForm } from "@/components/PatientForm"
+import { PublicExpenseCardDialog } from "@/components/PublicExpenseCardDialog"
 import {
   Dialog,
   DialogContent,
@@ -212,6 +213,23 @@ export default function MonthlyReceiptDetail() {
   const [insuranceCardDialogOpen, setInsuranceCardDialogOpen] = useState(false)
   const [doctorOrderDialogOpen, setDoctorOrderDialogOpen] = useState(false)
   const [patientFormOpen, setPatientFormOpen] = useState(false)
+  const [publicExpenseCardDialogOpen, setPublicExpenseCardDialogOpen] = useState(false)
+  const [editingPublicExpenseCard, setEditingPublicExpenseCard] = useState<{
+    id: string
+    patientId: string
+    facilityId: string
+    beneficiaryNumber: string
+    recipientNumber: string | null
+    legalCategoryNumber: string
+    priority: number
+    benefitRate: number | null
+    validFrom: string
+    validUntil: string | null
+    notes: string | null
+    isActive: boolean
+    createdAt: Date
+    updatedAt: Date
+  } | null>(null)
   const [validationDialogOpen, setValidationDialogOpen] = useState(false)
   const [validationErrors, setValidationErrors] = useState<Array<{ recordType: string; message: string }>>([])
   const [validationWarnings, setValidationWarnings] = useState<Array<{ recordType: string; message: string }>>([])
@@ -232,12 +250,49 @@ export default function MonthlyReceiptDetail() {
   })
 
   // Fetch patient data for editing
-  const { data: patientData } = useQuery({
+  const { data: patientData, refetch: refetchPatientData } = useQuery({
     queryKey: [`/api/patients/${receipt?.patientId}`],
     queryFn: async () => {
       const response = await fetch(`/api/patients/${receipt?.patientId}`)
       if (!response.ok) {
         throw new Error("患者データの取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!receipt?.patientId,
+    staleTime: 0,              // データを常に古いものとして扱う
+    refetchOnMount: 'always',  // マウント時に常に再取得（キャッシュがあっても最新情報を取得）
+  })
+
+  // ダイアログを開くときに患者データを再取得
+  useEffect(() => {
+    if (patientFormOpen && receipt?.patientId) {
+      refetchPatientData()
+    }
+  }, [patientFormOpen, receipt?.patientId, refetchPatientData])
+
+  // Fetch public expense cards for editing
+  const { data: publicExpenseCards = [] } = useQuery<Array<{
+    id: string
+    patientId: string
+    facilityId: string
+    beneficiaryNumber: string
+    recipientNumber: string | null
+    legalCategoryNumber: string
+    priority: number
+    benefitRate: number | null
+    validFrom: string
+    validUntil: string | null
+    notes: string | null
+    isActive: boolean
+    createdAt: Date
+    updatedAt: Date
+  }>>({
+    queryKey: [`/api/public-expense-cards`, receipt?.patientId],
+    queryFn: async () => {
+      const response = await fetch(`/api/public-expense-cards?patientId=${receipt?.patientId}`)
+      if (!response.ok) {
+        throw new Error("公費情報の取得に失敗しました")
       }
       return response.json()
     },
@@ -1027,9 +1082,33 @@ export default function MonthlyReceiptDetail() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {receipt.publicExpenseCards.map((card, index) => (
+              {receipt.publicExpenseCards.map((card, index) => {
+                // 編集対象の公費カードを取得
+                const fullCardData = publicExpenseCards.find(c => c.id === card.id)
+                
+                return (
                 <div key={card.id}>
                   {index > 0 && <Separator className="my-4" />}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="text-sm font-semibold text-muted-foreground">
+                      公費負担医療 {card.priority}（優先順位{card.priority}）
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (fullCardData) {
+                          setEditingPublicExpenseCard(fullCardData)
+                          setPublicExpenseCardDialogOpen(true)
+                        }
+                      }}
+                      disabled={receipt.isConfirmed || !fullCardData}
+                      className="gap-2"
+                    >
+                      <Edit className="w-4 h-4" />
+                      編集
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <div className="text-sm text-muted-foreground">優先順位</div>
@@ -1123,7 +1202,8 @@ export default function MonthlyReceiptDetail() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -1651,6 +1731,27 @@ export default function MonthlyReceiptDetail() {
             createdAt: new Date(),
             updatedAt: new Date(),
           }}
+        />
+      )}
+
+      {/* Public Expense Card Dialog */}
+      {receipt && patientData && (
+        <PublicExpenseCardDialog
+          open={publicExpenseCardDialogOpen}
+          onOpenChange={(open) => {
+            setPublicExpenseCardDialogOpen(open)
+            if (!open) {
+              setEditingPublicExpenseCard(null)
+              // ダイアログが閉じられたときにレセプト詳細データを再取得
+              // PublicExpenseCardDialog内で保存成功時にpublic-expense-cardsクエリが無効化されるため、
+              // レセプト詳細データも再取得して最新の公費情報を反映する
+              queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+            }
+          }}
+          patientId={receipt.patientId}
+          facilityId={patientData.facilityId || ''}
+          editingCard={editingPublicExpenseCard || undefined}
+          existingCards={publicExpenseCards}
         />
       )}
 

@@ -201,107 +201,112 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     }
 
     if (isOpen) {
-      // 既に同じ患者で初期化済みの場合はスキップ
-      if (patient && loadedPatientId === patient.id && isFormInitialized.current) {
-        return
-      }
+      // 患者IDが変更された場合、または患者データがnullから実際のデータに変わった場合は再初期化
+      const currentPatientId = patient?.id || null
+      const shouldReinitialize = 
+        !isFormInitialized.current || // まだ初期化されていない
+        loadedPatientId !== currentPatientId || // 患者IDが変更された
+        (mode === 'edit' && patient && !loadedPatientId) || // 編集モードで患者データが新しく来た
+        (mode === 'edit' && patient && loadedPatientId === null) // 編集モードで患者データがnullから来た
 
-      if (patient && mode === 'edit') {
-        setLoadedPatientId(patient.id)
-        isFormInitialized.current = true
-        // Reset form with patient data for editing
-        form.reset({
-          patientNumber: patient.patientNumber || "",
-          lastName: patient.lastName || "",
-          firstName: patient.firstName || "",
-          kanaName: patient.kanaName || "",
-          dateOfBirth: patient.dateOfBirth ? new Date(patient.dateOfBirth + 'T00:00:00') : undefined,
-          gender: patient.gender || undefined,
-          address: patient.address || "",
-          phone: patient.phone || "",
-          emergencyContact: patient.emergencyContact || "",
-          emergencyPhone: patient.emergencyPhone || "",
-          insuranceNumber: patient.insuranceNumber || "",
-          medicalHistory: patient.medicalHistory || "",
-          allergies: patient.allergies || "",
-          currentMedications: patient.currentMedications || "",
-          careNotes: patient.careNotes || "",
-          isActive: patient.isActive ?? true,
-          isCritical: patient.isCritical ?? false,
-          medicalInstitutionId: patient.medicalInstitutionId || "",
-          careManagerId: patient.careManagerId || "",
-          buildingId: patient.buildingId || "",
-          specialManagementTypes: patient.specialManagementTypes || [],
-          specialManagementStartDate: patient.specialManagementStartDate ? new Date(patient.specialManagementStartDate + 'T00:00:00') : undefined,
-          specialManagementEndDate: patient.specialManagementEndDate ? new Date(patient.specialManagementEndDate + 'T00:00:00') : undefined,
-          // 介護・保険管理フィールド
-          insuranceType: patient.insuranceType || undefined,
-          careLevel: patient.careLevel || undefined,
-          specialCareType: patient.specialCareType || "none",
-          isInHospital: patient.isInHospital ?? false,
-          isInShortStay: patient.isInShortStay ?? false,
-          // Phase 2-A: 退院・計画・死亡情報
-          lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate + 'T00:00:00') : undefined,
-          lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate + 'T00:00:00') : undefined,
-          deathDate: patient.deathDate ? new Date(patient.deathDate + 'T00:00:00') : undefined,
-          // RJレコード用：死亡詳細情報
-          // deathTimeはHHMM形式からHH:MM形式に変換して表示
-          deathTime: (patient as any).deathTime 
-            ? ((patient as any).deathTime.length === 4
-                ? `${(patient as any).deathTime.substring(0, 2)}:${(patient as any).deathTime.substring(2, 4)}`
-                : (patient as any).deathTime)
-            : undefined,
-          // データベースから取得した値がnullの場合は'none'に変換（未選択状態を表現）
-          deathPlaceCode: (patient as any).deathPlaceCode || 'none',
-          deathPlaceText: (patient as any).deathPlaceText || undefined,
-        })
-      } else if (mode === 'create') {
-        setLoadedPatientId(null)
-        isFormInitialized.current = false
-        // Reset form with empty values for creating
-        form.reset({
-          patientNumber: "",
-          lastName: "",
-          firstName: "",
-          kanaName: "",
-          dateOfBirth: undefined,
-          gender: undefined,
-          address: "",
-          phone: "",
-          emergencyContact: "",
-          emergencyPhone: "",
-          insuranceNumber: "",
-          medicalHistory: "",
-          allergies: "",
-          currentMedications: "",
-          careNotes: "",
-          isActive: true,
-          isCritical: false,
-          medicalInstitutionId: "",
-          careManagerId: "",
-          buildingId: "",
-          specialManagementTypes: [],
-          specialManagementStartDate: undefined,
-          specialManagementEndDate: undefined,
-          // 介護・保険管理フィールド
-          insuranceType: undefined,
-          careLevel: undefined,
-          specialCareType: "none",
-          isInHospital: false,
-          isInShortStay: false,
-      // Phase 2-A: 退院・計画・死亡情報
-      lastDischargeDate: undefined,
-      lastPlanCreatedDate: undefined,
-      deathDate: undefined,
-      // RJレコード用：死亡詳細情報
-      deathTime: undefined,
-      deathPlaceCode: undefined,
-      deathPlaceText: undefined,
-    })
+      if (shouldReinitialize) {
+        if (patient && mode === 'edit') {
+          setLoadedPatientId(patient.id)
+          isFormInitialized.current = true
+          // Reset form with patient data for editing
+          form.reset({
+            patientNumber: patient.patientNumber || "",
+            lastName: patient.lastName || "",
+            firstName: patient.firstName || "",
+            kanaName: patient.kanaName || "",
+            dateOfBirth: patient.dateOfBirth ? new Date(patient.dateOfBirth + 'T00:00:00') : undefined,
+            gender: patient.gender || undefined,
+            address: patient.address || "",
+            phone: patient.phone || "",
+            emergencyContact: patient.emergencyContact || "",
+            emergencyPhone: patient.emergencyPhone || "",
+            insuranceNumber: patient.insuranceNumber || "",
+            medicalHistory: patient.medicalHistory || "",
+            allergies: patient.allergies || "",
+            currentMedications: patient.currentMedications || "",
+            careNotes: patient.careNotes || "",
+            isActive: patient.isActive ?? true,
+            isCritical: patient.isCritical ?? false,
+            medicalInstitutionId: patient.medicalInstitutionId || "",
+            careManagerId: patient.careManagerId || "",
+            buildingId: patient.buildingId || "",
+            specialManagementTypes: patient.specialManagementTypes || [],
+            specialManagementStartDate: patient.specialManagementStartDate ? new Date(patient.specialManagementStartDate + 'T00:00:00') : undefined,
+            specialManagementEndDate: patient.specialManagementEndDate ? new Date(patient.specialManagementEndDate + 'T00:00:00') : undefined,
+            // 介護・保険管理フィールド
+            insuranceType: patient.insuranceType || undefined,
+            careLevel: patient.careLevel || undefined,
+            specialCareType: patient.specialCareType || "none",
+            isInHospital: patient.isInHospital ?? false,
+            isInShortStay: patient.isInShortStay ?? false,
+            // Phase 2-A: 退院・計画・死亡情報
+            lastDischargeDate: patient.lastDischargeDate ? new Date(patient.lastDischargeDate + 'T00:00:00') : undefined,
+            lastPlanCreatedDate: patient.lastPlanCreatedDate ? new Date(patient.lastPlanCreatedDate + 'T00:00:00') : undefined,
+            deathDate: patient.deathDate ? new Date(patient.deathDate + 'T00:00:00') : undefined,
+            // RJレコード用：死亡詳細情報
+            // deathTimeはHHMM形式からHH:MM形式に変換して表示
+            deathTime: (patient as any).deathTime 
+              ? ((patient as any).deathTime.length === 4
+                  ? `${(patient as any).deathTime.substring(0, 2)}:${(patient as any).deathTime.substring(2, 4)}`
+                  : (patient as any).deathTime)
+              : undefined,
+            // データベースから取得した値がnullの場合は'none'に変換（未選択状態を表現）
+            deathPlaceCode: (patient as any).deathPlaceCode || 'none',
+            deathPlaceText: (patient as any).deathPlaceText || undefined,
+          })
+        } else if (mode === 'create') {
+          setLoadedPatientId(null)
+          isFormInitialized.current = false
+          // Reset form with empty values for creating
+          form.reset({
+            patientNumber: "",
+            lastName: "",
+            firstName: "",
+            kanaName: "",
+            dateOfBirth: undefined,
+            gender: undefined,
+            address: "",
+            phone: "",
+            emergencyContact: "",
+            emergencyPhone: "",
+            insuranceNumber: "",
+            medicalHistory: "",
+            allergies: "",
+            currentMedications: "",
+            careNotes: "",
+            isActive: true,
+            isCritical: false,
+            medicalInstitutionId: "",
+            careManagerId: "",
+            buildingId: "",
+            specialManagementTypes: [],
+            specialManagementStartDate: undefined,
+            specialManagementEndDate: undefined,
+            // 介護・保険管理フィールド
+            insuranceType: undefined,
+            careLevel: undefined,
+            specialCareType: "none",
+            isInHospital: false,
+            isInShortStay: false,
+        // Phase 2-A: 退院・計画・死亡情報
+        lastDischargeDate: undefined,
+        lastPlanCreatedDate: undefined,
+        deathDate: undefined,
+        // RJレコード用：死亡詳細情報
+        deathTime: undefined,
+        deathPlaceCode: undefined,
+        deathPlaceText: undefined,
+      })
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, mode])
+  }, [isOpen, mode, patient])
 
   // Helper function to format date as YYYY-MM-DD in local timezone
   const formatDateForAPI = (date: Date): string => {
