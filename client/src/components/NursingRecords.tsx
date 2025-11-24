@@ -468,6 +468,9 @@ export function NursingRecords() {
   const [lightboxImage, setLightboxImage] = useState<NursingRecordAttachment | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
 
+  // Previous record apply dialog state
+  const [showApplyPreviousDialog, setShowApplyPreviousDialog] = useState(false)
+
   // Set default date range to last 1 month
   useEffect(() => {
     const today = new Date()
@@ -616,6 +619,26 @@ export function NursingRecords() {
     },
     enabled: isCreating || isEditing,
   })
+
+  // Fetch latest nursing record for selected patient
+  const { data: latestRecord, isLoading: isLatestRecordLoading } = useQuery<NursingRecord | null>({
+    queryKey: ["latest-nursing-record", formData.patientId],
+    queryFn: async () => {
+      if (!formData.patientId) return null
+      const response = await fetch(`/api/nursing-records/latest-by-patient/${formData.patientId}`)
+      if (!response.ok) return null
+      const data = await response.json()
+      return data || null
+    },
+    enabled: !!formData.patientId && (isCreating || isEditing),
+  })
+
+  // Debug: Monitor dialog state changes
+  useEffect(() => {
+    console.log('[useEffect] showApplyPreviousDialog changed:', showApplyPreviousDialog, 'type:', typeof showApplyPreviousDialog)
+    console.log('[useEffect] latestRecord:', latestRecord ? 'exists' : 'null')
+    console.log('[useEffect] open value:', !!showApplyPreviousDialog)
+  }, [showApplyPreviousDialog, latestRecord])
 
   // Filter active doctor orders (not expired)
   const activeDoctorOrders = doctorOrders.filter(order =>
@@ -1085,6 +1108,160 @@ export function NursingRecords() {
     }
   }, [isEditing, selectedRecord, nursingServiceCodes])
 
+  // Get items to apply from previous record
+  const getItemsToApply = (previousRecord: NursingRecord): { items: string[], visitDate: string } => {
+    const previewData = applyPreviousRecord(previousRecord)
+    const itemsToApply: string[] = []
+
+    // 反映される項目をチェック
+    if (!formData.observations && previewData.observations) {
+      itemsToApply.push('観察事項')
+    }
+    if (!formData.careProvided && previewData.careProvided) {
+      itemsToApply.push('実施したケア内容')
+    }
+    if (!formData.nextVisitNotes && previewData.nextVisitNotes) {
+      itemsToApply.push('次回訪問時の申し送り')
+    }
+    if (previousRecord.specialManagementData && Object.keys(previousRecord.specialManagementData as Record<string, any>).length > 0) {
+      const currentSpecialData = formData.specialManagementData || {}
+      const prevSpecialData = previousRecord.specialManagementData as Record<string, any>
+      const hasNewData = Object.keys(prevSpecialData).some(key => {
+        if (!currentSpecialData[key]) return true
+        if (typeof prevSpecialData[key] === 'object' && typeof currentSpecialData[key] === 'object') {
+          return Object.keys(prevSpecialData[key]).some(fieldKey => !currentSpecialData[key][fieldKey])
+        }
+        return false
+      })
+      if (hasNewData) {
+        itemsToApply.push('特管記録')
+      }
+    }
+    if (!formData.nursingServiceCode && previewData.nursingServiceCode) {
+      itemsToApply.push('サービスコード')
+    }
+    if (!formData.visitLocation && previewData.visitLocation) {
+      itemsToApply.push('訪問場所')
+    }
+    if (!formData.staffQualification && previewData.staffQualification) {
+      itemsToApply.push('職員資格')
+    }
+    if (!formData.multipleVisitReason && previewData.multipleVisitReason) {
+      itemsToApply.push('複数回訪問理由')
+    }
+    if (!formData.emergencyVisitReason && previewData.emergencyVisitReason) {
+      itemsToApply.push('緊急訪問理由')
+    }
+    if (!formData.longVisitReason && previewData.longVisitReason) {
+      itemsToApply.push('長時間訪問理由')
+    }
+    if (!formData.specialistCareType && previewData.specialistCareType) {
+      itemsToApply.push('専門管理加算')
+    }
+    if (!formData.publicExpenseId && previewData.publicExpenseId) {
+      itemsToApply.push('公費ID')
+    }
+
+    const visitDate = previousRecord.visitDate ? new Date(previousRecord.visitDate).toLocaleDateString('ja-JP') : '不明'
+    return { items: itemsToApply, visitDate }
+  }
+
+  // Apply previous record function
+  const applyPreviousRecord = (previousRecord: NursingRecord): FormData => {
+    const updatedFormData = { ...formData }
+
+    // 基本記録タブ: 観察事項（空欄のみ反映）
+    if (!updatedFormData.observations && previousRecord.observations) {
+      updatedFormData.observations = previousRecord.observations
+    }
+
+    // バイタル・ケアタブ: ケア内容セクション（空欄のみ反映）
+    if (!updatedFormData.careProvided && previousRecord.interventions) {
+      updatedFormData.careProvided = previousRecord.interventions
+    }
+    if (!updatedFormData.nextVisitNotes && previousRecord.patientFamilyResponse) {
+      updatedFormData.nextVisitNotes = previousRecord.patientFamilyResponse
+    }
+
+    // 特管記録タブ: 特管記録データ（空欄のみ反映）
+    if (previousRecord.specialManagementData) {
+      const prevSpecialData = previousRecord.specialManagementData as Record<string, any>
+      const currentSpecialData = updatedFormData.specialManagementData || {}
+      const mergedSpecialData = { ...currentSpecialData }
+      
+      // 各特管項目について、空欄のみ反映
+      Object.keys(prevSpecialData).forEach(key => {
+        if (!currentSpecialData[key] || (typeof currentSpecialData[key] === 'object' && Object.keys(currentSpecialData[key] || {}).length === 0)) {
+          mergedSpecialData[key] = prevSpecialData[key]
+        } else if (typeof currentSpecialData[key] === 'object' && typeof prevSpecialData[key] === 'object') {
+          // オブジェクトの場合は各フィールドを個別にチェック
+          const mergedItem = { ...currentSpecialData[key] }
+          Object.keys(prevSpecialData[key]).forEach(fieldKey => {
+            if (!mergedItem[fieldKey]) {
+              mergedItem[fieldKey] = prevSpecialData[key][fieldKey]
+            }
+          })
+          mergedSpecialData[key] = mergedItem
+        }
+      })
+      updatedFormData.specialManagementData = mergedSpecialData
+    }
+
+    // レセプト・加算タブ: レセプト関連フィールド（空欄のみ反映）
+    if (!updatedFormData.nursingServiceCode && (previousRecord as any).serviceCodeId) {
+      const serviceCode = nursingServiceCodes.find(code => code.id === (previousRecord as any).serviceCodeId)
+      if (serviceCode) {
+        updatedFormData.nursingServiceCode = serviceCode.serviceCode
+      }
+    }
+    if (!updatedFormData.visitLocation && (previousRecord as any).visitLocationCode) {
+      updatedFormData.visitLocation = (previousRecord as any).visitLocationCode
+    }
+    if (!updatedFormData.visitLocationCustom && (previousRecord as any).visitLocationCustom) {
+      updatedFormData.visitLocationCustom = (previousRecord as any).visitLocationCustom
+    }
+    if (!updatedFormData.staffQualification && (previousRecord as any).staffQualificationCode) {
+      updatedFormData.staffQualification = (previousRecord as any).staffQualificationCode
+    }
+
+    // 加算理由（空欄のみ反映）
+    if (!updatedFormData.multipleVisitReason && previousRecord.multipleVisitReason) {
+      updatedFormData.multipleVisitReason = previousRecord.multipleVisitReason
+    }
+    if (!updatedFormData.emergencyVisitReason && previousRecord.emergencyVisitReason) {
+      updatedFormData.emergencyVisitReason = previousRecord.emergencyVisitReason
+    }
+    if (!updatedFormData.longVisitReason && previousRecord.longVisitReason) {
+      updatedFormData.longVisitReason = previousRecord.longVisitReason
+    }
+
+    // 記録フラグ（空欄のみ反映 - ただしbooleanなので、falseの場合は反映しない）
+    if (!updatedFormData.isDischargeDate && previousRecord.isDischargeDate) {
+      updatedFormData.isDischargeDate = previousRecord.isDischargeDate
+    }
+    if (!updatedFormData.isFirstVisitOfPlan && previousRecord.isFirstVisitOfPlan) {
+      updatedFormData.isFirstVisitOfPlan = previousRecord.isFirstVisitOfPlan
+    }
+    if (!updatedFormData.hasCollaborationRecord && previousRecord.hasCollaborationRecord) {
+      updatedFormData.hasCollaborationRecord = previousRecord.hasCollaborationRecord
+    }
+    if (!updatedFormData.isTerminalCare && previousRecord.isTerminalCare) {
+      updatedFormData.isTerminalCare = previousRecord.isTerminalCare
+    }
+
+    // 専門管理加算（空欄のみ反映）
+    if (!updatedFormData.specialistCareType && (previousRecord as any).specialistCareType) {
+      updatedFormData.specialistCareType = (previousRecord as any).specialistCareType
+    }
+
+    // 公費ID（空欄のみ反映）
+    if (!updatedFormData.publicExpenseId && (previousRecord as any).publicExpenseId) {
+      updatedFormData.publicExpenseId = (previousRecord as any).publicExpenseId
+    }
+
+    return updatedFormData
+  }
+
   // Delete record function
   const handleDeleteRecord = async () => {
     if (!recordToDelete) return
@@ -1098,6 +1275,11 @@ export function NursingRecords() {
         },
       })
 
+      // Invalidate and refetch latest record cache for this patient
+      if (recordToDelete?.patientId) {
+        await queryClient.invalidateQueries({ queryKey: ["latest-nursing-record", recordToDelete.patientId] })
+        await queryClient.refetchQueries({ queryKey: ["latest-nursing-record", recordToDelete.patientId] })
+      }
       if (!response.ok) {
         throw new Error('削除に失敗しました')
       }
@@ -1202,6 +1384,11 @@ export function NursingRecords() {
         await uploadAttachments(savedRecord.id)
       }
 
+      // Invalidate and refetch latest record cache for this patient
+      if (savedRecord?.patientId) {
+        await queryClient.invalidateQueries({ queryKey: ["latest-nursing-record", savedRecord.patientId] })
+        await queryClient.refetchQueries({ queryKey: ["latest-nursing-record", savedRecord.patientId] })
+      }
       // Success - invalidate queries and show notification
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
@@ -1316,6 +1503,11 @@ export function NursingRecords() {
       }
 
       // Success - invalidate queries and show notification
+      // Invalidate and refetch latest record cache for this patient
+      if (savedRecord?.patientId) {
+        await queryClient.invalidateQueries({ queryKey: ["latest-nursing-record", savedRecord.patientId] })
+        await queryClient.refetchQueries({ queryKey: ["latest-nursing-record", savedRecord.patientId] })
+      }
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
       await queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
@@ -1429,6 +1621,11 @@ export function NursingRecords() {
       }
 
       // Success - invalidate queries and show notification
+      // Invalidate and refetch latest record cache for this patient
+      if (updatedRecord?.patientId) {
+        await queryClient.invalidateQueries({ queryKey: ["latest-nursing-record", updatedRecord.patientId] })
+        await queryClient.refetchQueries({ queryKey: ["latest-nursing-record", updatedRecord.patientId] })
+      }
       await queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
       await queryClient.invalidateQueries({ queryKey: ["/api/schedules/without-records"] })
       await queryClient.invalidateQueries({ queryKey: ["schedules"] })
@@ -2553,6 +2750,23 @@ export function NursingRecords() {
           </Accordion>
         )}
 
+        {/* 前回記録を反映ボタン */}
+        {formData.patientId && (isCreating || isEditing) && (
+          <div className="flex justify-end mb-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowApplyPreviousDialog(true)
+              }}
+              disabled={isLatestRecordLoading}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              前回記録を反映
+              {isLatestRecordLoading && " (読み込み中...)"}
+            </Button>
+          </div>
+        )}
         {/* 5 Tabs */}
         {(isCreating || isEditing) ? (
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full">
@@ -2580,8 +2794,9 @@ export function NursingRecords() {
               </TabsTrigger>
             </TabsList>
 
-            {/* 基本記録タブ */}
             <TabsContent value="basic" className="space-y-4 mt-4">
+            {/* 基本記録タブ */}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="start-time">
@@ -4035,6 +4250,89 @@ export function NursingRecords() {
         )}
       </div>
 
+      {/* 前回記録反映確認ダイアログ */}
+      <AlertDialog open={!!showApplyPreviousDialog} onOpenChange={setShowApplyPreviousDialog}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>前回記録を反映しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {!latestRecord ? (
+                <div className="space-y-2">
+                  <p>この患者にはまだ記録がありません。記録を作成してから再度お試しください。</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p>以下の最新記録から、空欄の項目のみを反映します。</p>
+                  {(() => {
+                    try {
+                      const { items: itemsToApply, visitDate } = getItemsToApply(latestRecord)
+                      return (
+                        <div className="space-y-4 mt-4">
+                          <div className="bg-muted p-3 rounded-md text-sm space-y-1">
+                            <p><span className="font-medium">訪問日:</span> {visitDate}</p>
+                            {latestRecord.actualStartTime && (
+                              <p><span className="font-medium">訪問開始:</span> {new Date(latestRecord.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</p>
+                            )}
+                          </div>
+                          {itemsToApply.length > 0 ? (
+                            <div>
+                              <p className="font-medium mb-2">反映される項目:</p>
+                              <ul className="list-disc list-inside space-y-1 text-sm">
+                                {itemsToApply.map((item, index) => (
+                                  <li key={index}>{item}</li>
+                                ))}
+                              </ul>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                既に入力済みの項目は変更されません。
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="border-amber-300 bg-amber-50 border rounded-md p-3">
+                              <p className="text-amber-900 font-medium mb-1">反映できる項目がありません</p>
+                              <p className="text-amber-700 text-sm">
+                                前回記録の項目は既に入力済みか、前回記録に該当する項目がありません。
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    } catch (error) {
+                      console.error('前回記録反映ダイアログのレンダリングエラー:', error)
+                      return (
+                        <div className="space-y-2 mt-4">
+                          <p className="text-destructive font-medium">エラーが発生しました</p>
+                          <p className="text-sm">
+                            前回記録の情報を取得できませんでした。ページを再読み込みして再度お試しください。
+                          </p>
+                        </div>
+                      )
+                    }
+                  })()}
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (latestRecord) {
+                  const updatedFormData = applyPreviousRecord(latestRecord)
+                  setFormData(updatedFormData)
+                  setShowApplyPreviousDialog(false)
+                  toast({
+                    title: "反映完了",
+                    description: "前回記録の項目を反映しました",
+                  })
+                }
+              }}
+              disabled={!latestRecord}
+            >
+              反映する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </>
     )
   }
@@ -4597,7 +4895,11 @@ export function NursingRecords() {
       </Card>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!recordToDelete} onOpenChange={(open) => !open && setRecordToDelete(null)}>
+      <AlertDialog open={!!recordToDelete} onOpenChange={(open) => {
+        if (!open) {
+          setRecordToDelete(null)
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>訪問記録を削除しますか？</AlertDialogTitle>
@@ -4628,6 +4930,7 @@ export function NursingRecords() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
 
     </>

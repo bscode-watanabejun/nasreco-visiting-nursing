@@ -2822,6 +2822,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get latest nursing record by patient ID (MUST come BEFORE /:id route)
+  app.get("/api/nursing-records/latest-by-patient/:patientId", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { patientId } = req.params;
+      
+      // Determine facility ID: use URL context facility if available, otherwise user's facility
+      const targetFacilityId = req.facility?.id || req.user.facilityId;
+
+      // Get latest record by visit date (descending order)
+      const latestRecord = await db.query.nursingRecords.findFirst({
+        where: and(
+          eq(nursingRecords.patientId, patientId),
+          eq(nursingRecords.facilityId, targetFacilityId),
+          isNull(nursingRecords.deletedAt)
+        ),
+        orderBy: [desc(nursingRecords.visitDate), desc(nursingRecords.recordDate)],
+      });
+
+      if (!latestRecord) {
+        return res.json(null);
+      }
+
+      res.json(latestRecord);
+    } catch (error) {
+      console.error("Get latest nursing record error:", error);
+      res.status(500).json({ error: "サーバーエラーが発生しました" });
+    }
+  });
+
   // Get single nursing record by ID (MUST come AFTER /search and base routes)
   app.get("/api/nursing-records/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
