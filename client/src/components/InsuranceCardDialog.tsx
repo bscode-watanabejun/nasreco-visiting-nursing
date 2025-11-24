@@ -140,25 +140,23 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
     if (open) {
       const initialData = getInitialFormData(card, patientId)
       setFormData(initialData)
-
-      // ダイアログを開いた時点で患者が選択されていれば年齢区分を再計算
-      if (initialData.patientId) {
-        const patient = patients.find(p => p.id === initialData.patientId)
-        if (patient?.dateOfBirth) {
-          const ageCategory = calculateAgeCategory(patient.dateOfBirth)
-          setFormData(prev => ({ ...prev, ageCategory }))
-        }
-      }
     }
-  }, [open, card, patientId, patients])
+  }, [open, card, patientId])
 
-  // 患者が変更されたら年齢区分を自動計算
+  // 患者が選択されていて、患者情報が読み込まれたら年齢区分を自動計算
   useEffect(() => {
-    if (selectedPatient?.dateOfBirth) {
+    // patientsが読み込まれていて、患者が選択されている場合
+    if (patients.length > 0 && formData.patientId && selectedPatient?.dateOfBirth) {
       const ageCategory = calculateAgeCategory(selectedPatient.dateOfBirth)
-      setFormData(prev => ({ ...prev, ageCategory }))
+      setFormData(prev => {
+        // 既に同じ年齢区分が設定されている場合は更新しない（無限ループ防止）
+        if (prev.ageCategory === ageCategory) {
+          return prev
+        }
+        return { ...prev, ageCategory }
+      })
     }
-  }, [selectedPatient?.dateOfBirth])
+  }, [formData.patientId, selectedPatient?.dateOfBirth, patients.length])
 
   // 保険者番号が変更されたら審査支払機関コードを自動判定
   useEffect(() => {
@@ -238,7 +236,11 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         if (formData.certificationDate) multipartData.append('certificationDate', formData.certificationDate)
         if (formData.notes) multipartData.append('notes', formData.notes)
         if (formData.relationshipType) multipartData.append('relationshipType', formData.relationshipType)
-        if (formData.ageCategory) multipartData.append('ageCategory', formData.ageCategory)
+        // 年齢区分は自動計算で設定されるため、患者が選択されている場合は必ず送信
+        const ageCategoryToSend = selectedPatient?.dateOfBirth 
+          ? calculateAgeCategory(selectedPatient.dateOfBirth) 
+          : formData.ageCategory || null;
+        if (ageCategoryToSend) multipartData.append('ageCategory', ageCategoryToSend)
         if (formData.elderlyRecipientCategory) multipartData.append('elderlyRecipientCategory', formData.elderlyRecipientCategory)
         if (formData.reviewOrganizationCode) multipartData.append('reviewOrganizationCode', formData.reviewOrganizationCode)
         // 一部負担金区分は表示されている場合のみ送信（該当なしの場合はnullを送信）
@@ -253,6 +255,11 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         })
       } else {
         // No file, send JSON
+        // 年齢区分は自動計算で設定されるため、患者が選択されている場合は必ず送信
+        const ageCategoryToSend = selectedPatient?.dateOfBirth 
+          ? calculateAgeCategory(selectedPatient.dateOfBirth) 
+          : formData.ageCategory || null;
+        
         const apiData: any = {
           patientId: formData.patientId,
           cardType: formData.cardType,
@@ -266,7 +273,8 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
           ...(formData.certificationDate && { certificationDate: formData.certificationDate }),
           ...(formData.notes && { notes: formData.notes }),
           ...(formData.relationshipType && { relationshipType: formData.relationshipType }),
-          ...(formData.ageCategory && { ageCategory: formData.ageCategory }),
+          // 年齢区分は自動計算で設定されるため、値がある場合は必ず送信
+          ...(ageCategoryToSend && { ageCategory: ageCategoryToSend }),
           ...(formData.elderlyRecipientCategory && { elderlyRecipientCategory: formData.elderlyRecipientCategory }),
           ...(formData.reviewOrganizationCode && { reviewOrganizationCode: formData.reviewOrganizationCode }),
           // 一部負担金区分は表示されている場合のみ送信（該当なしの場合はnullを送信）

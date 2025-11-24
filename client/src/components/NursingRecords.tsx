@@ -235,8 +235,9 @@ const convertFormDataToApiFormat = (
     ...(formData.oxygenSaturation && { oxygenSaturation: parseInt(formData.oxygenSaturation) }),
 
     // 加算管理フィールド
-    ...(formData.multipleVisitReason && { multipleVisitReason: formData.multipleVisitReason }),
-    ...(formData.emergencyVisitReason && { emergencyVisitReason: formData.emergencyVisitReason }),
+    // チェックが外された場合に明示的にnullを送信して、サーバー側で更新されるようにする
+    multipleVisitReason: formData.isSecondVisit ? (formData.multipleVisitReason || null) : null,
+    emergencyVisitReason: formData.hasEmergencyVisit ? (formData.emergencyVisitReason || null) : null,
     ...(formData.longVisitReason && { longVisitReason: formData.longVisitReason }),
 
     // Phase 2-A: 記録フラグ（加算判定用）
@@ -246,9 +247,10 @@ const convertFormDataToApiFormat = (
     isTerminalCare: formData.isTerminalCare,
 
     // Week 3: 専門管理加算用フィールド
-    ...(formData.specialistCareType && formData.specialistCareType !== '' && {
-      specialistCareType: formData.specialistCareType
-    }),
+    // "none"の場合はnullを送信して、サーバー側で更新されるようにする
+    specialistCareType: formData.specialistCareType && formData.specialistCareType !== '' && formData.specialistCareType !== 'none' 
+      ? formData.specialistCareType 
+      : null,
 
     // 特別管理記録データ
     ...(Object.keys(formData.specialManagementData).length > 0 && {
@@ -2431,7 +2433,7 @@ export function NursingRecords() {
                   )}
 
                   {/* 専門的ケアの種類 */}
-                  {selectedRecord.specialistCareType && (
+                  {selectedRecord.specialistCareType && selectedRecord.specialistCareType !== 'none' && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">専門的ケアの種類</p>
                       <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
@@ -2440,7 +2442,7 @@ export function NursingRecords() {
                           {selectedRecord.specialistCareType === 'pressure_ulcer' && '褥瘡ケア'}
                           {selectedRecord.specialistCareType === 'stoma_care' && '人工肛門・人工膀胱ケア'}
                           {selectedRecord.specialistCareType === 'specific_procedures' && '特定行為'}
-                          {!['palliative_care', 'pressure_ulcer', 'stoma_care', 'specific_procedures'].includes(selectedRecord.specialistCareType) && selectedRecord.specialistCareType}
+                          {!['palliative_care', 'pressure_ulcer', 'stoma_care', 'specific_procedures', 'none'].includes(selectedRecord.specialistCareType) && selectedRecord.specialistCareType}
                         </p>
                       </div>
                     </div>

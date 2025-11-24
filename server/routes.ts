@@ -6931,6 +6931,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(and(
           eq(insuranceCards.patientId, patientId),
           eq(insuranceCards.facilityId, facilityId),
+          eq(insuranceCards.isActive, true), // 有効な保険証のみ取得
           eq(insuranceCards.cardType, insuranceType === 'medical' ? 'medical' : 'long_term_care')
         ))
         .orderBy(desc(insuranceCards.validFrom))
@@ -7210,6 +7211,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...csvValidationResult.warnings.map(w => `[CSV出力] ${w.message}`)
         ];
 
+        // Prepare CSV export status data
+        const csvExportReady = csvValidationResult.canExportCsv;
+        const csvExportWarnings = [
+          ...csvValidationResult.errors.map(e => ({ field: e.field, message: e.message, severity: e.severity })),
+          ...csvValidationResult.warnings.map(w => ({ field: w.field, message: w.message, severity: w.severity }))
+        ];
+        const lastCsvExportCheck = new Date();
+
         // Check if receipt already exists
         const existingReceipt = await db.select()
           .from(monthlyReceipts)
@@ -7243,6 +7252,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               hasWarnings: allWarnings.length > 0,
               errorMessages: allErrors,
               warningMessages: allWarnings,
+              csvExportReady,
+              csvExportWarnings,
+              lastCsvExportCheck,
               updatedAt: new Date(),
             })
             .where(eq(monthlyReceipts.id, existingReceipt[0].id))
@@ -7268,6 +7280,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               hasWarnings: allWarnings.length > 0,
               errorMessages: allErrors,
               warningMessages: allWarnings,
+              csvExportReady,
+              csvExportWarnings,
+              lastCsvExportCheck,
             })
             .returning();
 
@@ -7427,6 +7442,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Run CSV export validation (don't block finalization if this fails)
+      let csvExportReady = false;
+      let csvExportWarnings: Array<{field: string; message: string; severity: 'error' | 'warning'}> = [];
+      let lastCsvExportCheck: Date | null = null;
+      
+      try {
+        const csvValidationResult = await validateMonthlyReceiptData(
+          facilityId,
+          patientId,
+          targetYear,
+          targetMonth
+        );
+        csvExportReady = csvValidationResult.canExportCsv;
+        csvExportWarnings = [
+          ...csvValidationResult.errors.map(e => ({ field: e.field, message: e.message, severity: e.severity })),
+          ...csvValidationResult.warnings.map(w => ({ field: w.field, message: w.message, severity: w.severity }))
+        ];
+        lastCsvExportCheck = new Date();
+      } catch (error) {
+        console.error("CSV validation error during finalization:", error);
+        // Continue with finalization even if CSV validation fails
+      }
+
       // Update validation status and finalize
       const [updated] = await db.update(monthlyReceipts)
         .set({
@@ -7435,6 +7473,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           confirmedAt: new Date(),
           hasErrors: false,
           errorMessages: [],
+          csvExportReady,
+          csvExportWarnings,
+          lastCsvExportCheck,
           updatedAt: new Date(),
         })
         .where(eq(monthlyReceipts.id, id))
@@ -7623,6 +7664,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalPoints = totalVisitPoints + totalBonusPoints;
       const totalAmount = totalPoints * 10;
 
+      // Run CSV export validation (don't block recalculation if this fails)
+      let csvExportReady = false;
+      let csvExportWarnings: Array<{field: string; message: string; severity: 'error' | 'warning'}> = [];
+      let lastCsvExportCheck: Date | null = null;
+      
+      try {
+        const csvValidationResult = await validateMonthlyReceiptData(
+          facilityId,
+          patientId,
+          targetYear,
+          targetMonth
+        );
+        csvExportReady = csvValidationResult.canExportCsv;
+        csvExportWarnings = [
+          ...csvValidationResult.errors.map(e => ({ field: e.field, message: e.message, severity: e.severity })),
+          ...csvValidationResult.warnings.map(w => ({ field: w.field, message: w.message, severity: w.severity }))
+        ];
+        lastCsvExportCheck = new Date();
+      } catch (error) {
+        console.error("CSV validation error during recalculation:", error);
+        // Continue with recalculation even if CSV validation fails
+      }
+
       const [updated] = await db.update(monthlyReceipts)
         .set({
           visitCount: records.length,
@@ -7631,6 +7695,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           bonusBreakdown,
           totalPoints,
           totalAmount,
+          csvExportReady,
+          csvExportWarnings,
+          lastCsvExportCheck,
           updatedAt: new Date(),
         })
         .where(eq(monthlyReceipts.id, id))
@@ -8169,13 +8236,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(doctorOrders.patientId, patientId)
         ));
 
-      // Get insurance cards
+      // Get insurance cards (レセプト詳細APIと同じ条件で取得)
       const cards = await db.select()
         .from(insuranceCards)
         .where(and(
           eq(insuranceCards.facilityId, facilityId),
-          eq(insuranceCards.patientId, patientId)
-        ));
+          eq(insuranceCards.patientId, patientId),
+          eq(insuranceCards.isActive, true), // 有効な保険証のみ取得
+          eq(insuranceCards.cardType, insuranceType === 'medical' ? 'medical' : 'long_term_care') // 保険種別でフィルタリング
+        ))
+        .orderBy(desc(insuranceCards.validFrom));
 
       // Get bonus calculations
       const recordIds = records.map(r => r.id);
@@ -8259,12 +8329,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         facilityId,
         patientId,
         targetYear,
-        targetMonth
+        targetMonth,
+        insuranceType // レセプトのinsuranceTypeを引数として渡す
       );
 
       // Update receipt with validation results
       const hasErrors = validationResult.errors.length > 0 || csvValidationResult.errors.length > 0;
       const hasWarnings = validationResult.warnings.length > 0 || missingSuggestions.length > 0 || csvValidationResult.warnings.length > 0;
+
+      // Prepare CSV export status data
+      const csvExportReady = csvValidationResult.canExportCsv;
+      const csvExportWarnings = [
+        ...csvValidationResult.errors.map(e => ({ field: e.field, message: e.message, severity: e.severity })),
+        ...csvValidationResult.warnings.map(w => ({ field: w.field, message: w.message, severity: w.severity }))
+      ];
+      const lastCsvExportCheck = new Date();
 
       await db.update(monthlyReceipts)
         .set({
@@ -8279,6 +8358,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...missingSuggestions.map(s => s.message),
             ...csvValidationResult.warnings.map(w => w.message),
           ],
+          csvExportReady,
+          csvExportWarnings,
+          lastCsvExportCheck,
           updatedAt: new Date(),
         })
         .where(eq(monthlyReceipts.id, id));

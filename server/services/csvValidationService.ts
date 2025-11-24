@@ -6,7 +6,7 @@
  */
 
 import { db } from '../db';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import {
   facilities,
   patients,
@@ -198,14 +198,35 @@ async function validateMedicalInstitution(institutionId: string): Promise<Valida
 /**
  * Phase 3: 保険証情報の検証
  */
-async function validateInsuranceCard(patientId: string): Promise<ValidationWarning[]> {
+async function validateInsuranceCard(
+  patientId: string,
+  insuranceType?: 'medical' | 'care',
+  facilityId?: string
+): Promise<ValidationWarning[]> {
   const warnings: ValidationWarning[] = [];
 
+  // 保険種別に基づいてcardTypeを決定（レセプト詳細APIと同じロジック）
+  const cardType = insuranceType === 'medical' ? 'medical' : 'long_term_care';
+
+  // 条件を構築（レセプト詳細APIと同じ条件で保険証を取得）
+  const whereConditions = [
+    eq(insuranceCards.patientId, patientId),
+    eq(insuranceCards.isActive, true),
+  ];
+  
+  // facilityIdが指定されている場合は追加（レセプト詳細APIと同じ条件にするため）
+  if (facilityId) {
+    whereConditions.push(eq(insuranceCards.facilityId, facilityId));
+  }
+  
+  if (insuranceType) {
+    whereConditions.push(eq(insuranceCards.cardType, cardType));
+  }
+
   const cards = await db.query.insuranceCards.findMany({
-    where: and(
-      eq(insuranceCards.patientId, patientId),
-      eq(insuranceCards.isActive, true)
-    ),
+    where: and(...whereConditions),
+    // 最新の保険証を取得（レセプト詳細APIと同じロジック）
+    orderBy: desc(insuranceCards.validFrom),
   });
 
   if (cards.length === 0) {
@@ -218,7 +239,7 @@ async function validateInsuranceCard(patientId: string): Promise<ValidationWarni
     return warnings;
   }
 
-  const card = cards[0]; // 最初の有効な保険証を検証
+  const card = cards[0]; // 最新の有効な保険証を検証
 
   // 医療保険の場合、本人家族区分が必須
   if (card.cardType === 'medical' && !card.relationshipType) {
@@ -521,13 +542,29 @@ export async function validateMonthlyReceiptData(
   facilityId: string,
   patientId: string,
   targetYear: number,
-  targetMonth: number
+  targetMonth: number,
+  insuranceType?: 'medical' | 'care' // レセプトIDから取得できない場合のフォールバック
 ): Promise<ValidationResult> {
   const warnings: ValidationWarning[] = [];
 
   // 対象月の開始日と終了日
   const startDate = new Date(targetYear, targetMonth - 1, 1);
   const endDate = new Date(targetYear, targetMonth, 0);
+
+  // レセプト情報からinsuranceTypeを取得（レセプト詳細APIと同じ保険証を検証するため）
+  // 注意: 複数のレセプトが存在する可能性があるため、最新のレセプトを取得
+  const receipt = await db.query.monthlyReceipts.findFirst({
+    where: and(
+      eq(monthlyReceipts.facilityId, facilityId),
+      eq(monthlyReceipts.patientId, patientId),
+      eq(monthlyReceipts.targetYear, targetYear),
+      eq(monthlyReceipts.targetMonth, targetMonth)
+    ),
+    orderBy: desc(monthlyReceipts.createdAt), // 最新のレセプトを取得
+  });
+
+  // レセプトから取得したinsuranceTypeを使用、取得できない場合は引数で渡されたinsuranceTypeを使用
+  const finalInsuranceType = receipt?.insuranceType || insuranceType;
 
   // 各データの検証 (Phase 3: 保険証・公費情報の検証を追加)
   const [
@@ -540,7 +577,7 @@ export async function validateMonthlyReceiptData(
   ] = await Promise.all([
     validateFacility(facilityId),
     validatePatient(patientId),
-    validateInsuranceCard(patientId),
+    validateInsuranceCard(patientId, finalInsuranceType, facilityId), // facilityIdを追加、finalInsuranceTypeを使用
     validatePublicExpenseCards(patientId),
     validateDoctorOrder(patientId, startDate),
     validateNursingRecords(patientId, startDate, endDate),
