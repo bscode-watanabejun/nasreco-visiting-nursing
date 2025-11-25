@@ -622,17 +622,37 @@ export function NursingRecords() {
     // 編集画面だけでなく、詳細画面でも特管記録を表示するため、常に取得
   })
 
-  // Fetch latest nursing record for selected patient
+  // Fetch previous nursing record for selected patient (based on visit date and start time)
+  const recordIdFromUrlForQuery = urlParams.get('recordId')
   const { data: latestRecord, isLoading: isLatestRecordLoading } = useQuery<NursingRecord | null>({
-    queryKey: ["latest-nursing-record", formData.patientId],
+    queryKey: ["previous-nursing-record", formData.patientId, formData.visitDate, formData.actualStartTime, selectedRecord?.id || recordIdFromUrlForQuery],
     queryFn: async () => {
       if (!formData.patientId) return null
-      const response = await fetch(`/api/nursing-records/latest-by-patient/${formData.patientId}`)
+      
+      // 編集モードの場合は、編集中の記録IDを除外
+      const excludeRecordId = (isEditing && (selectedRecord?.id || recordIdFromUrlForQuery)) || undefined
+      
+      // クエリパラメータを構築
+      const params = new URLSearchParams()
+      if (excludeRecordId) {
+        params.append('excludeRecordId', excludeRecordId)
+      }
+      if (formData.visitDate) {
+        params.append('visitDate', formData.visitDate)
+      }
+      if (formData.actualStartTime) {
+        params.append('actualStartTime', formData.actualStartTime)
+      }
+      
+      const queryString = params.toString()
+      const url = `/api/nursing-records/latest-by-patient/${formData.patientId}${queryString ? `?${queryString}` : ''}`
+      
+      const response = await fetch(url)
       if (!response.ok) return null
       const data = await response.json()
       return data || null
     },
-    enabled: !!formData.patientId && (isCreating || isEditing),
+    enabled: !!formData.patientId && (isCreating || isEditing) && !!formData.visitDate,
   })
 
   // Debug: Monitor dialog state changes
@@ -2062,7 +2082,7 @@ export function NursingRecords() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">記録作成日時</p>
-                    <p className="text-base">{new Date(selectedRecord.recordDate).toLocaleString('ja-JP')}</p>
+                    <p className="text-base">{selectedRecord.createdAt ? new Date(selectedRecord.createdAt).toLocaleString('ja-JP') : '―'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">最終更新日時</p>

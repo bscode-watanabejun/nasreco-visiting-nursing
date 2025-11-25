@@ -89,7 +89,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc, ne } from "drizzle-orm";
+import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc, ne, type SQL } from "drizzle-orm";
 import { stringify } from "csv-stringify/sync";
 import { validateReceipt, detectMissingBonuses } from "./validators/receipt-validator";
 
@@ -2826,27 +2826,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/nursing-records/latest-by-patient/:patientId", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { patientId } = req.params;
+      const excludeRecordId = req.query.excludeRecordId as string | undefined;
+      const visitDate = req.query.visitDate as string | undefined;
+      const actualStartTime = req.query.actualStartTime as string | undefined;
       
       // Determine facility ID: use URL context facility if available, otherwise user's facility
       const targetFacilityId = req.facility?.id || req.user.facilityId;
 
-      // Get latest record by visit date (descending order)
-      const latestRecord = await db.query.nursingRecords.findFirst({
-        where: and(
-          eq(nursingRecords.patientId, patientId),
-          eq(nursingRecords.facilityId, targetFacilityId),
-          isNull(nursingRecords.deletedAt)
-        ),
-        orderBy: [desc(nursingRecords.visitDate), desc(nursingRecords.recordDate)],
+      const conditions = [
+        eq(nursingRecords.patientId, patientId),
+        eq(nursingRecords.facilityId, targetFacilityId),
+        isNull(nursingRecords.deletedAt)
+      ];
+
+      // 編集している記録を除外
+      if (excludeRecordId) {
+        conditions.push(ne(nursingRecords.id, excludeRecordId));
+      }
+
+      // 訪問日と開始時間を基準に前回の記録を取得
+      if (visitDate) {
+        if (actualStartTime) {
+          // 訪問日と開始時間の両方が指定されている場合
+          const targetStartTime = new Date(`${visitDate}T${actualStartTime}`);
+          
+          // visitDate < 指定の訪問日 または (visitDate = 指定の訪問日 AND actualStartTime < 指定の開始時間)
+          const dateCondition = lt(nursingRecords.visitDate, visitDate);
+          const sameDateCondition = eq(nursingRecords.visitDate, visitDate);
+          const timeCondition = lt(nursingRecords.actualStartTime, targetStartTime);
+          const combinedCondition = or(
+            dateCondition,
+            and(sameDateCondition, timeCondition)
+          ) as SQL<unknown>;
+          conditions.push(combinedCondition);
+        } else {
+          // 訪問日のみ指定されている場合
+          conditions.push(lt(nursingRecords.visitDate, visitDate));
+        }
+      }
+
+      // 訪問日と開始時間の降順でソート（最も新しい前回の記録を取得）
+      const previousRecord = await db.query.nursingRecords.findFirst({
+        where: and(...conditions),
+        orderBy: [
+          desc(nursingRecords.visitDate),
+          desc(nursingRecords.actualStartTime),
+          desc(nursingRecords.recordDate)
+        ],
       });
 
-      if (!latestRecord) {
+      if (!previousRecord) {
         return res.json(null);
       }
 
-      res.json(latestRecord);
+      res.json(previousRecord);
     } catch (error) {
-      console.error("Get latest nursing record error:", error);
+      console.error("Get previous nursing record error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
     }
   });
