@@ -137,11 +137,11 @@ export function Dashboard() {
     queryKey: ["/api/schedules/without-records"],
     queryFn: async () => {
       const today = new Date();
-      const sevenDaysAgo = new Date(today);
-      sevenDaysAgo.setDate(today.getDate() - 7);
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
 
       const params = new URLSearchParams({
-        startDate: sevenDaysAgo.toISOString().split('T')[0],
+        startDate: thirtyDaysAgo.toISOString().split('T')[0],
         endDate: today.toISOString().split('T')[0]
       });
 
@@ -641,15 +641,15 @@ export function Dashboard() {
                 <CardContent className="sm:pt-0">
                   <div className="text-2xl font-bold">{pendingRecordsCount}件</div>
                   <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-0">
-                    <span className="sm:hidden">7日間</span>
-                    <span className="hidden sm:inline">過去7日間の記録未作成</span>
+                    <span className="sm:hidden">30日間</span>
+                    <span className="hidden sm:inline">過去30日間の記録未作成</span>
                   </p>
                 </CardContent>
               </div>
             </Card>
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
-            <p className="text-sm">過去7日間のスケジュールで、対応する看護記録が未作成の件数です。</p>
+            <p className="text-sm">過去30日間のスケジュールで、対応する看護記録が未作成の件数です。</p>
           </TooltipContent>
         </Tooltip>
 
@@ -682,7 +682,7 @@ export function Dashboard() {
             <div className="text-sm space-y-1">
               <p className="font-medium mb-2">重要アラートの内訳:</p>
               <ul className="list-disc list-inside space-y-1 text-xs">
-                <li>未完了記録: 過去7日間の記録未作成</li>
+                <li>未完了記録: 過去30日間の記録未作成</li>
                 <li>期限切れ契約: 契約書の有効期限が切れたもの</li>
                 <li>指示書期限切れ間近: 30日以内に期限切れになる訪問看護指示書</li>
                 <li>保険証期限切れ間近: 30日以内に期限切れになる保険証</li>

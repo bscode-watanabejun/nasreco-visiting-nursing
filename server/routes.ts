@@ -345,12 +345,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const today = new Date();
       today.setHours(23, 59, 59, 999);
+      
+      // Calculate 30 days ago
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-      // 1. Count schedules without records (up to today)
+      // 1. Count schedules without records (past 30 days)
       const allSchedules = await db.query.schedules.findMany({
         where: and(
           eq(schedules.facilityId, facilityId),
           not(inArray(schedules.status, ["cancelled"] as const)),
+          gte(schedules.scheduledDate, thirtyDaysAgo),
           lte(schedules.scheduledDate, today)
         ),
         columns: { id: true }
@@ -432,12 +438,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const today = new Date();
       today.setHours(23, 59, 59, 999);
+      
+      // Calculate 30 days ago
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-      // 1. Get schedules without records (top 5)
+      // 1. Get schedules without records (past 30 days, top 5)
       const allSchedules = await db.query.schedules.findMany({
         where: and(
           eq(schedules.facilityId, facilityId),
           not(inArray(schedules.status, ["cancelled"] as const)),
+          gte(schedules.scheduledDate, thirtyDaysAgo),
           lte(schedules.scheduledDate, today)
         ),
         with: {
