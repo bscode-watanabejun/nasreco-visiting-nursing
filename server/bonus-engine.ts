@@ -1019,8 +1019,15 @@ export async function evaluateBuildingOccupancy(
   pointsConfig: any,
   context: BonusCalculationContext
 ): Promise<PatternEvaluationResult> {
+  // buildingIdが未設定の場合は、デフォルトで1-2人として扱う
+  // （同一建物情報が未設定の場合は、最も一般的なケースとして1-2人を適用）
   if (!context.buildingId) {
-    throw new Error("Building ID required for building_occupancy pattern");
+    console.warn(`[evaluateBuildingOccupancy] Building ID not set for patient ${context.patientId}, defaulting to occupancy_1_2`);
+    return {
+      points: pointsConfig.occupancy_1_2 || 0,
+      matchedCondition: "occupancy_1_2",
+      metadata: { occupancy: 1, buildingId: null, note: "Building ID not set, defaulting to 1-2 occupancy" },
+    };
   }
 
   // 同一建物の同日訪問患者数を取得
