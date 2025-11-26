@@ -10374,6 +10374,196 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export receipt list to CSV (Summary and Details)
+  app.post("/api/monthly-receipts/export/list", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const facilityId = req.facility?.id || req.user.facilityId;
+      const { receiptIds } = req.body;
+
+      if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
+        return res.status(400).json({ error: "レセプトIDが指定されていません" });
+      }
+
+      // レセプトデータを取得
+      const receiptsData = await db.select({
+        receipt: monthlyReceipts,
+        patient: patients,
+      })
+        .from(monthlyReceipts)
+        .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .where(and(
+          eq(monthlyReceipts.facilityId, facilityId),
+          inArray(monthlyReceipts.id, receiptIds)
+        ))
+        .orderBy(
+          desc(monthlyReceipts.targetYear),
+          desc(monthlyReceipts.targetMonth),
+          patients.lastName
+        );
+
+      if (receiptsData.length === 0) {
+        return res.status(404).json({ error: "レセプトが見つかりません" });
+      }
+
+      // 各レセプトに対応する保険証情報を取得
+      const receiptsWithInsuranceCards = await Promise.all(
+        receiptsData.map(async (r) => {
+          const receipt = r.receipt;
+          const targetDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 15);
+          const targetDateStr = targetDate.toISOString().split('T')[0];
+
+          const cardType = receipt.insuranceType === 'medical' ? 'medical' : 'long_term_care';
+          const insuranceCard = await db.query.insuranceCards.findFirst({
+            where: and(
+              eq(insuranceCards.patientId, receipt.patientId),
+              eq(insuranceCards.facilityId, facilityId),
+              eq(insuranceCards.cardType, cardType),
+              eq(insuranceCards.isActive, true),
+              lte(insuranceCards.validFrom, targetDateStr),
+              or(
+                isNull(insuranceCards.validUntil),
+                gte(insuranceCards.validUntil, targetDateStr)
+              )
+            ),
+            orderBy: desc(insuranceCards.validFrom),
+          });
+
+          return {
+            ...receipt,
+            patient: r.patient,
+            insuranceCard: insuranceCard ? {
+              reviewOrganizationCode: insuranceCard.reviewOrganizationCode,
+              insurerNumber: insuranceCard.insurerNumber,
+            } : null,
+          };
+        })
+      );
+
+      // 保険種別を判定する関数（フロントエンドと同じロジック）
+      const determineInsuranceCategory = (receipt: typeof receiptsWithInsuranceCards[0]): '社保' | '国保' | '介護保険' | null => {
+        if (receipt.insuranceType === 'care') {
+          return '介護保険';
+        }
+        
+        if (receipt.insuranceType === 'medical') {
+          if (receipt.insuranceCard?.reviewOrganizationCode === '1') {
+            return '社保';
+          }
+          if (receipt.insuranceCard?.reviewOrganizationCode === '2') {
+            return '国保';
+          }
+          
+          if (receipt.insuranceCard?.insurerNumber) {
+            const insurerNumber = receipt.insuranceCard.insurerNumber.trim();
+            const length = insurerNumber.length;
+            const prefix = insurerNumber.substring(0, 2);
+            
+            if (length === 6) {
+              return '国保';
+            }
+            
+            if (length === 8) {
+              if (prefix === '39') {
+                return '国保';
+              }
+              return '社保';
+            }
+          }
+        }
+        return null;
+      };
+
+      // 合計カードのデータを計算
+      const summary = {
+        '社保': { totalPoints: 0, totalAmount: 0, count: 0 },
+        '国保': { totalPoints: 0, totalAmount: 0, count: 0 },
+        '介護保険': { totalPoints: 0, totalAmount: 0, count: 0 },
+      };
+
+      receiptsWithInsuranceCards.forEach(receipt => {
+        const category = determineInsuranceCategory(receipt);
+        if (category) {
+          summary[category].totalPoints += receipt.totalPoints;
+          summary[category].totalAmount += receipt.totalAmount;
+          summary[category].count += 1;
+        }
+      });
+
+      // ステータスを文字列に変換する関数
+      const getStatusText = (receipt: typeof receiptsWithInsuranceCards[0]): string => {
+        if (receipt.isSent) {
+          return '送信済み';
+        }
+        if (receipt.isConfirmed) {
+          if (receipt.hasErrors) {
+            return 'エラーあり';
+          }
+          if (receipt.hasWarnings) {
+            return '警告あり';
+          }
+          return '確定済み';
+        }
+        if (receipt.hasErrors) {
+          return 'エラーあり';
+        }
+        if (receipt.hasWarnings) {
+          return '警告あり';
+        }
+        return '未確定';
+      };
+
+      // CSVデータを生成
+      const csvData: string[][] = [];
+
+      // 1. 合計カードのデータセクション
+      csvData.push(['保険種別', '件数', '合計点数', '合計金額']);
+      if (summary['社保'].count > 0 || summary['国保'].count > 0) {
+        csvData.push(['医療保険（社保）', `${summary['社保'].count}`, `${summary['社保'].totalPoints}`, `${summary['社保'].totalAmount}`]);
+        csvData.push(['医療保険（国保）', `${summary['国保'].count}`, `${summary['国保'].totalPoints}`, `${summary['国保'].totalAmount}`]);
+      }
+      if (summary['介護保険'].count > 0) {
+        csvData.push(['介護保険', `${summary['介護保険'].count}`, `${summary['介護保険'].totalPoints}`, `${summary['介護保険'].totalAmount}`]);
+      }
+
+      // 2. 空行
+      csvData.push([]);
+
+      // 3. 利用者ごとのデータセクション
+      csvData.push(['対象月', '利用者', '保険種別', '訪問回数', '合計点数', '合計金額', 'ステータス']);
+      receiptsWithInsuranceCards.forEach(receipt => {
+        const targetMonth = `${receipt.targetYear}年${receipt.targetMonth}月`;
+        const patientName = receipt.patient 
+          ? `${receipt.patient.lastName} ${receipt.patient.firstName}`
+          : '不明';
+        const insuranceTypeText = receipt.insuranceType === 'medical' ? '医療保険' : '介護保険';
+        const visitCount = `${receipt.visitCount}回`;
+        const totalPoints = receipt.totalPoints.toLocaleString();
+        const totalAmount = `¥${receipt.totalAmount.toLocaleString()}`;
+        const status = getStatusText(receipt);
+
+        csvData.push([targetMonth, patientName, insuranceTypeText, visitCount, totalPoints, totalAmount, status]);
+      });
+
+      // CSVを生成（Shift_JISエンコード）
+      const csvContent = stringify(csvData);
+      const { toShiftJIS } = await import("./services/csv/csvUtils");
+      const csvBuffer = Buffer.concat([toShiftJIS(csvContent), Buffer.from([0x1A])]);
+
+      // ファイル名を生成（最初のレセプトの対象年月を使用）
+      const firstReceipt = receiptsWithInsuranceCards[0];
+      const fileName = `receipts_list_${firstReceipt.targetYear}${String(firstReceipt.targetMonth).padStart(2, '0')}.csv`;
+
+      // レスポンスヘッダー設定
+      res.setHeader('Content-Type', 'text/csv; charset=Shift_JIS');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+      res.send(csvBuffer);
+    } catch (error) {
+      console.error("Error exporting receipt list CSV:", error);
+      res.status(500).json({ error: "CSV出力に失敗しました" });
+    }
+  });
+
   // Export care insurance receipts to CSV (Batch - Multiple Receipts)
   app.post("/api/monthly-receipts/export/care-insurance-batch", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {

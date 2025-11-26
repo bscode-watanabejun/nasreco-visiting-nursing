@@ -444,6 +444,72 @@ export default function MonthlyReceiptsManagement() {
     }
   }
 
+  const handleDownloadListCSV = async () => {
+    // 表示されているレセプトのIDを収集
+    const targetReceiptIds = receipts.map(receipt => receipt.id);
+
+    if (targetReceiptIds.length === 0) {
+      toast({
+        title: "エラー",
+        description: "出力可能なレセプトがありません",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      toast({
+        title: "CSV生成中",
+        description: "レセプト一覧CSVを生成しています...",
+      })
+
+      const response = await fetch('/api/monthly-receipts/export/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ receiptIds: targetReceiptIds }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'CSV出力に失敗しました')
+      }
+
+      // レスポンスからファイル名を取得（Content-Dispositionヘッダーから）
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let fileName = 'receipts_list.csv'
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename="(.+)"/)
+        if (fileNameMatch) {
+          fileName = fileNameMatch[1]
+        }
+      }
+
+      // レスポンスをBlobとして取得
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast({
+        title: "出力完了",
+        description: "レセプト一覧CSVを出力しました",
+      })
+    } catch (error: any) {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleDownloadCareInsuranceBatchCSV = async () => {
     // 表示されているレセプトのうち、確定済みかつ介護保険のレセプトIDを収集
     const targetReceiptIds = receipts
@@ -993,28 +1059,39 @@ export default function MonthlyReceiptsManagement() {
                 {receipts.length}件のレセプト
               </CardDescription>
             </div>
-            {filterInsuranceType === 'medical' && (
+            <div className="flex gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={handleDownloadMedicalInsuranceBatchCSV}
+                onClick={handleDownloadListCSV}
                 className="gap-2"
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                医療保険レセプトデータ出力
+                一覧CSV出力
               </Button>
-            )}
-            {filterInsuranceType === 'care' && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleDownloadCareInsuranceBatchCSV}
-                className="gap-2"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                介護保険レセプトデータ出力
-              </Button>
-            )}
+              {filterInsuranceType === 'medical' && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDownloadMedicalInsuranceBatchCSV}
+                  className="gap-2"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  医療保険レセプトデータ出力
+                </Button>
+              )}
+              {filterInsuranceType === 'care' && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDownloadCareInsuranceBatchCSV}
+                  className="gap-2"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  介護保険レセプトデータ出力
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
