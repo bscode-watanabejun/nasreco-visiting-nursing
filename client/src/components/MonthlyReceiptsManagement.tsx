@@ -33,6 +33,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { useToast } from "@/hooks/use-toast"
 import type { Patient } from "@shared/schema"
 import {
@@ -77,6 +82,10 @@ interface MonthlyReceipt {
     firstName: string
     patientNumber: string
   }
+  insuranceCard?: {
+    reviewOrganizationCode: '1' | '2' | null
+    insurerNumber: string | null
+  } | null
 }
 
 export default function MonthlyReceiptsManagement() {
@@ -574,6 +583,148 @@ export default function MonthlyReceiptsManagement() {
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
   const months = Array.from({ length: 12 }, (_, i) => i + 1)
 
+  // 審査支払機関コードから社保/国保を判定する関数
+  const determineInsuranceCategory = (receipt: MonthlyReceipt): '社保' | '国保' | '介護保険' | null => {
+    if (receipt.insuranceType === 'care') {
+      return '介護保険'
+    }
+    
+    if (receipt.insuranceType === 'medical') {
+      // 審査支払機関コードから判定
+      if (receipt.insuranceCard?.reviewOrganizationCode === '1') {
+        return '社保'
+      }
+      if (receipt.insuranceCard?.reviewOrganizationCode === '2') {
+        return '国保'
+      }
+      
+      // 審査支払機関コードが設定されていない場合は保険者番号から判定
+      if (receipt.insuranceCard?.insurerNumber) {
+        const insurerNumber = receipt.insuranceCard.insurerNumber.trim()
+        const length = insurerNumber.length
+        const prefix = insurerNumber.substring(0, 2)
+        
+        // 6桁 → 国保連 ('2')
+        if (length === 6) {
+          return '国保'
+        }
+        
+        // 8桁の場合
+        if (length === 8) {
+          // 後期高齢者医療（39で始まる） → 国保連 ('2')
+          if (prefix === '39') {
+            return '国保'
+          }
+          // その他の8桁 → 社保 ('1')
+          return '社保'
+        }
+      }
+    }
+    
+    return null
+  }
+
+  // 未集計理由を取得する関数
+  const getUncategorizedReason = (receipt: MonthlyReceipt): string => {
+    if (receipt.insuranceType === 'care') {
+      // 介護保険の場合
+      if (!receipt.insuranceCard) {
+        return '保険証情報が取得できませんでした'
+      }
+      return '保険種別の判定ができませんでした'
+    }
+    
+    if (receipt.insuranceType === 'medical') {
+      // 医療保険の場合
+      if (!receipt.insuranceCard) {
+        return '保険証情報が取得できませんでした'
+      }
+      
+      if (!receipt.insuranceCard.insurerNumber) {
+        return '保険者番号が設定されていません'
+      }
+      
+      const insurerNumber = receipt.insuranceCard.insurerNumber.trim()
+      const length = insurerNumber.length
+      
+      // 6桁または8桁以外の形式
+      if (length !== 6 && length !== 8) {
+        return `保険者番号の形式が不正です（${length}桁）`
+      }
+      
+      return '保険種別の判定ができませんでした'
+    }
+    
+    return '保険種別の判定ができませんでした'
+  }
+
+  // 集計されなかったレセプトを取得する関数
+  const getUncategorizedReceipts = (): Array<{ receipt: MonthlyReceipt; reason: string }> => {
+    const uncategorized: Array<{ receipt: MonthlyReceipt; reason: string }> = []
+    
+    receipts.forEach(receipt => {
+      const category = determineInsuranceCategory(receipt)
+      if (!category) {
+        uncategorized.push({
+          receipt,
+          reason: getUncategorizedReason(receipt)
+        })
+      }
+    })
+    
+    return uncategorized
+  }
+
+  // 保険種別ごとの合計を計算
+  const calculateSummary = () => {
+    const summary = {
+      '社保': { totalPoints: 0, totalAmount: 0, count: 0 },
+      '国保': { totalPoints: 0, totalAmount: 0, count: 0 },
+      '介護保険': { totalPoints: 0, totalAmount: 0, count: 0 },
+    }
+
+    receipts.forEach(receipt => {
+      const category = determineInsuranceCategory(receipt)
+      if (category) {
+        summary[category].totalPoints += receipt.totalPoints
+        summary[category].totalAmount += receipt.totalAmount
+        summary[category].count += 1
+      }
+    })
+
+    return summary
+  }
+
+  const summary = calculateSummary()
+  const uncategorizedReceipts = getUncategorizedReceipts()
+
+  // 合計件数の検証
+  const getSummaryValidation = () => {
+    const medicalReceipts = receipts.filter(r => r.insuranceType === 'medical')
+    const careReceipts = receipts.filter(r => r.insuranceType === 'care')
+    
+    const medicalTotal = summary['社保'].count + summary['国保'].count
+    const medicalUncategorized = uncategorizedReceipts.filter(r => r.receipt.insuranceType === 'medical').length
+    const careUncategorized = uncategorizedReceipts.filter(r => r.receipt.insuranceType === 'care').length
+    
+    return {
+      medical: {
+        totalInList: medicalReceipts.length,
+        totalInSummary: medicalTotal,
+        uncategorized: medicalUncategorized,
+        hasMismatch: medicalReceipts.length !== medicalTotal
+      },
+      care: {
+        totalInList: careReceipts.length,
+        totalInSummary: summary['介護保険'].count,
+        uncategorized: careUncategorized,
+        hasMismatch: careReceipts.length !== summary['介護保険'].count
+      }
+    }
+  }
+
+  const validation = getSummaryValidation()
+
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
       <div className="flex items-center justify-between">
@@ -673,6 +824,164 @@ export default function MonthlyReceiptsManagement() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* 医療保険（社保） */}
+        {(summary['社保'].count > 0 || filterInsuranceType === 'medical') && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">医療保険（社保）</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3">
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">件数</span>
+                  <span className="font-semibold text-sm">{summary['社保'].count}件</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">合計点数</span>
+                  <span className="font-semibold text-sm">{summary['社保'].totalPoints.toLocaleString()}点</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">合計金額</span>
+                  <span className="font-semibold text-sm">¥{summary['社保'].totalAmount.toLocaleString()}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 医療保険（国保） */}
+        {(summary['国保'].count > 0 || filterInsuranceType === 'medical') && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">医療保険（国保）</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3">
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">件数</span>
+                  <span className="font-semibold text-sm">{summary['国保'].count}件</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">合計点数</span>
+                  <span className="font-semibold text-sm">{summary['国保'].totalPoints.toLocaleString()}点</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">合計金額</span>
+                  <span className="font-semibold text-sm">¥{summary['国保'].totalAmount.toLocaleString()}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 医療保険の未集計警告カード */}
+        {filterInsuranceType === 'medical' && validation.medical.hasMismatch && (
+          <Card className="border-yellow-500 bg-yellow-50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                <CardTitle className="text-base text-yellow-800">未集計レセプト</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3">
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">未集計件数: </span>
+                  <span className="font-semibold text-yellow-700">{validation.medical.uncategorized}件</span>
+                </div>
+                <Collapsible>
+                  <CollapsibleTrigger className="text-xs text-yellow-700 hover:text-yellow-800 flex items-center gap-1 font-medium">
+                    <AlertTriangle className="w-3 h-3" />
+                    詳細を表示
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2 pt-2 border-t border-yellow-300">
+                    <div className="space-y-2 text-xs">
+                      {uncategorizedReceipts
+                        .filter(r => r.receipt.insuranceType === 'medical')
+                        .map((r, idx) => (
+                          <div key={idx} className="text-yellow-800">
+                            <div className="font-medium">
+                              {r.receipt.patient ? `${r.receipt.patient.lastName} ${r.receipt.patient.firstName}` : '不明'}
+                            </div>
+                            <div className="text-xs text-yellow-700 ml-2">{r.reason}</div>
+                          </div>
+                        ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 介護保険 */}
+        {(summary['介護保険'].count > 0 || filterInsuranceType === 'care') && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">介護保険</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3">
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">件数</span>
+                  <span className="font-semibold text-sm">{summary['介護保険'].count}件</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">合計点数</span>
+                  <span className="font-semibold text-sm">{summary['介護保険'].totalPoints.toLocaleString()}単位</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">合計金額</span>
+                  <span className="font-semibold text-sm">¥{summary['介護保険'].totalAmount.toLocaleString()}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 介護保険の未集計警告カード */}
+        {filterInsuranceType === 'care' && validation.care.hasMismatch && (
+          <Card className="border-yellow-500 bg-yellow-50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                <CardTitle className="text-base text-yellow-800">未集計レセプト</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3">
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">未集計件数: </span>
+                  <span className="font-semibold text-yellow-700">{validation.care.uncategorized}件</span>
+                </div>
+                <Collapsible>
+                  <CollapsibleTrigger className="text-xs text-yellow-700 hover:text-yellow-800 flex items-center gap-1 font-medium">
+                    <AlertTriangle className="w-3 h-3" />
+                    詳細を表示
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2 pt-2 border-t border-yellow-300">
+                    <div className="space-y-2 text-xs">
+                      {uncategorizedReceipts
+                        .filter(r => r.receipt.insuranceType === 'care')
+                        .map((r, idx) => (
+                          <div key={idx} className="text-yellow-800">
+                            <div className="font-medium">
+                              {r.receipt.patient ? `${r.receipt.patient.lastName} ${r.receipt.patient.firstName}` : '不明'}
+                            </div>
+                            <div className="text-xs text-yellow-700 ml-2">{r.reason}</div>
+                          </div>
+                        ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Receipts Table */}
       <Card>

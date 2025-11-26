@@ -6897,10 +6897,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
           patients.lastName
         );
 
-      res.json(receipts.map(r => ({
-        ...r.receipt,
-        patient: r.patient,
-      })));
+      // 各レセプトに対応する保険証情報を取得
+      const receiptsWithInsuranceCards = await Promise.all(
+        receipts.map(async (r) => {
+          const receipt = r.receipt;
+          const targetDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 15); // 対象月の15日
+          const targetDateStr = targetDate.toISOString().split('T')[0];
+
+          // 対象年月に有効な保険証を取得
+          const cardType = receipt.insuranceType === 'medical' ? 'medical' : 'long_term_care';
+          const insuranceCard = await db.query.insuranceCards.findFirst({
+            where: and(
+              eq(insuranceCards.patientId, receipt.patientId),
+              eq(insuranceCards.facilityId, facilityId),
+              eq(insuranceCards.cardType, cardType),
+              eq(insuranceCards.isActive, true),
+              lte(insuranceCards.validFrom, targetDateStr),
+              or(
+                isNull(insuranceCards.validUntil),
+                gte(insuranceCards.validUntil, targetDateStr)
+              )
+            ),
+            orderBy: desc(insuranceCards.validFrom),
+          });
+
+          return {
+            ...receipt,
+            patient: r.patient,
+            insuranceCard: insuranceCard ? {
+              reviewOrganizationCode: insuranceCard.reviewOrganizationCode,
+              insurerNumber: insuranceCard.insurerNumber,
+            } : null,
+          };
+        })
+      );
+
+      res.json(receiptsWithInsuranceCards);
     } catch (error) {
       console.error("Get monthly receipts error:", error);
       res.status(500).json({ error: "サーバーエラーが発生しました" });
