@@ -6576,7 +6576,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!history) {
+        console.error(`[Update service code] Bonus calculation history not found: id=${id}`);
         return res.status(404).json({ error: "加算履歴が見つかりません" });
+      }
+
+      // 訪問記録が存在しない場合のチェック
+      if (!history.nursingRecord) {
+        console.error(`[Update service code] Nursing record not found for history: id=${id}, nursingRecordId=${history.nursingRecordId}`);
+        return res.status(404).json({ error: "加算履歴に関連する訪問記録が見つかりません" });
       }
 
       // 訪問記録の施設IDを確認（テナントチェック）
@@ -6627,6 +6634,193 @@ export async function registerRoutes(app: Express): Promise<Server> {
           serviceCode: true,
         },
       });
+
+      // 該当レセプトを取得して再計算（同期的に実行、レスポンスを返す前に完了させる）
+      // これにより、フロントエンドでデータ再取得時に最新の点数が反映される
+      try {
+        const nursingRecord = history.nursingRecord;
+        const visitDate = new Date(nursingRecord.visitDate);
+        const targetYear = visitDate.getFullYear();
+        const targetMonth = visitDate.getMonth() + 1;
+        
+        // 患者の保険種別を取得
+        const patient = await db.query.patients.findFirst({
+          where: eq(patients.id, nursingRecord.patientId),
+        });
+        
+        if (patient) {
+          const insuranceType = patient.insuranceType as 'medical' | 'care';
+          
+          // 該当レセプトを取得
+          const receipt = await db.query.monthlyReceipts.findFirst({
+            where: and(
+              eq(monthlyReceipts.facilityId, req.user.facilityId),
+              eq(monthlyReceipts.patientId, nursingRecord.patientId),
+              eq(monthlyReceipts.targetYear, targetYear),
+              eq(monthlyReceipts.targetMonth, targetMonth),
+              eq(monthlyReceipts.insuranceType, insuranceType)
+            ),
+          });
+          
+          // レセプトが存在し、未確定の場合のみ再計算
+          if (receipt && !receipt.isConfirmed) {
+            // 加算を再計算（最新の加算マスタ設定で再計算）
+            const { recalculateBonusesForReceipt } = await import("./bonus-engine");
+            await recalculateBonusesForReceipt({
+              id: receipt.id,
+              patientId: receipt.patientId,
+              facilityId: receipt.facilityId,
+              targetYear: receipt.targetYear,
+              targetMonth: receipt.targetMonth,
+              insuranceType: receipt.insuranceType,
+            });
+
+            // Re-fetch nursing records and recalculate
+            const startDate = new Date(targetYear, targetMonth - 1, 1);
+            const endDate = new Date(targetYear, targetMonth, 0);
+
+            const records = await db.select()
+              .from(nursingRecords)
+              .where(and(
+                eq(nursingRecords.facilityId, req.user.facilityId),
+                eq(nursingRecords.patientId, nursingRecord.patientId),
+                gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+                lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+                eq(nursingRecords.status, 'completed')
+              ));
+
+            // Recalculate totals
+            let totalVisitPoints = 0;
+            let specialManagementPoints = 0;
+            const bonusMap = new Map<string, { bonusCode: string; bonusName: string; count: number; points: number }>();
+
+            const recordIds = records.map(r => r.id);
+            let bonusHistoryForRecords: any[] = [];
+
+            if (recordIds.length > 0) {
+              bonusHistoryForRecords = await db.select({
+                history: bonusCalculationHistory,
+                bonus: bonusMaster,
+                serviceCode: nursingServiceCodes,
+              })
+                .from(bonusCalculationHistory)
+                .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+                .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
+                .where(and(
+                  inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+                  isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコード選択済みのもののみ
+                ));
+            }
+
+            for (const item of bonusHistoryForRecords) {
+              if (!item.bonus) continue;
+
+              const bonusCode = item.bonus.bonusCode;
+              const bonusName = item.bonus.bonusName;
+              // サービスコードの点数を使用（CSV出力と統一）
+              const points = item.serviceCode?.points ?? item.history.calculatedPoints;
+
+              if (bonusMap.has(bonusCode)) {
+                const existing = bonusMap.get(bonusCode)!;
+                existing.count += 1;
+                existing.points += points;
+              } else {
+                bonusMap.set(bonusCode, {
+                  bonusCode,
+                  bonusName,
+                  count: 1,
+                  points,
+                });
+              }
+
+              if (bonusCode.includes('special_management')) {
+                specialManagementPoints += points;
+              }
+            }
+
+            // 各訪問記録のサービスコードから点数を取得
+            const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+              where: and(
+                eq(nursingServiceCodes.serviceCode, '510000110'),
+                eq(nursingServiceCodes.isActive, true)
+              ),
+            });
+
+            for (const record of records) {
+              let recordPoints = 0;
+
+              if (record.serviceCodeId) {
+                const serviceCode = await db.query.nursingServiceCodes.findFirst({
+                  where: eq(nursingServiceCodes.id, record.serviceCodeId),
+                });
+                if (serviceCode) {
+                  recordPoints = serviceCode.points;
+                }
+              } else {
+                // サービスコードが選択されていない場合、デフォルトで510000110を使用
+                if (defaultServiceCode) {
+                  recordPoints = defaultServiceCode.points;
+                }
+              }
+
+              totalVisitPoints += recordPoints;
+            }
+
+            const bonusBreakdown = Array.from(bonusMap.values());
+            const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
+            const totalPoints = totalVisitPoints + totalBonusPoints;
+            const totalAmount = totalPoints * 10;
+
+            // Run CSV export validation (don't block recalculation if this fails)
+            let csvExportReady = false;
+            let csvExportWarnings: Array<{field: string; message: string; severity: 'error' | 'warning'}> = [];
+            let lastCsvExportCheck: Date | null = null;
+            
+            try {
+              const csvValidationResult = await validateMonthlyReceiptData(
+                req.user.facilityId,
+                nursingRecord.patientId,
+                targetYear,
+                targetMonth
+              );
+              csvExportReady = csvValidationResult.canExportCsv;
+              csvExportWarnings = [
+                ...csvValidationResult.errors.map(e => ({ field: e.field, message: e.message, severity: e.severity })),
+                ...csvValidationResult.warnings.map(w => ({ field: w.field, message: w.message, severity: w.severity }))
+              ];
+              lastCsvExportCheck = new Date();
+            } catch (error) {
+              console.error("CSV validation error during receipt recalculation:", error);
+              // Continue with recalculation even if CSV validation fails
+            }
+
+            // レセプトを更新
+            await db.update(monthlyReceipts)
+              .set({
+                visitCount: records.length,
+                totalVisitPoints,
+                specialManagementPoints,
+                bonusBreakdown,
+                totalPoints,
+                totalAmount,
+                csvExportReady,
+                csvExportWarnings,
+                lastCsvExportCheck,
+                updatedAt: new Date(),
+              })
+              .where(eq(monthlyReceipts.id, receipt.id));
+          }
+        }
+      } catch (recalcError) {
+        // レセプト再計算エラーはログに記録するが、サービスコード更新は成功とする
+        console.error("Receipt recalculation error after service code update:", recalcError);
+        console.error("Error details:", {
+          historyId: id,
+          nursingRecordId: history.nursingRecord?.id,
+          error: recalcError instanceof Error ? recalcError.message : String(recalcError),
+          stack: recalcError instanceof Error ? recalcError.stack : undefined,
+        });
+      }
 
       res.json(updatedHistory);
     } catch (error: any) {
@@ -7141,9 +7335,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const bonusHistoryForRecords = await db.select({
           history: bonusCalculationHistory,
           bonus: bonusMaster,
+          serviceCode: nursingServiceCodes,
         })
           .from(bonusCalculationHistory)
           .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
           .where(and(
             inArray(bonusCalculationHistory.nursingRecordId, recordIds),
             isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコード選択済みのもののみ
@@ -7155,7 +7351,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const bonusCode = item.bonus.bonusCode;
           const bonusName = item.bonus.bonusName;
-          const points = item.history.calculatedPoints;
+          // サービスコードの点数を使用（CSV出力と統一）
+          const points = item.serviceCode?.points ?? item.history.calculatedPoints;
 
           if (bonusMap.has(bonusCode)) {
             const existing = bonusMap.get(bonusCode)!;
@@ -7676,9 +7873,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusHistoryForRecords = await db.select({
           history: bonusCalculationHistory,
           bonus: bonusMaster,
+          serviceCode: nursingServiceCodes,
         })
           .from(bonusCalculationHistory)
           .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
+          .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
           .where(and(
             inArray(bonusCalculationHistory.nursingRecordId, recordIds),
             isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコード選択済みのもののみ
@@ -7690,7 +7889,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const bonusCode = item.bonus.bonusCode;
         const bonusName = item.bonus.bonusName;
-        const points = item.history.calculatedPoints;
+        // サービスコードの点数を使用（CSV出力と統一）
+        const points = item.serviceCode?.points ?? item.history.calculatedPoints;
 
         if (bonusMap.has(bonusCode)) {
           const existing = bonusMap.get(bonusCode)!;

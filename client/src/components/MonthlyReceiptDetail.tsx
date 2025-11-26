@@ -1459,8 +1459,9 @@ export default function MonthlyReceiptDetail() {
                 receiptId={receipt.id}
                 insuranceType={receipt.insuranceType}
                 relatedRecords={receipt.relatedRecords}
-                onUpdate={() => {
-                  queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+                onUpdate={async () => {
+                  await queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+                  await queryClient.refetchQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
                 }}
               />
             )}
@@ -1472,8 +1473,9 @@ export default function MonthlyReceiptDetail() {
                 receiptId={receipt.id}
                 insuranceType={receipt.insuranceType}
                 relatedRecords={receipt.relatedRecords}
-                onUpdate={() => {
-                  queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+                onUpdate={async () => {
+                  await queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
+                  await queryClient.refetchQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
                 }}
               />
             )}
@@ -1913,7 +1915,7 @@ function SelectedBonusServiceCodeSection({
       endTime: string
     } | null
   }>
-  onUpdate: () => void
+  onUpdate: () => Promise<void>
 }) {
   const { toast } = useToast()
   const [selectedServiceCodes, setSelectedServiceCodes] = useState<Record<string, string>>({})
@@ -1999,7 +2001,7 @@ function SelectedBonusServiceCodeSection({
         description: "サービスコードを保存しました",
       })
 
-      onUpdate()
+      await onUpdate()
       setSelectedServiceCodes(prev => {
         const next = { ...prev }
         delete next[historyId]
@@ -2042,7 +2044,7 @@ function SelectedBonusServiceCodeSection({
         description: "サービスコードの選択を解除しました",
       })
 
-      onUpdate()
+      await onUpdate()
     } catch (error: any) {
       toast({
         title: "エラー",
@@ -2247,7 +2249,7 @@ function UnselectedBonusServiceCodeSection({
       endTime: string
     } | null
   }>
-  onUpdate: () => void
+  onUpdate: () => Promise<void>
 }) {
   const { toast } = useToast()
   const [selectedServiceCodes, setSelectedServiceCodes] = useState<Record<string, string>>({})
