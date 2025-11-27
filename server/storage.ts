@@ -436,15 +436,11 @@ export class PostgreSQLStorage implements IStorage {
       if (options?.deleteRecords) {
         // 訪問記録も削除する場合
         // 外部キー制約を回避するため、訪問記録のscheduleIdをNULLに更新してからスケジュールを削除
+        // 削除済みの訪問記録も含めて、すべての訪問記録のscheduleIdをNULLに更新
         await db.update(nursingRecords)
           .set({ scheduleId: null })
-          .where(
-            and(
-              eq(nursingRecords.scheduleId, id),
-              isNull(nursingRecords.deletedAt)
-            )
-          );
-        // その後、訪問記録をソフトデリート
+          .where(eq(nursingRecords.scheduleId, id));
+        // その後、未削除の訪問記録をソフトデリート
         for (const record of referencingRecords) {
           await this.deleteNursingRecord(record.id);
         }
@@ -452,6 +448,12 @@ export class PostgreSQLStorage implements IStorage {
         // 既存のエラーを投げる
         throw new Error("このスケジュールに紐付いた看護記録が存在するため削除できません");
       }
+    } else {
+      // 削除済みの訪問記録が存在する可能性があるため、scheduleIdをNULLに更新
+      // これにより、外部キー制約違反を回避
+      await db.update(nursingRecords)
+        .set({ scheduleId: null })
+        .where(eq(nursingRecords.scheduleId, id));
     }
 
     const result = await db.delete(schedules).where(eq(schedules.id, id));
