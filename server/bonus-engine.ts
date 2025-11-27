@@ -145,6 +145,10 @@ export function evaluatePredefinedCondition(
       result = evaluateAgeGte(condition.value, context);
       break;
 
+    case "daily_visit_count_gte":
+      result = evaluateDailyVisitCountGte(condition.value, context);
+      break;
+
     case "is_second_visit":
       result = evaluateIsSecondVisit(context);
       break;
@@ -266,7 +270,8 @@ export function evaluatePredefinedCondition(
 
   // Phase 2-A: operator と value のチェック
   // 条件に value フィールドがある場合、結果の passed 値と比較
-  if (condition.operator === "equals" && condition.value !== undefined) {
+  // field_equalsパターンの場合は、evaluateFieldEqualsが既に値の比較を行っているためスキップ
+  if (type !== "field_equals" && condition.operator === "equals" && condition.value !== undefined) {
     const expectedValue = condition.value;
 
     if (result.passed !== expectedValue) {
@@ -368,6 +373,18 @@ function evaluateAgeGte(ageThreshold: number, context: BonusCalculationContext):
     reason: passed
       ? `Patient age ${context.patientAge} >= ${ageThreshold}`
       : `Patient age ${context.patientAge} < ${ageThreshold}`,
+  };
+}
+
+function evaluateDailyVisitCountGte(minCount: number, context: BonusCalculationContext): ConditionEvaluationResult {
+  const visitCount = context.dailyVisitCount || 1;
+  const passed = visitCount >= minCount;
+  return {
+    passed,
+    reason: passed
+      ? `1日の訪問回数 ${visitCount}回 >= ${minCount}回`
+      : `1日の訪問回数 ${visitCount}回 < ${minCount}回`,
+    metadata: { visitCount, minCount },
   };
 }
 
