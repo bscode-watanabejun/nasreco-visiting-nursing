@@ -262,7 +262,8 @@ const convertFormDataToApiFormat = (
     ...(formData.purposeOverride && { purposeOverride: formData.purposeOverride }),
 
     // Phase 3: レセプトCSV対応フィールド（サーバー側のスキーマに合わせてフィールド名を修正）
-    ...(serviceCodeId && { serviceCodeId }),
+    // サービスコードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
+    serviceCodeId: serviceCodeId || null,
     ...(formData.visitLocation && { visitLocationCode: formData.visitLocation }),
     ...(formData.visitLocation === '99' && formData.visitLocationCustom && { visitLocationCustom: formData.visitLocationCustom }),
     ...(formData.staffQualification && { staffQualificationCode: formData.staffQualification }),
@@ -655,7 +656,7 @@ export function NursingRecords() {
     enabled: !!formData.patientId && (isCreating || isEditing) && !!formData.visitDate,
   })
 
-  // Debug: Monitor dialog state changes
+
   useEffect(() => {
     console.log('[useEffect] showApplyPreviousDialog changed:', showApplyPreviousDialog, 'type:', typeof showApplyPreviousDialog)
     console.log('[useEffect] latestRecord:', latestRecord ? 'exists' : 'null')
@@ -1442,11 +1443,18 @@ export function NursingRecords() {
     setSaveError(null)
     setIsSaving(true)
 
+    await handleCompleteRecordInternal()
+  }
+
+  const handleCompleteRecordInternal = async () => {
+    setIsSaving(true)
+
     try {
       const selectedPatient = patients.find(p => p.id === formData.patientId)
       const validationErrors = validateFormData(formData, true, selectedPatient)
       if (validationErrors.length > 0) {
         setSaveError(validationErrors.join('\n'))
+        setIsSaving(false)
         return
       }
 
@@ -1564,11 +1572,20 @@ export function NursingRecords() {
     setSaveError(null)
     setIsSaving(true)
 
+    await handleUpdateRecordInternal(status)
+  }
+
+  const handleUpdateRecordInternal = async (status: 'draft' | 'completed' | 'reviewed') => {
+    if (!selectedRecord) return
+
+    setIsSaving(true)
+
     try {
       const selectedPatient = patients.find(p => p.id === formData.patientId)
       const validationErrors = validateFormData(formData, status === 'completed' || status === 'reviewed', selectedPatient)
       if (validationErrors.length > 0) {
         setSaveError(validationErrors.join('\n'))
+        setIsSaving(false)
         return
       }
 
@@ -2277,7 +2294,7 @@ export function NursingRecords() {
             })()}
 
             {/* Receipt and Billing Information Card */}
-            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || (selectedRecord as any).publicExpenseId || selectedRecord.calculatedPoints || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
+            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || (selectedRecord as any).publicExpenseId || (selectedRecord.calculatedPoints !== null && selectedRecord.calculatedPoints !== undefined) || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
               <Card>
                 <CardHeader>
                   <CardTitle>レセプト・加算情報</CardTitle>
@@ -2374,7 +2391,7 @@ export function NursingRecords() {
                   </div>
 
                   {/* 算定点数 */}
-                  {selectedRecord.calculatedPoints && (
+                  {(selectedRecord.calculatedPoints !== null && selectedRecord.calculatedPoints !== undefined) && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">算定点数</p>
                       <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
@@ -2384,37 +2401,41 @@ export function NursingRecords() {
                   )}
 
                   {/* 適用加算 */}
-                  {(selectedRecord.appliedBonuses as any) && (
+                  {(selectedRecord.appliedBonuses !== null && selectedRecord.appliedBonuses !== undefined) && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">適用加算</p>
                       <div className="bg-gray-50 rounded-md p-3">
                         {typeof selectedRecord.appliedBonuses === 'string' ? (
                           <p className="text-sm">{selectedRecord.appliedBonuses}</p>
                         ) : Array.isArray(selectedRecord.appliedBonuses) ? (
-                          <ul className="list-disc list-inside space-y-1">
-                            {(selectedRecord.appliedBonuses as any[]).map((bonus: any, index: number) => {
-                              if (typeof bonus === 'string') {
-                                return <li key={index} className="text-sm">{bonus}</li>
-                              }
+                          (selectedRecord.appliedBonuses as any[]).length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                              {(selectedRecord.appliedBonuses as any[]).map((bonus: any, index: number) => {
+                                if (typeof bonus === 'string') {
+                                  return <li key={index} className="text-sm">{bonus}</li>
+                                }
 
-                              // Use bonusName from server (already in Japanese), fallback to bonusCode
-                              const name = bonus.bonusName || bonus.bonusCode || bonus.type || '不明な加算';
-                              const points = bonus.points > 0 ? `+${bonus.points}点` : `${bonus.points}点`;
-                              const details = [];
+                                // Use bonusName from server (already in Japanese), fallback to bonusCode
+                                const name = bonus.bonusName || bonus.bonusCode || bonus.type || '不明な加算';
+                                const points = bonus.points > 0 ? `+${bonus.points}点` : `${bonus.points}点`;
+                                const details = [];
 
-                              if (bonus.reason) details.push(bonus.reason);
-                              if (bonus.duration) details.push(`${bonus.duration}分`);
-                              if (bonus.visitNumber) details.push(`${bonus.visitNumber}回目`);
-                              if (bonus.visitCount) details.push(`${bonus.visitCount}件`);
+                                if (bonus.reason) details.push(bonus.reason);
+                                if (bonus.duration) details.push(`${bonus.duration}分`);
+                                if (bonus.visitNumber) details.push(`${bonus.visitNumber}回目`);
+                                if (bonus.visitCount) details.push(`${bonus.visitCount}件`);
 
-                              return (
-                                <li key={index} className="text-sm">
-                                  <span className="font-medium">{name}</span>: {points}
-                                  {details.length > 0 && <span className="text-muted-foreground"> ({details.join(', ')})</span>}
-                                </li>
-                              );
-                            })}
-                          </ul>
+                                return (
+                                  <li key={index} className="text-sm">
+                                    <span className="font-medium">{name}</span>: {points}
+                                    {details.length > 0 && <span className="text-muted-foreground"> ({details.join(', ')})</span>}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">なし</p>
+                          )
                         ) : (
                           <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(selectedRecord.appliedBonuses, null, 2)}</pre>
                         )}
@@ -3186,6 +3207,7 @@ export function NursingRecords() {
                       placeholder="選択してください"
                       searchPlaceholder="サービスコードまたは名称で検索..."
                       emptyText="該当するサービスコードが見つかりませんでした"
+                      maxHeight="300px"
                     />
                     <p className="text-xs text-muted-foreground">
                       基本療養費のサービスコードを選択してください。加算のサービスコードは訪問記録の内容に基づいて自動選択されます。自動選択されなかった加算は、月次レセプト詳細画面で手動選択できます。
@@ -4339,6 +4361,7 @@ export function NursingRecords() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
       </>
     )
   }

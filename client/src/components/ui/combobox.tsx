@@ -33,6 +33,7 @@ interface ComboboxProps {
   className?: string
   disabled?: boolean
   filterFn?: (option: ComboboxOption, search: string) => boolean
+  maxHeight?: string // ドロップダウンリストの最大高さ（例: "300px", "200px"）
 }
 
 export function Combobox({
@@ -45,6 +46,7 @@ export function Combobox({
   className,
   disabled = false,
   filterFn,
+  maxHeight = "500px",
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
@@ -107,7 +109,7 @@ export function Combobox({
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList className="max-h-[500px]">
+          <CommandList className={cn("overflow-y-auto overflow-x-hidden")} style={{ maxHeight }}>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
               {filteredOptions.map((option) => (

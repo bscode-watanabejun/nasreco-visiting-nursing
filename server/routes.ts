@@ -2945,30 +2945,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const appliedBonuses: any[] = [];
     let calculatedPoints = 0;
 
+    // Get patient information for context (needed for visit date calculation)
+    const patient = await db.query.patients.findFirst({
+      where: eq(patients.id, recordData.patientId)
+    });
+
+    if (!patient) {
+      return { calculatedPoints, appliedBonuses };
+    }
+
+    // Count same-day visits for dailyVisitCount (must be done before service code assignment)
+    const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
+    const startOfDay = new Date(visitDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(visitDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const sameDayVisits = await db.query.nursingRecords.findMany({
+      where: and(
+        eq(nursingRecords.facilityId, facilityId),
+        eq(nursingRecords.patientId, recordData.patientId),
+        gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
+        lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
+        isNull(nursingRecords.deletedAt),
+        // 編集時は現在の記録を除外
+        nursingRecordId ? ne(nursingRecords.id, nursingRecordId) : undefined
+      )
+    });
+
+    const dailyVisitCount = sameDayVisits.length + 1; // +1 for current visit
+
     // サービスコードから点数を取得
     let serviceCodeId = recordData.serviceCodeId;
     let serviceCodePoints = 0;
 
-    // サービスコードが選択されていない場合、デフォルトで510000110を設定
+    // サービスコードが選択されていない場合の処理
+    // 編集時（nursingRecordIdが存在する場合）は、ユーザーの選択を尊重して自動設定しない
+    // 新規作成時のみ、1回目の訪問記録でデフォルトで510000110を設定
+    // 基本療養費は1日1回のみ適用されるため、2回目以降は自動設定しない
     if (!serviceCodeId) {
-      const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
-        where: and(
-          eq(nursingServiceCodes.serviceCode, '510000110'),
-          eq(nursingServiceCodes.isActive, true)
-        ),
-      });
-      if (defaultServiceCode) {
-        serviceCodeId = defaultServiceCode.id;
-        serviceCodePoints = defaultServiceCode.points;
-        // 訪問記録にデフォルトサービスコードを設定
-        if (nursingRecordId) {
-          await db.update(nursingRecords)
-            .set({ serviceCodeId: defaultServiceCode.id })
-            .where(eq(nursingRecords.id, nursingRecordId));
+      // 新規作成時（nursingRecordIdが存在しない）かつ1回目の訪問記録の場合のみ、デフォルトサービスコードを設定
+      if (!nursingRecordId && dailyVisitCount === 1) {
+        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+          where: and(
+            eq(nursingServiceCodes.serviceCode, '510000110'),
+            eq(nursingServiceCodes.isActive, true)
+          ),
+        });
+        if (defaultServiceCode) {
+          serviceCodeId = defaultServiceCode.id;
+          serviceCodePoints = defaultServiceCode.points;
+          // recordDataにも設定（後続処理で使用）
+          recordData.serviceCodeId = defaultServiceCode.id;
         }
-        // recordDataにも設定（後続処理で使用）
-        recordData.serviceCodeId = defaultServiceCode.id;
       }
+      // 編集時または2回目以降の訪問でサービスコードが未選択の場合は、点数を0点のまま（基本療養費は適用されない）
     } else {
       // 選択されたサービスコードの点数を取得
       const selectedServiceCode = await db.query.nursingServiceCodes.findFirst({
@@ -2982,15 +3013,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // 基本点数としてサービスコードの点数を使用
     calculatedPoints += serviceCodePoints;
 
-    // Get patient information for context
-    const patient = await db.query.patients.findFirst({
-      where: eq(patients.id, recordData.patientId)
-    });
-
-    if (!patient) {
-      return { calculatedPoints, appliedBonuses };
-    }
-
     // Phase2-1: Get facility information for context
     const facility = await db.query.facilities.findFirst({
       where: eq(facilities.id, facilityId)
@@ -3000,32 +3022,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     let patientAge: number | undefined;
     if (patient.dateOfBirth) {
       const birthDate = new Date(patient.dateOfBirth);
-      const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
       patientAge = visitDate.getFullYear() - birthDate.getFullYear();
       const monthDiff = visitDate.getMonth() - birthDate.getMonth();
       if (monthDiff < 0 || (monthDiff === 0 && visitDate.getDate() < birthDate.getDate())) {
         patientAge--;
       }
     }
-
-    // Count same-day visits for dailyVisitCount
-    const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
-    const startOfDay = new Date(visitDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(visitDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const sameDayVisits = await db.query.nursingRecords.findMany({
-      where: and(
-        eq(nursingRecords.facilityId, facilityId),
-        eq(nursingRecords.patientId, recordData.patientId),
-        gte(nursingRecords.visitDate, startOfDay.toISOString().split('T')[0]),
-        lte(nursingRecords.visitDate, endOfDay.toISOString().split('T')[0]),
-        isNull(nursingRecords.deletedAt)
-      )
-    });
-
-    const dailyVisitCount = sameDayVisits.length + 1; // +1 for current visit
 
     // Week 3: Get assigned nurse information for specialist management bonus
     const assignedNurse = recordData.nurseId ? await db.query.users.findFirst({
@@ -3134,16 +3136,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // サービスコードが未選択の場合、デフォルトで510000110を設定
+      // サービスコードが未選択の場合、1回目の訪問記録のみデフォルトで510000110を設定
+      // 基本療養費は1日1回のみ適用されるため、2回目以降は自動設定しない
       if (!recordData.serviceCodeId) {
-        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+        // 同日の訪問回数を計算
+        const visitDate = recordData.visitDate ? new Date(recordData.visitDate) : new Date(recordData.recordDate);
+        const visitDateStr = visitDate.toISOString().split('T')[0];
+        
+        const sameDayVisits = await db.query.nursingRecords.findMany({
           where: and(
-            eq(nursingServiceCodes.serviceCode, '510000110'),
-            eq(nursingServiceCodes.isActive, true)
-          ),
+            eq(nursingRecords.facilityId, req.user.facilityId),
+            eq(nursingRecords.patientId, recordData.patientId),
+            eq(nursingRecords.visitDate, visitDateStr),
+            isNull(nursingRecords.deletedAt)
+          )
         });
-        if (defaultServiceCode) {
-          recordData.serviceCodeId = defaultServiceCode.id;
+        
+        const dailyVisitCount = sameDayVisits.length + 1; // +1 for current visit
+        
+        // 1回目の訪問記録の場合のみ、510000110を自動設定
+        if (dailyVisitCount === 1) {
+          const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
+            where: and(
+              eq(nursingServiceCodes.serviceCode, '510000110'),
+              eq(nursingServiceCodes.isActive, true)
+            ),
+          });
+          if (defaultServiceCode) {
+            recordData.serviceCodeId = defaultServiceCode.id;
+          }
         }
       }
 
@@ -3250,19 +3271,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validatedData
       };
 
-      // サービスコードが未選択の場合、デフォルトで510000110を設定
-      if (!mergedData.serviceCodeId) {
-        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
-          where: and(
-            eq(nursingServiceCodes.serviceCode, '510000110'),
-            eq(nursingServiceCodes.isActive, true)
-          ),
-        });
-        if (defaultServiceCode) {
-          mergedData.serviceCodeId = defaultServiceCode.id;
-          validatedData.serviceCodeId = defaultServiceCode.id;
-        }
-      }
+      // 編集時は、ユーザーが明示的にサービスコードを未選択にした場合はそれを尊重する
+      // 自動設定は行わない（calculateBonusesAndPoints関数内で処理される）
 
       // Recalculate bonuses and points
       const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(mergedData, req.user.facilityId);
