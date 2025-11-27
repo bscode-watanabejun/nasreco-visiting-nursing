@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +25,7 @@ import {
   XCircle,
   Repeat,
   AlertCircle,
+  AlertTriangle,
   FileText,
   Search,
   Eye
@@ -258,6 +260,10 @@ export function ScheduleManagement() {
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
   const [deleteRecurringDialogOpen, setDeleteRecurringDialogOpen] = useState(false)
   const [selectedParentScheduleId, setSelectedParentScheduleId] = useState<string | null>(null)
+  const [deleteScheduleDialogOpen, setDeleteScheduleDialogOpen] = useState(false)
+  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null)
+  const [nursingRecordToDelete, setNursingRecordToDelete] = useState<NursingRecord | null>(null)
+  const { data: currentUser } = useCurrentUser()
 
   // Fetch patients
   const { data: patientsData } = useQuery<PaginatedResult<Patient>>({
@@ -394,8 +400,12 @@ export function ScheduleManagement() {
 
   // Delete schedule mutation
   const deleteScheduleMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/schedules/${id}`, {
+    mutationFn: async ({ id, deleteRecords }: { id: string; deleteRecords?: boolean }) => {
+      const url = new URL(`/api/schedules/${id}`, window.location.origin)
+      if (deleteRecords) {
+        url.searchParams.append('deleteRecords', 'true')
+      }
+      const response = await fetch(url.toString(), {
         method: "DELETE",
       })
       if (!response.ok) {
@@ -406,6 +416,10 @@ export function ScheduleManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] })
       queryClient.invalidateQueries({ queryKey: ["todaySchedules"] })
+      queryClient.invalidateQueries({ queryKey: ["nursing-records"] })
+      setDeleteScheduleDialogOpen(false)
+      setScheduleToDelete(null)
+      setNursingRecordToDelete(null)
     },
     onError: (error) => {
       alert(`削除エラー: ${error.message}`)
@@ -461,9 +475,32 @@ export function ScheduleManagement() {
   }
 
   const handleDeleteSchedule = async (schedule: Schedule) => {
-    if (confirm(`${formatDate(schedule.scheduledDate)}のスケジュールを削除しますか?`)) {
-      deleteScheduleMutation.mutate(schedule.id)
+    // 最初の確認メッセージ（すべてのユーザー）
+    if (!confirm(`${formatDate(schedule.scheduledDate)}のスケジュールを削除しますか?`)) {
+      return
     }
+
+    // 管理者の場合のみ、訪問記録の有無を確認
+    if (currentUser?.role === 'admin') {
+      try {
+        const response = await fetch(`/api/schedules/${schedule.id}/nursing-record`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.hasRecord) {
+            // 訪問記録がある場合、追加の確認ダイアログを表示
+            setScheduleToDelete(schedule)
+            setNursingRecordToDelete(data.record)
+            setDeleteScheduleDialogOpen(true)
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check nursing record:', error)
+      }
+    }
+
+    // 訪問記録がない場合、または管理者以外の場合は通常通り削除
+    deleteScheduleMutation.mutate({ id: schedule.id })
   }
 
   const handleDeleteRecurringSeries = (parentId: string) => {
@@ -1123,6 +1160,57 @@ export function ScheduleManagement() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               全て削除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Schedule with Records Confirmation Dialog */}
+      <AlertDialog open={deleteScheduleDialogOpen} onOpenChange={(open) => {
+        setDeleteScheduleDialogOpen(open)
+        if (!open) {
+          setScheduleToDelete(null)
+          setNursingRecordToDelete(null)
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <AlertDialogTitle>訪問記録が紐づいています。</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              {scheduleToDelete && nursingRecordToDelete && (
+                <div className="space-y-2">
+                  <p>
+                    このスケジュールに紐付いた訪問記録が存在します。訪問記録も削除した上でスケジュールを削除してよろしいですか？（削除後は復元できませんのでご注意ください）
+                  </p>
+                  <div className="bg-muted p-3 rounded-md text-sm space-y-1">
+                    <p>
+                      <span className="font-medium">訪問日:</span> {new Date(nursingRecordToDelete.visitDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                    </p>
+                    {nursingRecordToDelete.actualStartTime && (
+                      <p>
+                        <span className="font-medium">訪問開始時刻:</span> {new Date(nursingRecordToDelete.actualStartTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (scheduleToDelete) {
+                  deleteScheduleMutation.mutate({ id: scheduleToDelete.id, deleteRecords: true })
+                  setNursingRecordToDelete(null)
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              削除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -420,16 +420,38 @@ export class PostgreSQLStorage implements IStorage {
     return result[0];
   }
 
-  async deleteSchedule(id: string): Promise<boolean> {
+  async deleteSchedule(id: string, options?: { deleteRecords?: boolean }): Promise<boolean> {
     // Check if there are any nursing records referencing this schedule
     const referencingRecords = await db
-      .select()
+      .select({ id: nursingRecords.id })
       .from(nursingRecords)
-      .where(eq(nursingRecords.scheduleId, id))
-      .limit(1);
+      .where(
+        and(
+          eq(nursingRecords.scheduleId, id),
+          isNull(nursingRecords.deletedAt) // 削除されていない記録のみ
+        )
+      );
 
     if (referencingRecords.length > 0) {
-      throw new Error("このスケジュールに紐付いた看護記録が存在するため削除できません");
+      if (options?.deleteRecords) {
+        // 訪問記録も削除する場合
+        // 外部キー制約を回避するため、訪問記録のscheduleIdをNULLに更新してからスケジュールを削除
+        await db.update(nursingRecords)
+          .set({ scheduleId: null })
+          .where(
+            and(
+              eq(nursingRecords.scheduleId, id),
+              isNull(nursingRecords.deletedAt)
+            )
+          );
+        // その後、訪問記録をソフトデリート
+        for (const record of referencingRecords) {
+          await this.deleteNursingRecord(record.id);
+        }
+      } else {
+        // 既存のエラーを投げる
+        throw new Error("このスケジュールに紐付いた看護記録が存在するため削除できません");
+      }
     }
 
     const result = await db.delete(schedules).where(eq(schedules.id, id));

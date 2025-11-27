@@ -2646,6 +2646,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/schedules/:id", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
+      const deleteRecords = req.query.deleteRecords === 'true';
 
       // Check if schedule exists and user has access
       const existingSchedule = await storage.getScheduleById(id);
@@ -2657,7 +2658,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "アクセス権限がありません" });
       }
 
-      await storage.deleteSchedule(id);
+      // 管理者チェック: deleteRecordsオプションは管理者のみ使用可能
+      if (deleteRecords && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "この操作は管理者のみ実行できます" });
+      }
+
+      await storage.deleteSchedule(id, { deleteRecords });
       res.status(204).send();
     } catch (error) {
       console.error("Delete schedule error:", error);
