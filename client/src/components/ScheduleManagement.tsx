@@ -1161,11 +1161,18 @@ function ScheduleDialog({ open, onOpenChange, schedule, patients, users, onSave 
   useEffect(() => {
     if (schedule) {
       // Editing existing schedule
+      // Extract date from scheduledStartTime in local timezone to avoid UTC conversion issues
+      const startDate = new Date(schedule.scheduledStartTime)
+      const year = startDate.getFullYear()
+      const month = String(startDate.getMonth() + 1).padStart(2, '0')
+      const day = String(startDate.getDate()).padStart(2, '0')
+      const dateString = `${year}-${month}-${day}`
+      
       setFormData({
         patientId: schedule.patientId || "",
         nurseId: schedule.nurseId || "",
         demoStaffName: schedule.demoStaffName || "",
-        date: new Date(schedule.scheduledDate).toISOString().split('T')[0],
+        date: dateString,
         startTime: formatTime(schedule.scheduledStartTime),
         endTime: formatTime(schedule.scheduledEndTime),
         duration: schedule.duration || 60,
