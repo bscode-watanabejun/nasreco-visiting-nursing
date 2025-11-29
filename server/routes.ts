@@ -9753,6 +9753,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ======================
 
   /**
+   * 給付割合を計算する関数
+   * CSVビルダーのdetermineReviewOrganizationCodeロジックを参考に実装
+   */
+  function calculateBenefitRatio(insuranceCard: {
+    reviewOrganizationCode?: string | null;
+    insurerNumber?: string | null;
+    copaymentRate?: string | null;
+  }): string | null {
+    // 審査支払機関コードを取得
+    let reviewOrgCode: string | null = null;
+    
+    // 保険証に設定されている審査支払機関コードを優先使用
+    if (insuranceCard?.reviewOrganizationCode) {
+      reviewOrgCode = insuranceCard.reviewOrganizationCode;
+    } else {
+      // 保険者番号から動的判定（フォールバック）
+      const insurerNumber = insuranceCard?.insurerNumber;
+      if (!insurerNumber) {
+        return null;
+      }
+
+      const length = insurerNumber.trim().length;
+      const prefix = insurerNumber.substring(0, 2);
+
+      // 6桁 → 国保連 ('2')
+      if (length === 6) {
+        reviewOrgCode = '2';
+      } else if (length === 8) {
+        // 後期高齢者医療（39で始まる） → 国保連 ('2')
+        if (prefix === '39') {
+          reviewOrgCode = '2';
+        } else {
+          // その他の8桁 → 社保 ('1')
+          reviewOrgCode = '1';
+        }
+      } else {
+        return null;
+      }
+    }
+
+    // 国保の場合のみ給付割合を計算（審査支払機関コードが'2'の場合）
+    if (reviewOrgCode === '2') {
+      // 負担割合から給付割合を計算（100 - 負担割合）
+      const copaymentRate = insuranceCard.copaymentRate 
+        ? parseInt(insuranceCard.copaymentRate) 
+        : 30; // デフォルト3割
+      const benefitRate = 100 - copaymentRate;
+      return String(benefitRate).padStart(3, '0'); // 3桁で出力（例: 070, 080, 090）
+    }
+
+    // 国保以外の場合はnull
+    return null;
+  }
+
+  /**
    * 単一月次レセプトのCSV出力
    * GET /api/receipts/:id/export-csv
    */
@@ -9938,6 +9993,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           highCostCategory: (receipt.highCostCategory === 'high_cost' || receipt.highCostCategory === 'high_cost_multiple')
             ? receipt.highCostCategory
             : null,
+          // ⭐ 追加: 給付割合（REレコード用、Excel出力用）
+          benefitRatio: calculateBenefitRatio({
+            reviewOrganizationCode: targetInsuranceCard.reviewOrganizationCode || null,
+            insurerNumber: targetInsuranceCard.insurerNumber || null,
+            copaymentRate: targetInsuranceCard.copaymentRate || null,
+          }),
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',
@@ -10232,6 +10293,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           highCostCategory: (receipt.highCostCategory === 'high_cost' || receipt.highCostCategory === 'high_cost_multiple')
             ? receipt.highCostCategory
             : null,
+          // ⭐ 追加: 給付割合（REレコード用、Excel出力用）
+          benefitRatio: calculateBenefitRatio({
+            reviewOrganizationCode: targetInsuranceCard.reviewOrganizationCode || null,
+            insurerNumber: targetInsuranceCard.insurerNumber || null,
+            copaymentRate: targetInsuranceCard.copaymentRate || null,
+          }),
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',

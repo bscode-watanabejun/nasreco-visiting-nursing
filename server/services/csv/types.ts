@@ -30,6 +30,8 @@ export interface ReceiptCsvData {
     } | null;
     // 高額療養費適用状況（MFレコード用）
     highCostCategory?: 'high_cost' | 'high_cost_multiple' | null; // 'high_cost'=01, 'high_cost_multiple'=02
+    // ⭐ 追加: 給付割合（REレコード用、Excel出力用）
+    benefitRatio?: string | null; // 3桁、例: "070", "080", "090"（国保の場合のみ）
   };
 
   // 施設情報

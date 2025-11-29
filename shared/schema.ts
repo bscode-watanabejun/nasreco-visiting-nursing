@@ -904,6 +904,35 @@ export const nursingServiceCodes = pgTable("nursing_service_codes", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// 訪問看護療養費マスター基本テーブル
+export const visitingNursingMasterBasic = pgTable("visiting_nursing_master_basic", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  serviceCodeId: varchar("service_code_id").notNull().references(() => nursingServiceCodes.id).unique(), // サービスコードマスタへの参照（1対1）
+  
+  // 訪問看護指示区分（項番45）
+  instructionType: varchar("instruction_type", { length: 1 }), // 0:記録不要, 1:訪問看護基本療養費, 3:精神科訪問看護基本療養費, 5:医療観察訪問看護基本料
+  
+  // レセプト表示用記号①～⑨（項番56-64）
+  receiptSymbol1: varchar("receipt_symbol_1", { length: 1 }), // レセプト表示用記号①（○）
+  receiptSymbol2: varchar("receipt_symbol_2", { length: 1 }), // レセプト表示用記号②（△）
+  receiptSymbol3: varchar("receipt_symbol_3", { length: 1 }), // レセプト表示用記号③（◎）
+  receiptSymbol4: varchar("receipt_symbol_4", { length: 1 }), // レセプト表示用記号④（◇）
+  receiptSymbol5: varchar("receipt_symbol_5", { length: 1 }), // レセプト表示用記号⑤（□）
+  receiptSymbol6: varchar("receipt_symbol_6", { length: 1 }), // レセプト表示用記号⑥（▽）
+  receiptSymbol7: varchar("receipt_symbol_7", { length: 1 }), // レセプト表示用記号⑦（☆）
+  receiptSymbol8: varchar("receipt_symbol_8", { length: 1 }), // レセプト表示用記号⑧（▲）
+  receiptSymbol9: varchar("receipt_symbol_9", { length: 1 }), // レセプト表示用記号⑨（▼）
+  
+  // 訪問看護療養費種類（項番67）
+  serviceType: varchar("service_type", { length: 2 }), // 訪問看護療養費種類コード（2桁）
+  
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // serviceCodeIdにユニーク制約を追加（1対1の関係を保証）
+  uniqueServiceCodeId: uniqueIndex("unique_service_code_id").on(table.serviceCodeId),
+}));
+
 // 職員資格コードマスタ
 export const staffQualificationCodes = pgTable("staff_qualification_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -951,6 +980,30 @@ export const receiptTypeCodes = pgTable("receipt_type_codes", {
   receiptTypeCode: varchar("receipt_type_code", { length: 4 }).notNull().unique(), // 別表4コード（4桁）
   receiptTypeName: text("receipt_type_name").notNull(), // 種別名称
   insuranceType: insuranceTypeEnum("insurance_type").notNull(), // 医療保険 or 介護保険
+  description: text("description"), // 説明・備考
+  displayOrder: integer("display_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// レセプト特記コードマスタ（別表6）
+export const receiptSpecialNoteCodes = pgTable("receipt_special_note_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 2 }).notNull().unique(), // 別表6コード（2桁）
+  name: text("name").notNull(), // コード名称
+  description: text("description"), // 説明・備考
+  displayOrder: integer("display_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 職務上の事由コードマスタ（別表8）
+export const workRelatedReasonCodes = pgTable("work_related_reason_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 1 }).notNull().unique(), // 別表8コード（1桁）
+  name: text("name").notNull(), // コード名称
   description: text("description"), // 説明・備考
   displayOrder: integer("display_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
@@ -1188,6 +1241,12 @@ export const insertReceiptTypeCodeSchema = createInsertSchema(receiptTypeCodes).
   updatedAt: true,
 });
 
+export const insertVisitingNursingMasterBasicSchema = createInsertSchema(visitingNursingMasterBasic).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // ========== Update Schemas ==========
 // User self-update schema (limited fields for security)
 export const updateUserSelfSchema = insertUserSchema.pick({
@@ -1262,6 +1321,7 @@ export const updateNursingServiceCodeSchema = insertNursingServiceCodeSchema.par
 export const updateStaffQualificationCodeSchema = insertStaffQualificationCodeSchema.partial();
 export const updateVisitLocationCodeSchema = insertVisitLocationCodeSchema.partial();
 export const updateReceiptTypeCodeSchema = insertReceiptTypeCodeSchema.partial();
+export const updateVisitingNursingMasterBasicSchema = insertVisitingNursingMasterBasicSchema.partial();
 
 // ========== Type Exports ==========
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
@@ -1383,6 +1443,10 @@ export type UpdateVisitLocationCode = z.infer<typeof updateVisitLocationCodeSche
 export type InsertReceiptTypeCode = z.infer<typeof insertReceiptTypeCodeSchema>;
 export type ReceiptTypeCode = typeof receiptTypeCodes.$inferSelect;
 export type UpdateReceiptTypeCode = z.infer<typeof updateReceiptTypeCodeSchema>;
+
+export type InsertVisitingNursingMasterBasic = z.infer<typeof insertVisitingNursingMasterBasicSchema>;
+export type VisitingNursingMasterBasic = typeof visitingNursingMasterBasic.$inferSelect;
+export type UpdateVisitingNursingMasterBasic = z.infer<typeof updateVisitingNursingMasterBasicSchema>;
 
 // Pagination Types
 export interface PaginationOptions {
@@ -1687,5 +1751,20 @@ export const nursingRecordEditHistoryRelations = relations(nursingRecordEditHist
   editor: one(users, {
     fields: [nursingRecordEditHistory.editedBy],
     references: [users.id],
+  }),
+}));
+
+// 訪問看護サービスコードマスタと基本テーブルのリレーション
+export const nursingServiceCodesRelations = relations(nursingServiceCodes, ({ one }) => ({
+  masterBasic: one(visitingNursingMasterBasic, {
+    fields: [nursingServiceCodes.id],
+    references: [visitingNursingMasterBasic.serviceCodeId],
+  }),
+}));
+
+export const visitingNursingMasterBasicRelations = relations(visitingNursingMasterBasic, ({ one }) => ({
+  serviceCode: one(nursingServiceCodes, {
+    fields: [visitingNursingMasterBasic.serviceCodeId],
+    references: [nursingServiceCodes.id],
   }),
 }));

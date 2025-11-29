@@ -10,20 +10,22 @@
 import fs from 'fs';
 import path from 'path';
 import iconv from 'iconv-lite';
+import { eq } from 'drizzle-orm';
 import { db } from '../server/db';
 import {
   prefectureCodes,
   staffQualificationCodes,
   visitLocationCodes,
   receiptTypeCodes,
-  nursingServiceCodes
+  nursingServiceCodes,
+  visitingNursingMasterBasic
 } from '../shared/schema';
 
 /**
  * CSVファイルからサービスコードを読み込む
  */
 async function loadServiceCodesFromCsv() {
-  const masterDir = path.join(process.cwd(), 'docs/recept/visiting nursing_care_expenses_master');
+  const masterDir = path.join(process.cwd(), 'docs/recept/medical-insurance/visiting nursing_care_expenses_master');
   const filePath = path.join(masterDir, '訪問看護療養費マスター_基本テーブル.csv');
   
   if (!fs.existsSync(filePath)) {
@@ -44,6 +46,18 @@ async function loadServiceCodesFromCsv() {
     validTo: Date | null;
     description: string | null;
     isActive: boolean;
+    // 訪問看護療養費マスター基本テーブル用の追加データ
+    instructionType: string | null; // 訪問看護指示区分（項番45）
+    receiptSymbol1: string | null; // レセプト表示用記号①（項番56）
+    receiptSymbol2: string | null; // レセプト表示用記号②（項番57）
+    receiptSymbol3: string | null; // レセプト表示用記号③（項番58）
+    receiptSymbol4: string | null; // レセプト表示用記号④（項番59）
+    receiptSymbol5: string | null; // レセプト表示用記号⑤（項番60）
+    receiptSymbol6: string | null; // レセプト表示用記号⑥（項番61）
+    receiptSymbol7: string | null; // レセプト表示用記号⑦（項番62）
+    receiptSymbol8: string | null; // レセプト表示用記号⑧（項番63）
+    receiptSymbol9: string | null; // レセプト表示用記号⑨（項番64）
+    serviceType: string | null; // 訪問看護療養費種類（項番67）
   }> = [];
   
   for (const line of lines) {
@@ -69,6 +83,19 @@ async function loadServiceCodesFromCsv() {
     const pointsStr = values[15]; // 新又は現金額（項番16）
     const validFromStr = values[70]; // 変更年月日
     const validToStr = values[71]; // 廃止年月日
+    
+    // 訪問看護療養費マスター基本テーブル用の追加データを抽出
+    const instructionType = values[44] || null; // 訪問看護指示区分（項番45）
+    const receiptSymbol1 = values[55] || null; // レセプト表示用記号①（項番56）
+    const receiptSymbol2 = values[56] || null; // レセプト表示用記号②（項番57）
+    const receiptSymbol3 = values[57] || null; // レセプト表示用記号③（項番58）
+    const receiptSymbol4 = values[58] || null; // レセプト表示用記号④（項番59）
+    const receiptSymbol5 = values[59] || null; // レセプト表示用記号⑤（項番60）
+    const receiptSymbol6 = values[60] || null; // レセプト表示用記号⑥（項番61）
+    const receiptSymbol7 = values[61] || null; // レセプト表示用記号⑦（項番62）
+    const receiptSymbol8 = values[62] || null; // レセプト表示用記号⑧（項番63）
+    const receiptSymbol9 = values[63] || null; // レセプト表示用記号⑨（項番64）
+    const serviceType = values[66] || null; // 訪問看護療養費種類（項番67）
     
     // 金額識別に応じて点数を計算
     // 1：金額 → 10で割って点数に変換（1点 = 10円）
@@ -113,6 +140,18 @@ async function loadServiceCodesFromCsv() {
       validTo,
       description: null,
       isActive: true,
+      // 訪問看護療養費マスター基本テーブル用の追加データ
+      instructionType,
+      receiptSymbol1,
+      receiptSymbol2,
+      receiptSymbol3,
+      receiptSymbol4,
+      receiptSymbol5,
+      receiptSymbol6,
+      receiptSymbol7,
+      receiptSymbol8,
+      receiptSymbol9,
+      serviceType,
     });
   }
   
@@ -264,23 +303,82 @@ async function seedMasterData() {
     ]).onConflictDoNothing();
     console.log('✓ レセプト種別コード: 39件投入完了\n');
 
-    // 5. 訪問看護サービスコード（CSVファイルから読み込み）
-    console.log('💊 訪問看護サービスコードを投入中...');
+    // 5. 訪問看護療養費マスター基本テーブル（CSVファイルから読み込んだ追加データを投入）
+    // 注意: nursingServiceCodesテーブルへの投入は行わず、既存のレコードを参照します
+    console.log('📋 訪問看護療養費マスター基本テーブルを投入中...');
     
-    // CSVファイルからサービスコードを読み込む
+    // CSVファイルからサービスコードと追加データを読み込む
     const serviceCodesData = await loadServiceCodesFromCsv();
     
     if (serviceCodesData.length === 0) {
-      console.log('⚠️  CSVファイルからサービスコードを読み込めませんでした。');
+      console.log('⚠️  CSVファイルからサービスコードを読み込めませんでした。\n');
     } else {
-      // データベースに投入
-      await db.insert(nursingServiceCodes).values(serviceCodesData).onConflictDoNothing();
-      console.log(`✓ 訪問看護サービスコード: ${serviceCodesData.length}件投入完了\n`);
+      const masterBasicData: Array<{
+        serviceCodeId: string;
+        instructionType: string | null;
+        receiptSymbol1: string | null;
+        receiptSymbol2: string | null;
+        receiptSymbol3: string | null;
+        receiptSymbol4: string | null;
+        receiptSymbol5: string | null;
+        receiptSymbol6: string | null;
+        receiptSymbol7: string | null;
+        receiptSymbol8: string | null;
+        receiptSymbol9: string | null;
+        serviceType: string | null;
+      }> = [];
+      
+      let foundCount = 0;
+      let notFoundCount = 0;
+      
+      // 各サービスコードに対して、既存のnursingServiceCodesテーブルからserviceCodeIdを取得
+      for (const serviceData of serviceCodesData) {
+        // serviceCodeから既存のレコードを検索
+        const serviceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+          where: eq(nursingServiceCodes.serviceCode, serviceData.serviceCode),
+        });
+        
+        if (serviceCodeRecord) {
+          masterBasicData.push({
+            serviceCodeId: serviceCodeRecord.id,
+            instructionType: serviceData.instructionType,
+            receiptSymbol1: serviceData.receiptSymbol1,
+            receiptSymbol2: serviceData.receiptSymbol2,
+            receiptSymbol3: serviceData.receiptSymbol3,
+            receiptSymbol4: serviceData.receiptSymbol4,
+            receiptSymbol5: serviceData.receiptSymbol5,
+            receiptSymbol6: serviceData.receiptSymbol6,
+            receiptSymbol7: serviceData.receiptSymbol7,
+            receiptSymbol8: serviceData.receiptSymbol8,
+            receiptSymbol9: serviceData.receiptSymbol9,
+            serviceType: serviceData.serviceType,
+          });
+          foundCount++;
+        } else {
+          notFoundCount++;
+          console.log(`  ⚠️  サービスコード ${serviceData.serviceCode} が見つかりませんでした（スキップ）`);
+        }
+      }
+      
+      if (masterBasicData.length > 0) {
+        await db.insert(visitingNursingMasterBasic).values(masterBasicData).onConflictDoNothing();
+        console.log(`✓ 訪問看護療養費マスター基本テーブル: ${masterBasicData.length}件投入完了`);
+        if (notFoundCount > 0) {
+          console.log(`  ⚠️  ${notFoundCount}件のサービスコードが既存テーブルに見つかりませんでした\n`);
+        } else {
+          console.log('');
+        }
+      } else {
+        console.log('⚠️  マスターデータの投入対象がありませんでした。\n');
+      }
     }
 
     // 投入件数をカウント
-    const serviceCodesCount = serviceCodesData.length;
-    const totalCount = 47 + 10 + 10 + 39 + serviceCodesCount;
+    const masterBasicCount = serviceCodesData.length > 0 ? serviceCodesData.filter((_, index) => {
+      // 実際に投入された件数をカウント（簡易版）
+      return true;
+    }).length : 0;
+    const totalCount = 47 + 10 + 10 + 39 + (serviceCodesData.length > 0 ? masterBasicData.length : 0);
     
     console.log('✅ マスターデータの投入が完了しました！');
     console.log('\n【投入結果】');
@@ -288,7 +386,7 @@ async function seedMasterData() {
     console.log('  - 職員資格コード: 10件');
     console.log('  - 訪問場所コード: 10件');
     console.log('  - レセプト種別コード: 39件');
-    console.log(`  - 訪問看護サービスコード: ${serviceCodesCount}件`);
+    console.log(`  - 訪問看護療養費マスター基本テーブル: ${serviceCodesData.length > 0 ? masterBasicData.length : 0}件`);
     console.log(`  合計: ${totalCount}件`);
 
   } catch (error) {

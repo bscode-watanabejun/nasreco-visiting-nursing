@@ -586,6 +586,62 @@ export default function MonthlyReceiptDetail() {
     }
   }
 
+  // Excel出力関数
+  const handleDownloadExcel = async () => {
+    try {
+      toast({
+        title: "Excel生成中",
+        description: "訪問看護療養費明細書Excelを生成しています...",
+      })
+
+      const response = await fetch(`/api/receipts/${receiptId}/export-excel`)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Excelの生成に失敗しました' }))
+
+        // バリデーション詳細がある場合はダイアログで表示（エラートーストは不要）
+        if (errorData.validation) {
+          const { errors, warnings } = errorData.validation
+
+          setValidationErrors(errors || [])
+          setValidationWarnings(warnings || [])
+          setValidationDialogOpen(true)
+          return
+        }
+
+        throw new Error(errorData.error || 'Excelの生成に失敗しました')
+      }
+
+      // Excelファイルとしてダウンロード
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      // Content-Dispositionヘッダーからファイル名を取得、なければデフォルト名を使用
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const fileName = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || 'receipt.xlsx'
+        : 'receipt.xlsx'
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Excel生成完了",
+        description: "訪問看護療養費明細書Excelのダウンロードが完了しました",
+      })
+    } catch (error) {
+      console.error("Excel generation error:", error)
+      toast({
+        title: "Excel生成エラー",
+        description: error instanceof Error ? error.message : "Excelの生成に失敗しました",
+        variant: "destructive",
+      })
+    }
+  }
+
   // PDF生成関数（サーバー側でPDFを生成）
   const handleDownloadPDF = async () => {
     try {
@@ -731,25 +787,27 @@ export default function MonthlyReceiptDetail() {
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* Action Buttons */}
-          <Button
-            variant="outline"
-            size="default"
-            onClick={handleDownloadPDF}
-            className="gap-2"
-          >
-            <Download className="w-4 h-4" />
-            PDF出力
-          </Button>
           {receipt.insuranceType === 'medical' && (
-            <Button
-              variant="outline"
-              size="default"
-              onClick={handleDownloadCSV}
-              className="gap-2"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              医療保険レセプトデータ出力
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleDownloadCSV}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                医療保険レセプトCSV出力
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleDownloadExcel}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                訪問看護療養費明細書Excel出力
+              </Button>
+            </>
           )}
           <Button
             variant="outline"
