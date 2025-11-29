@@ -448,19 +448,56 @@ async function validateNursingRecords(
     return warnings;
   }
 
+  // 同日の訪問記録をグループ化して訪問回数を計算
+  const recordsByDate = new Map<string, typeof targetRecords>();
+  for (const record of targetRecords) {
+    const dateStr = typeof record.visitDate === 'string' 
+      ? record.visitDate 
+      : String(record.visitDate);
+    if (!recordsByDate.has(dateStr)) {
+      recordsByDate.set(dateStr, []);
+    }
+    recordsByDate.get(dateStr)!.push(record);
+  }
+
   // 各訪問記録のチェック
   for (const record of targetRecords) {
     const recordWarnings: string[] = [];
 
-    // サービスコードのチェック（必須）
+    // 同日の訪問回数を計算
+    const dateStr = typeof record.visitDate === 'string' 
+      ? record.visitDate 
+      : String(record.visitDate);
+    const sameDayRecords = recordsByDate.get(dateStr) || [];
+    // 訪問日時でソートして順序を決定
+    const sortedSameDayRecords = [...sameDayRecords].sort((a, b) => {
+      const timeA = a.actualStartTime ? new Date(a.actualStartTime).getTime() : 0;
+      const timeB = b.actualStartTime ? new Date(b.actualStartTime).getTime() : 0;
+      return timeA - timeB;
+    });
+    const visitOrder = sortedSameDayRecords.findIndex(r => r.id === record.id) + 1;
+
+    // サービスコードのチェック
+    // 同日2回目以降の訪問では基本療養費のサービスコードは適用されないため、未設定でもエラーにしない
     if (!record.serviceCodeId) {
-      recordWarnings.push('サービスコードが設定されていません');
+      // 1回目の訪問ではサービスコードが必須
+      if (visitOrder === 1) {
+        recordWarnings.push('サービスコードが設定されていません');
+      }
+      // 2回目以降の訪問では基本療養費のサービスコードは不要（加算のサービスコードは別途チェック）
     } else if (!record.serviceCode) {
       // サービスコードIDは設定されているが、サービスコードマスタに存在しない
       recordWarnings.push(`サービスコード（ID: ${record.serviceCodeId}）がサービスコードマスタに存在しません`);
     } else if (!record.serviceCode.serviceCode) {
       // サービスコードマスタに存在するが、実際のサービスコードが空
       recordWarnings.push('サービスコードマスタのサービスコードが空です');
+    } else if (visitOrder > 1) {
+      // 2回目以降の訪問で基本療養費のサービスコードが設定されている場合は警告
+      const serviceName = record.serviceCode.serviceName || '';
+      if (serviceName.startsWith('訪問看護基本療養費') || 
+          serviceName.startsWith('精神科訪問看護基本療養費')) {
+        recordWarnings.push('同日2回目以降の訪問では基本療養費のサービスコードは適用されません');
+      }
     }
 
     // 訪問場所コードのチェック
@@ -522,10 +559,16 @@ async function validateNursingRecords(
           : String(record.visitDate);
       }
 
+      // 基本療養費のサービスコードに関する警告はwarning、その他はerror
+      const hasBasicServiceWarning = recordWarnings.some(w => 
+        w.includes('基本療養費のサービスコードは適用されません')
+      );
+      const severity = hasBasicServiceWarning ? 'warning' : 'error';
+
       warnings.push({
         field: 'nursingRecord',
         message: `訪問記録（${dateTimeStr}）: ${recordWarnings.join('、')}`,
-        severity: 'error', // サービスコードは必須のためエラー
+        severity,
         recordType: 'nursingRecord',
         recordId: record.id,
       });

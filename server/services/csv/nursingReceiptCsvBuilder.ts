@@ -886,11 +886,31 @@ export class NursingReceiptCsvBuilder {
   ): void {
     const visitDate = record.visitDate ? formatDateToYYYYMMDD(record.visitDate) : '';
     
-    // サービスコードが必須（バリデーション済み）
+    // サービスコードのチェック
+    // 同日2回目以降の訪問では基本療養費のサービスコードは適用されないため、未設定の場合はスキップ
     if (!record.serviceCode) {
-      throw new Error(`訪問記録ID ${record.id} にサービスコードが設定されていません`);
+      // 1回目の訪問ではサービスコードが必須
+      if (visitOrder === 1) {
+        throw new Error(`訪問記録ID ${record.id} にサービスコードが設定されていません`);
+      }
+      // 2回目以降の訪問でサービスコードが未設定の場合はスキップ（基本療養費は適用されない）
+      return;
     }
+    
     const serviceCode = record.serviceCode;
+    
+    // 2回目以降の訪問で基本療養費のサービスコードが設定されている場合は警告を出してスキップ
+    // 基本療養費のサービスコード: 510000110-510001010 (訪問看護基本療養費), 530000110-530001010 (精神科訪問看護基本療養費)
+    if (visitOrder > 1) {
+      const codeNum = parseInt(serviceCode, 10);
+      const isBasicService = (codeNum >= 510000110 && codeNum <= 510001010) || 
+                             (codeNum >= 530000110 && codeNum <= 530001010);
+      if (isBasicService) {
+        // 基本療養費のサービスコードは2回目以降では適用されないためスキップ
+        console.warn(`訪問記録ID ${record.id} は同日${visitOrder}回目の訪問ですが、基本療養費のサービスコード（${serviceCode}）が設定されています。スキップします。`);
+        return;
+      }
+    }
     
     const points = record.calculatedPoints || 0;
     const amount = points * 10;  // 金額 = 点数 × 10
