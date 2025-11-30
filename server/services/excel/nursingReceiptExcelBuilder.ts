@@ -140,10 +140,10 @@ export class NursingReceiptExcelBuilder {
           // 減額割合（例: 030 → 3割）
           const rateStr = String(reductionRate).padStart(3, '0');
           const rate = parseInt(rateStr, 10) / 10;
-          displayValue = `減額\n${rate}割`;
+          displayValue = `減額 ${rate}割`;
         } else if (reductionAmount !== null && reductionAmount !== undefined) {
           // 減額金額
-          displayValue = `減額\n${reductionAmount}円`;
+          displayValue = `減額 ${reductionAmount}円`;
         }
       } else if (reductionCategory === '2') {
         // 免除
@@ -302,16 +302,13 @@ export class NursingReceiptExcelBuilder {
       const firstRecord = sortedRecords[0];
       const locationCode = firstRecord.visitLocationCode || '';
       
-      if (locationCode === '99') {
-        // 場所コード99の場合は、コード名称を1行目、文字データを2行目に表示
-        const locationName = await getVisitLocationName(locationCode);
-        sheet.getCell('S18').value = locationName;
-        if (firstRecord.visitLocationCustom) {
-          sheet.getCell('S19').value = firstRecord.visitLocationCustom;
-        }
-      } else {
-        const locationName = await getVisitLocationName(locationCode);
-        sheet.getCell('S18').value = locationName;
+      // 訪問した場所1の表示テキストを取得（コード番号 + 名称）
+      const locationText = await this.getVisitLocation1Text(locationCode);
+      sheet.getCell('S18').value = locationText;
+      
+      // 場所コード99の場合は、2行目に文字データを表示
+      if (locationCode === '99' && firstRecord.visitLocationCustom) {
+        sheet.getCell('S19').value = firstRecord.visitLocationCustom;
       }
     }
 
@@ -590,18 +587,49 @@ export class NursingReceiptExcelBuilder {
       return `５　その他；${customText}`;
     }
 
-    // 場所コードから番号を取得（01→1、11→2、12→3...）
+    // 場所コードから番号を取得（別表16のマッピング）
+    // 01→1（自宅）、11-16→2（施設）、31→3（病院）、32→4（診療所）、99→5（その他）
     const codeToNumber: { [key: string]: string } = {
-      '01': '１',
-      '11': '２',
-      '12': '３',
-      '13': '４',
-      '14': '５',
-      '15': '６',
-      '16': '７',
-      '31': '８',
-      '32': '９',
-      '99': '５' // その他は常に5
+      '01': '１',  // 自宅
+      '11': '２',  // 施設（社会福祉施設及び身体障害者施設）
+      '12': '２',  // 施設（小規模多機能型居宅介護）
+      '13': '２',  // 施設（複合型サービス）
+      '14': '２',  // 施設（認知症対応型グループホーム）
+      '15': '２',  // 施設（特定施設）
+      '16': '２',  // 施設（地域密着型介護老人福祉施設及び介護老人福祉施設）
+      '31': '３',  // 病院
+      '32': '４',  // 診療所
+      '99': '５'   // その他
+    };
+
+    const number = codeToNumber[code] || '';
+    return `${number}　${locationName}`;
+  }
+
+  /**
+   * 訪問した場所1の表示テキストを取得（別表16）
+   * コード番号と名称を組み合わせて表示（例：「5  その他」）
+   */
+  private async getVisitLocation1Text(code: string): Promise<string> {
+    const locationName = await getVisitLocationName(code);
+    
+    if (!locationName) {
+      return '';
+    }
+
+    // 場所コードから番号を取得（別表16のマッピング）
+    // 01→1（自宅）、11-16→2（施設）、31→3（病院）、32→4（診療所）、99→5（その他）
+    const codeToNumber: { [key: string]: string } = {
+      '01': '１',  // 自宅
+      '11': '２',  // 施設（社会福祉施設及び身体障害者施設）
+      '12': '２',  // 施設（小規模多機能型居宅介護）
+      '13': '２',  // 施設（複合型サービス）
+      '14': '２',  // 施設（認知症対応型グループホーム）
+      '15': '２',  // 施設（特定施設）
+      '16': '２',  // 施設（地域密着型介護老人福祉施設及び介護老人福祉施設）
+      '31': '３',  // 病院
+      '32': '４',  // 診療所
+      '99': '５'   // その他
     };
 
     const number = codeToNumber[code] || '';
@@ -623,17 +651,18 @@ export class NursingReceiptExcelBuilder {
       return `５　その他；${customText}`;
     }
 
-    // 場所コードから番号を取得
+    // 場所コードから番号を取得（別表16のマッピング）
+    // 01→1（自宅）、11-16→2（施設）、31→3（病院）、32→4（診療所）、99→5（その他）
     const codeToNumber: { [key: string]: string } = {
-      '01': '１',
-      '11': '２',
-      '12': '３',
-      '13': '４',
-      '14': '５',
-      '15': '６',
-      '16': '７',
-      '31': '８',
-      '32': '９'
+      '01': '１',  // 自宅
+      '11': '２',  // 施設（社会福祉施設及び身体障害者施設）
+      '12': '２',  // 施設（小規模多機能型居宅介護）
+      '13': '２',  // 施設（複合型サービス）
+      '14': '２',  // 施設（認知症対応型グループホーム）
+      '15': '２',  // 施設（特定施設）
+      '16': '２',  // 施設（地域密着型介護老人福祉施設及び介護老人福祉施設）
+      '31': '３',  // 病院
+      '32': '４'   // 診療所
     };
 
     const number = codeToNumber[code] || '';
@@ -809,8 +838,21 @@ export class NursingReceiptExcelBuilder {
 
       // 内容を出力（S列に全内容を出力、その他の列は必要に応じて）
       const sCell = sheet.getCell(`S${startRow}`);
-      sCell.value = row.content;
+      // ExcelJSでは改行文字（\n）を正しく処理するため、文字列をそのまま設定
+      // wrapText: true により改行が反映される
+      // エスケープされた改行文字（\\n）が含まれている場合は、実際の改行文字（\n）に変換
+      let cellValue = row.content;
+      if (typeof cellValue === 'string') {
+        // エスケープされた改行文字を実際の改行文字に変換
+        cellValue = cellValue.replace(/\\n/g, '\n');
+      }
+      sCell.value = cellValue;
       sCell.alignment = { vertical: 'top', wrapText: true };
+      // セルの行の高さを自動調整（改行に対応）
+      const rowObj = sheet.getRow(startRow);
+      if (rowObj.height === undefined || rowObj.height < 30) {
+        rowObj.height = 30; // 最低30ピクセルの高さを確保
+      }
 
       // 摘要情報の場合は各列に値を出力
       if (row.type === 'abstract' && row.columns) {
@@ -831,22 +873,6 @@ export class NursingReceiptExcelBuilder {
         }
         if (row.columns.days !== undefined) {
           sheet.getCell(`AL${startRow}`).value = row.columns.days;
-        }
-      }
-
-      // 項目間の点線を引く（ア・イ・ウの境界）
-      if (i > 0) {
-        const prevType = summaryRows[i - 1].type;
-        const currentType = row.type;
-        if (prevType !== currentType) {
-          // 前の行の下に点線を引く
-          const borderRow = startRow - 1;
-          for (const col of columns) {
-            const cell = sheet.getCell(`${col}${borderRow}`);
-            cell.border = {
-              bottom: { style: 'thin', color: { argb: 'FF808080' } },
-            };
-          }
         }
       }
     }
