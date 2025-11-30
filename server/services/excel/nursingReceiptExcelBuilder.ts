@@ -12,6 +12,10 @@ import type { ReceiptCsvData } from '../csv/types';
 import { formatJapaneseDateWithEraName, formatBenefitRatio } from './japaneseDateUtils';
 import { calculateVisitDateSymbols } from './visitDateSymbolCalculator';
 import { getReceiptSpecialNoteNames, getWorkRelatedReasonName, getVisitLocationName } from './codeMasterUtils';
+import { db } from '../../db';
+import { visitingNursingMasterBasic, nursingServiceCodes } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import { determineBurdenClassificationCode } from '../csv/receiptClassification';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,6 +58,7 @@ export class NursingReceiptExcelBuilder {
     await this.fillMedicalInstitutionCells(sheet, data);
     await this.fillPatientCells(sheet, data);
     await this.fillVisitDateSymbols(sheet, data);
+    await this.fillSummaryField(sheet, data);
 
     // Excelファイルをバッファに変換
     const buffer = await workbook.xlsx.writeBuffer();
@@ -711,6 +716,348 @@ export class NursingReceiptExcelBuilder {
         }
       }
     }
+  }
+
+  /**
+   * 摘要欄（P43:AL71セル範囲）への出力
+   */
+  private async fillSummaryField(sheet: ExcelJS.Worksheet, data: ReceiptCsvData): Promise<void> {
+    const summaryRows: Array<{
+      type: 'public_expense' | 'medical_institution' | 'abstract';
+      content: string;
+      columns?: {
+        displayColumn?: string; // P列: レセプト表示欄
+        displayItem?: string; // Q列: レセプト表示項
+        burden?: string; // R列: 負担区分
+        name?: string; // S列: 名称
+        amount?: number; // AG列: 金額
+        days?: number; // AL列: 日数
+      };
+    }> = [];
+
+    let currentRow = 43; // 開始行
+
+    // ア. 第二～第四公費 公費給付対象一部負担金情報
+    if (data.publicExpenses.length > 1) {
+      for (let i = 1; i < data.publicExpenses.length; i++) {
+        const publicExpense = data.publicExpenses[i];
+        const burdenInfo = data.receipt.publicExpenseBurdenInfo?.[publicExpense.id];
+        
+        if (burdenInfo?.publicExpenseBurdenAmount) {
+          const publicNumber = i + 1; // 公２、公３、公４
+          const amount = this.formatSummaryAmount(burdenInfo.publicExpenseBurdenAmount);
+          const content = `公${this.toFullWidthNumber(publicNumber)}\n  ＜請求時＞\n    公費給付対象：　（${amount}）`;
+          
+          summaryRows.push({
+            type: 'public_expense',
+            content,
+          });
+        }
+      }
+    }
+
+    // イ. 主治医情報（2人目以降）
+    const medicalInstitutions = data.medicalInstitutions || (data.medicalInstitution ? [data.medicalInstitution] : []);
+    if (medicalInstitutions.length > 1) {
+      for (let i = 1; i < medicalInstitutions.length; i++) {
+        const institution = medicalInstitutions[i];
+        const doctorNumber = i + 1; // 主治医２、主治医３
+        const institutionCode = `${institution.prefectureCode || ''}6${(institution.institutionCode || '').padStart(7, '0')}`;
+        // 医療機関コードを全角数字に変換（文字列の各文字を変換）
+        const formattedCode = institutionCode.split('').map(char => {
+          if (char >= '0' && char <= '9') {
+            return this.toFullWidthNumber(parseInt(char, 10));
+          }
+          return char;
+        }).join('');
+        
+        let content = `＜主治医${this.toFullWidthNumber(doctorNumber)}＞\n`;
+        content += `  医療機関コード；${formattedCode}\n`;
+        content += `  医療機関名称；${institution.name || ''}\n`;
+        content += `  氏名；${institution.doctorName || ''}`;
+        
+        if (institution.lastReportDate) {
+          const lastReportDate = formatJapaneseDateWithEraName(institution.lastReportDate);
+          content += `\n  直近報告年月日；${lastReportDate}`;
+        }
+        
+        summaryRows.push({
+          type: 'medical_institution',
+          content,
+        });
+      }
+    }
+
+    // ウ. 摘要情報
+    const abstractRows = await this.buildAbstractRows(data);
+    summaryRows.push(...abstractRows);
+
+    // 最大15行まで出力
+    const maxRows = Math.min(summaryRows.length, 15);
+    if (summaryRows.length > 15) {
+      console.warn(`摘要欄の行数が15行を超えています（${summaryRows.length}行）。最初の15行のみ出力します。`);
+    }
+
+    // セルに出力
+    // 注意: テンプレートファイルで既にP43:P72、Q43:Q72、R43:R72、S43:S72、AG43:AG72、AL43:AL72が
+    // 2行ずつ15組に結合されているため、処理でのセル結合は不要
+    const columns = ['P', 'Q', 'R', 'S', 'AG', 'AL'];
+    
+    for (let i = 0; i < maxRows; i++) {
+      const row = summaryRows[i];
+      const startRow = currentRow + (i * 2);
+
+      // 内容を出力（S列に全内容を出力、その他の列は必要に応じて）
+      const sCell = sheet.getCell(`S${startRow}`);
+      sCell.value = row.content;
+      sCell.alignment = { vertical: 'top', wrapText: true };
+
+      // 摘要情報の場合は各列に値を出力
+      if (row.type === 'abstract' && row.columns) {
+        if (row.columns.displayColumn) {
+          sheet.getCell(`P${startRow}`).value = row.columns.displayColumn;
+        }
+        if (row.columns.displayItem) {
+          sheet.getCell(`Q${startRow}`).value = row.columns.displayItem;
+        }
+        if (row.columns.burden) {
+          sheet.getCell(`R${startRow}`).value = row.columns.burden;
+        }
+        if (row.columns.name) {
+          sheet.getCell(`S${startRow}`).value = row.columns.name;
+        }
+        if (row.columns.amount !== undefined) {
+          sheet.getCell(`AG${startRow}`).value = row.columns.amount;
+        }
+        if (row.columns.days !== undefined) {
+          sheet.getCell(`AL${startRow}`).value = row.columns.days;
+        }
+      }
+
+      // 項目間の点線を引く（ア・イ・ウの境界）
+      if (i > 0) {
+        const prevType = summaryRows[i - 1].type;
+        const currentType = row.type;
+        if (prevType !== currentType) {
+          // 前の行の下に点線を引く
+          const borderRow = startRow - 1;
+          for (const col of columns) {
+            const cell = sheet.getCell(`${col}${borderRow}`);
+            cell.border = {
+              bottom: { style: 'thin', color: { argb: 'FF808080' } },
+            };
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 摘要情報の行を構築
+   */
+  private async buildAbstractRows(data: ReceiptCsvData): Promise<Array<{
+    type: 'abstract';
+    content: string;
+    columns?: {
+      displayColumn?: string;
+      displayItem?: string;
+      burden?: string;
+      name?: string;
+      amount?: number;
+      days?: number;
+    };
+  }>> {
+    const rows: Array<{
+      type: 'abstract';
+      content: string;
+      columns?: {
+        displayColumn?: string;
+        displayItem?: string;
+        burden?: string;
+        name?: string;
+        amount?: number;
+        days?: number;
+      };
+    }> = [];
+
+    // KAレコード相当データを集計
+    // nursingRecordsとbonusHistoryからサービスコードでグループ化
+    const serviceCodeMap = new Map<string, {
+      serviceCode: string;
+      amount: number;
+      count: number;
+      burdenClassification: string;
+    }>();
+
+    // 負担区分を取得（REレコードから）
+    const burdenClassification = this.getBurdenClassification(data);
+
+    // 訪問記録から基本療養費を集計
+    // 注意: record.calculatedPointsには加算が含まれている可能性があるため、
+    // サービスコードマスタから基本療養費の点数を取得する
+    for (const record of data.nursingRecords) {
+      if (record.serviceCode) {
+        // サービスコードマスタから基本療養費の点数を取得
+        const serviceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+          where: eq(nursingServiceCodes.serviceCode, record.serviceCode),
+        });
+        
+        if (!serviceCodeRecord) {
+          console.warn(`サービスコード ${record.serviceCode} が見つかりません。スキップします。`);
+          continue;
+        }
+        
+        // 基本療養費の金額のみ（加算は含めない）
+        const amount = serviceCodeRecord.points * 10;
+        const key = record.serviceCode;
+        
+        if (serviceCodeMap.has(key)) {
+          const existing = serviceCodeMap.get(key)!;
+          existing.amount += amount;
+          existing.count += 1;
+        } else {
+          serviceCodeMap.set(key, {
+            serviceCode: key,
+            amount,
+            count: 1,
+            burdenClassification,
+          });
+        }
+      }
+    }
+
+    // 加算履歴を集計
+    for (const bonus of data.bonusHistory) {
+      if (bonus.serviceCode) {
+        const amount = bonus.points * 10;
+        const key = bonus.serviceCode;
+        
+        if (serviceCodeMap.has(key)) {
+          const existing = serviceCodeMap.get(key)!;
+          existing.amount += amount;
+          existing.count += 1;
+        } else {
+          serviceCodeMap.set(key, {
+            serviceCode: key,
+            amount,
+            count: 1,
+            burdenClassification,
+          });
+        }
+      }
+    }
+
+    // マスタ情報を取得して行を構築
+    const sortedEntries = Array.from(serviceCodeMap.entries()).sort((a, b) => {
+      // サービスコードでソート
+      return a[0].localeCompare(b[0]);
+    });
+
+    let prevDisplayColumn: string | null = null;
+    let prevDisplayItem: string | null = null;
+
+    for (const [serviceCode, info] of sortedEntries) {
+      const masterInfo = await this.getNursingServiceMasterInfo(serviceCode);
+      
+      if (!masterInfo) {
+        console.warn(`サービスコード ${serviceCode} のマスタ情報が見つかりません。スキップします。`);
+        continue;
+      }
+
+      const displayColumn = masterInfo.receiptDisplayColumn || '';
+      const displayItem = masterInfo.receiptDisplayItem || '';
+      const serviceName = masterInfo.serviceName || '';
+      const amountType = masterInfo.amountType;
+
+      // 特別地域訪問看護加算の処理（amountType === '5'）
+      if (amountType === '5') {
+        // 直前の基本療養費と連続表示
+        // この処理は簡略化しており、実際の実装では直前の基本療養費を特定する必要がある
+        const prevRow = rows[rows.length - 1];
+        if (prevRow && prevRow.columns) {
+          // 名称を結合
+          prevRow.columns.name = `${prevRow.columns.name}\n${serviceName}`;
+          // 金額と日数は加算行に表示（既に集計済み）
+          continue;
+        }
+      }
+
+      // 区分欄の省略処理（同一番号の場合は省略）
+      const showDisplayColumn = displayColumn !== prevDisplayColumn;
+      const showDisplayItem = displayItem !== prevDisplayItem;
+
+      rows.push({
+        type: 'abstract',
+        content: serviceName,
+        columns: {
+          displayColumn: showDisplayColumn ? displayColumn : '',
+          displayItem: showDisplayItem ? displayItem : '',
+          burden: info.burdenClassification,
+          name: serviceName,
+          amount: info.amount,
+          days: info.count,
+        },
+      });
+
+      prevDisplayColumn = displayColumn;
+      prevDisplayItem = displayItem;
+    }
+
+    return rows;
+  }
+
+  /**
+   * 訪問看護療養費マスタ情報を取得
+   */
+  private async getNursingServiceMasterInfo(serviceCode: string): Promise<{
+    serviceName: string;
+    receiptDisplayColumn: string | null;
+    receiptDisplayItem: string | null;
+    amountType: string | null;
+  } | null> {
+    try {
+      const result = await db
+        .select({
+          serviceName: nursingServiceCodes.serviceName,
+          receiptDisplayColumn: visitingNursingMasterBasic.receiptDisplayColumn,
+          receiptDisplayItem: visitingNursingMasterBasic.receiptDisplayItem,
+          amountType: visitingNursingMasterBasic.amountType,
+        })
+        .from(visitingNursingMasterBasic)
+        .innerJoin(nursingServiceCodes, eq(visitingNursingMasterBasic.serviceCodeId, nursingServiceCodes.id))
+        .where(eq(nursingServiceCodes.serviceCode, serviceCode))
+        .limit(1);
+
+      return result[0] || null;
+    } catch (error) {
+      console.error(`Failed to get visiting nursing master for service code ${serviceCode}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 負担区分を取得
+   */
+  private getBurdenClassification(data: ReceiptCsvData): string {
+    // CSVビルダーと同じロジックで負担区分を判定
+    return determineBurdenClassificationCode(
+      {
+        dateOfBirth: data.patient.dateOfBirth,
+        insuranceType: data.patient.insuranceType || null,
+      },
+      data.insuranceCard,
+      data.publicExpenses.map(pe => ({
+        legalCategoryNumber: pe.legalCategoryNumber,
+        priority: pe.priority,
+      }))
+    );
+  }
+
+  /**
+   * 金額をカンマ区切り形式に変換
+   */
+  private formatSummaryAmount(amount: number): string {
+    return amount.toLocaleString('ja-JP') + '円';
   }
 }
 

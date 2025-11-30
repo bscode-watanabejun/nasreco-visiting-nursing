@@ -926,6 +926,11 @@ export const visitingNursingMasterBasic = pgTable("visiting_nursing_master_basic
   // 訪問看護療養費種類（項番67）
   serviceType: varchar("service_type", { length: 2 }), // 訪問看護療養費種類コード（2桁）
   
+  // 摘要欄実装用フィールド
+  receiptDisplayColumn: varchar("receipt_display_column", { length: 2 }), // レセプト表示欄（項番53、CSV列[52]）
+  receiptDisplayItem: varchar("receipt_display_item", { length: 2 }), // レセプト表示項（項番54、CSV列[53]）
+  amountType: varchar("amount_type", { length: 1 }), // 金額識別（項番15、CSV列[14]：1=金額、3=点数（プラス）、5=％加算）
+  
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({

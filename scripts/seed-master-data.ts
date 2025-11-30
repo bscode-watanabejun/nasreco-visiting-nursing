@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import iconv from 'iconv-lite';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../server/db';
 import {
   prefectureCodes,
@@ -58,6 +58,10 @@ async function loadServiceCodesFromCsv() {
     receiptSymbol8: string | null; // レセプト表示用記号⑧（項番63）
     receiptSymbol9: string | null; // レセプト表示用記号⑨（項番64）
     serviceType: string | null; // 訪問看護療養費種類（項番67）
+    // 摘要欄実装用フィールド
+    receiptDisplayColumn: string | null; // レセプト表示欄（項番53、CSV列[52]）
+    receiptDisplayItem: string | null; // レセプト表示項（項番54、CSV列[53]）
+    amountType: string | null; // 金額識別（項番15、CSV列[14]）
   }> = [];
   
   for (const line of lines) {
@@ -96,6 +100,11 @@ async function loadServiceCodesFromCsv() {
     const receiptSymbol8 = values[62] || null; // レセプト表示用記号⑧（項番63）
     const receiptSymbol9 = values[63] || null; // レセプト表示用記号⑨（項番64）
     const serviceType = values[66] || null; // 訪問看護療養費種類（項番67）
+    
+    // 摘要欄実装用フィールド
+    const receiptDisplayColumn = values[52] || null; // レセプト表示欄（項番53、CSV列[52]）
+    const receiptDisplayItem = values[53] || null; // レセプト表示項（項番54、CSV列[53]）
+    const amountType = values[14] || null; // 金額識別（項番15、CSV列[14]）
     
     // 金額識別に応じて点数を計算
     // 1：金額 → 10で割って点数に変換（1点 = 10円）
@@ -152,6 +161,10 @@ async function loadServiceCodesFromCsv() {
       receiptSymbol8,
       receiptSymbol9,
       serviceType,
+      // 摘要欄実装用フィールド
+      receiptDisplayColumn,
+      receiptDisplayItem,
+      amountType,
     });
   }
   
@@ -310,24 +323,28 @@ async function seedMasterData() {
     // CSVファイルからサービスコードと追加データを読み込む
     const serviceCodesData = await loadServiceCodesFromCsv();
     
+    // masterBasicDataをブロック外で定義
+    let masterBasicData: Array<{
+      serviceCodeId: string;
+      instructionType: string | null;
+      receiptSymbol1: string | null;
+      receiptSymbol2: string | null;
+      receiptSymbol3: string | null;
+      receiptSymbol4: string | null;
+      receiptSymbol5: string | null;
+      receiptSymbol6: string | null;
+      receiptSymbol7: string | null;
+      receiptSymbol8: string | null;
+      receiptSymbol9: string | null;
+      serviceType: string | null;
+      receiptDisplayColumn: string | null;
+      receiptDisplayItem: string | null;
+      amountType: string | null;
+    }> = [];
+    
     if (serviceCodesData.length === 0) {
       console.log('⚠️  CSVファイルからサービスコードを読み込めませんでした。\n');
     } else {
-      const masterBasicData: Array<{
-        serviceCodeId: string;
-        instructionType: string | null;
-        receiptSymbol1: string | null;
-        receiptSymbol2: string | null;
-        receiptSymbol3: string | null;
-        receiptSymbol4: string | null;
-        receiptSymbol5: string | null;
-        receiptSymbol6: string | null;
-        receiptSymbol7: string | null;
-        receiptSymbol8: string | null;
-        receiptSymbol9: string | null;
-        serviceType: string | null;
-      }> = [];
-      
       let foundCount = 0;
       let notFoundCount = 0;
       
@@ -352,6 +369,9 @@ async function seedMasterData() {
             receiptSymbol8: serviceData.receiptSymbol8,
             receiptSymbol9: serviceData.receiptSymbol9,
             serviceType: serviceData.serviceType,
+            receiptDisplayColumn: serviceData.receiptDisplayColumn,
+            receiptDisplayItem: serviceData.receiptDisplayItem,
+            amountType: serviceData.amountType,
           });
           foundCount++;
         } else {
@@ -361,8 +381,30 @@ async function seedMasterData() {
       }
       
       if (masterBasicData.length > 0) {
-        await db.insert(visitingNursingMasterBasic).values(masterBasicData).onConflictDoNothing();
-        console.log(`✓ 訪問看護療養費マスター基本テーブル: ${masterBasicData.length}件投入完了`);
+        // 既存レコードも更新するため、onConflictDoUpdateを使用
+        await db.insert(visitingNursingMasterBasic)
+          .values(masterBasicData)
+          .onConflictDoUpdate({
+            target: visitingNursingMasterBasic.serviceCodeId,
+            set: {
+              instructionType: sql`EXCLUDED.instruction_type`,
+              receiptSymbol1: sql`EXCLUDED.receipt_symbol_1`,
+              receiptSymbol2: sql`EXCLUDED.receipt_symbol_2`,
+              receiptSymbol3: sql`EXCLUDED.receipt_symbol_3`,
+              receiptSymbol4: sql`EXCLUDED.receipt_symbol_4`,
+              receiptSymbol5: sql`EXCLUDED.receipt_symbol_5`,
+              receiptSymbol6: sql`EXCLUDED.receipt_symbol_6`,
+              receiptSymbol7: sql`EXCLUDED.receipt_symbol_7`,
+              receiptSymbol8: sql`EXCLUDED.receipt_symbol_8`,
+              receiptSymbol9: sql`EXCLUDED.receipt_symbol_9`,
+              serviceType: sql`EXCLUDED.service_type`,
+              receiptDisplayColumn: sql`EXCLUDED.receipt_display_column`,
+              receiptDisplayItem: sql`EXCLUDED.receipt_display_item`,
+              amountType: sql`EXCLUDED.amount_type`,
+              updatedAt: sql`CURRENT_TIMESTAMP`,
+            },
+          });
+        console.log(`✓ 訪問看護療養費マスター基本テーブル: ${masterBasicData.length}件投入/更新完了`);
         if (notFoundCount > 0) {
           console.log(`  ⚠️  ${notFoundCount}件のサービスコードが既存テーブルに見つかりませんでした\n`);
         } else {

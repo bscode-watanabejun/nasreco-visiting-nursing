@@ -69,6 +69,15 @@ export interface ReceiptCsvData {
     lastReportDate?: Date | string | null; // 主治医への直近報告年月日
   };
 
+  // 医療機関情報（訪問看護指示書発行元）- 複数対応（摘要欄実装用）
+  medicalInstitutions?: Array<{
+    institutionCode: string; // 7桁
+    prefectureCode: string; // 2桁
+    name: string;
+    doctorName: string;
+    lastReportDate?: Date | string | null; // 主治医への直近報告年月日
+  }>;
+
   // 保険証情報（Phase 3: 動的判定用）
   insuranceCard: {
     cardType: 'medical' | 'long_term_care';

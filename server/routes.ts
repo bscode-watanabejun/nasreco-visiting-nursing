@@ -10053,6 +10053,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           doctorName: medicalInstitution.doctorName,
           lastReportDate: lastReportDateValue, // 主治医への直近報告年月日
         },
+        // 摘要欄実装用: 複数主治医対応（現状は1件のみ）
+        medicalInstitutions: [{
+          institutionCode: medicalInstitution.institutionCode || '0000000',
+          prefectureCode: medicalInstitution.prefectureCode || '00',
+          name: medicalInstitution.name,
+          doctorName: medicalInstitution.doctorName,
+          lastReportDate: lastReportDateValue,
+        }],
         doctorOrder: {
           id: validOrder.id,
           startDate: validOrder.startDate,
@@ -10329,6 +10337,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           doctorName: medicalInstitution.doctorName || '',
           lastReportDate: lastReportDateValue,
         },
+        // 摘要欄実装用: 複数主治医対応（現状は1件のみ）
+        medicalInstitutions: [{
+          institutionCode: medicalInstitution.institutionCode || '',
+          prefectureCode: medicalInstitution.prefectureCode || '',
+          name: medicalInstitution.name,
+          doctorName: medicalInstitution.doctorName || '',
+          lastReportDate: lastReportDateValue,
+        }],
         insuranceCard: {
           cardType: targetInsuranceCard.cardType as 'medical' | 'long_term_care',
           relationshipType: targetInsuranceCard.relationshipType as any,
@@ -10680,6 +10696,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               doctorName: medicalInstitution.doctorName,
               lastReportDate: lastReportDateValue, // 主治医への直近報告年月日
             },
+            // 摘要欄実装用: 複数主治医対応（現状は1件のみ）
+            medicalInstitutions: [{
+              institutionCode: medicalInstitution.institutionCode || '0000000',
+              prefectureCode: medicalInstitution.prefectureCode || '00',
+              name: medicalInstitution.name,
+              doctorName: medicalInstitution.doctorName,
+              lastReportDate: lastReportDateValue,
+            }],
             doctorOrder: {
               id: validOrder.id,
               startDate: validOrder.startDate,
