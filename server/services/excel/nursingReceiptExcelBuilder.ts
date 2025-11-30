@@ -309,6 +309,377 @@ export class NursingReceiptExcelBuilder {
         sheet.getCell('S18').value = locationName;
       }
     }
+
+    // B22: 情報欄（Phase 1実装: エ、オ、ウ、コのみ）
+    const infoField = await this.buildInfoField(data);
+    sheet.getCell('B22').value = infoField;
+  }
+
+  /**
+   * 情報欄(B22セル)の内容を構築
+   * 
+   * Phase 1実装: 以下の項目のみ実装
+   * - エ: 訪問開始年月日・訪問終了年月日・訪問終了時刻・訪問終了の状況
+   * - オ: 死亡年月日・死亡時刻・死亡した場所
+   * - ウ: 指示期間
+   * - コ: 訪問した場所２・３
+   * 
+   * Phase 2以降（将来実装予定）:
+   * - ア: 主たる傷病名（修飾語コード・補足コメントフィールド追加後）
+   * - イ: 心身の状態（JSレコード拡張フィールド追加後）
+   * - カ: 情報提供先（TJレコード実装後）
+   * - キ: 特記事項（TZレコード実装後）
+   * - ク: 専門の研修（KSレコード実装後）
+   * - ケ: 他の訪問看護ステーション（RJレコード拡張後）
+   * - サ: その他（COレコード実装後）
+   */
+  private async buildInfoField(data: ReceiptCsvData): Promise<string> {
+    const sections: string[] = [];
+
+    // ========== Phase 1実装: エ 訪問開始年月日・訪問終了年月日・訪問終了時刻・訪問終了の状況 ==========
+    if (data.nursingRecords.length > 0) {
+      // 訪問記録を訪問日でソート
+      const sortedRecords = [...data.nursingRecords].sort((a, b) => {
+        const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
+        const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      // 訪問開始年月日（最初の訪問記録の日付）
+      const firstRecord = sortedRecords[0];
+      if (firstRecord.visitDate) {
+        const startDate = this.formatDateForInfoField(firstRecord.visitDate);
+        sections.push('<訪問開始年月日>');
+        sections.push(startDate);
+      }
+
+      // 訪問終了年月日・訪問終了時刻・訪問終了の状況
+      const serviceEndRecord = sortedRecords.find(r => r.isServiceEnd);
+      if (serviceEndRecord) {
+        // 訪問終了年月日
+        if (serviceEndRecord.visitDate) {
+          const endDate = this.formatDateForInfoField(serviceEndRecord.visitDate);
+          sections.push('<訪問終了年月日>');
+          sections.push(endDate);
+        }
+
+        // 訪問終了時刻
+        if (serviceEndRecord.actualEndTime) {
+          const endTime = this.formatTimeForInfoField(serviceEndRecord.actualEndTime);
+          sections.push('<訪問終了時刻>');
+          sections.push(endTime);
+        }
+
+        // 訪問終了の状況
+        if (serviceEndRecord.serviceEndReasonCode) {
+          const reasonText = await this.getServiceEndReasonText(serviceEndRecord.serviceEndReasonCode, serviceEndRecord.serviceEndReasonText);
+          sections.push('<訪問終了の状況>');
+          sections.push(reasonText);
+        }
+      }
+    }
+
+    // ========== Phase 1実装: オ 死亡年月日・死亡時刻・死亡した場所 ==========
+    if (data.patient.deathDate) {
+      // 死亡年月日
+      const deathDate = this.formatDateForInfoField(data.patient.deathDate);
+      sections.push('<死亡年月日>');
+      sections.push(deathDate);
+
+      // 死亡時刻
+      if (data.patient.deathTime) {
+        const deathTime = this.formatTimeForInfoField(data.patient.deathTime);
+        sections.push('<死亡時刻>');
+        sections.push(deathTime);
+      }
+
+      // 死亡した場所
+      if (data.patient.deathPlaceCode) {
+        const deathPlaceText = await this.getDeathPlaceText(data.patient.deathPlaceCode, data.patient.deathPlaceText);
+        sections.push('<死亡した場所>');
+        sections.push(deathPlaceText);
+      }
+    }
+
+    // ========== Phase 1実装: ウ 指示期間 ==========
+    if (data.doctorOrder.startDate && data.doctorOrder.endDate) {
+      const instructionTypeTitle = this.getInstructionTypeTitle(data.doctorOrder.instructionType);
+      const startDate = this.formatDateForInfoField(data.doctorOrder.startDate);
+      const endDate = this.formatDateForInfoField(data.doctorOrder.endDate);
+      
+      sections.push(instructionTypeTitle);
+      sections.push(`${startDate}　～　${endDate}`);
+    }
+
+    // ========== Phase 1実装: コ 訪問した場所２・３ ==========
+    if (data.nursingRecords.length > 0) {
+      const locationChanges = this.detectVisitLocationChanges(data.nursingRecords);
+      
+      // 訪問した場所２
+      if (locationChanges[0]) {
+        const location2 = locationChanges[0];
+        const changeDate = this.formatDateForInfoField(location2.changeDate);
+        const locationName = await this.getVisitLocation2Or3Text(location2.locationCode, location2.locationCustom);
+        
+        sections.push('<訪問した場所２>');
+        sections.push(`訪問場所変更年月日；${changeDate}`);
+        sections.push(locationName);
+      }
+
+      // 訪問した場所３
+      if (locationChanges[1]) {
+        const location3 = locationChanges[1];
+        const changeDate = this.formatDateForInfoField(location3.changeDate);
+        const locationName = await this.getVisitLocation2Or3Text(location3.locationCode, location3.locationCustom);
+        
+        sections.push('<訪問した場所３>');
+        sections.push(`訪問場所変更年月日；${changeDate}`);
+        sections.push(locationName);
+      }
+    }
+
+    // ========== Phase 2以降（将来実装予定） ==========
+    // ア: 主たる傷病名
+    // イ: 心身の状態
+    // カ: 情報提供先
+    // キ: 特記事項
+    // ク: 専門の研修
+    // ケ: 他の訪問看護ステーション
+    // サ: その他
+
+    // 各セクションを改行で区切って結合
+    return sections.join('\n');
+  }
+
+  /**
+   * 日付を情報欄用の和暦形式に変換
+   * 形式: 「令和　６年　６月　１日」
+   */
+  private formatDateForInfoField(date: Date | string): string {
+    if (!date) return '';
+    
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '';
+
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+
+    let eraName: string;
+    let eraYear: number;
+
+    if (year >= 2019 && (year > 2019 || d.getMonth() >= 4)) {
+      eraName = '令和';
+      eraYear = year - 2018;
+    } else if (year >= 1989) {
+      eraName = '平成';
+      eraYear = year - 1988;
+    } else if (year >= 1926) {
+      eraName = '昭和';
+      eraYear = year - 1925;
+    } else if (year >= 1912) {
+      eraName = '大正';
+      eraYear = year - 1911;
+    } else if (year >= 1868) {
+      eraName = '明治';
+      eraYear = year - 1867;
+    } else {
+      return '';
+    }
+
+    // 全角数字に変換
+    const eraYearStr = this.toFullWidthNumber(eraYear);
+    const monthStr = this.toFullWidthNumber(month);
+    const dayStr = this.toFullWidthNumber(day);
+
+    return `${eraName}　${eraYearStr}年　${monthStr}月　${dayStr}日`;
+  }
+
+  /**
+   * 時刻を情報欄用の形式に変換
+   * 入力形式: "HH:MM" または "HHMM"
+   * 出力形式: 「１５時　５分」
+   */
+  private formatTimeForInfoField(time: string): string {
+    if (!time) return '';
+
+    // HH:MM形式をHHMM形式に変換
+    const timeStr = time.replace(':', '');
+    if (timeStr.length < 4) return '';
+
+    const hour = parseInt(timeStr.substring(0, 2), 10);
+    const minute = parseInt(timeStr.substring(2, 4), 10);
+
+    if (isNaN(hour) || isNaN(minute)) return '';
+
+    const hourStr = this.toFullWidthNumber(hour);
+    const minuteStr = this.toFullWidthNumber(minute);
+
+    return `${hourStr}時　${minuteStr}分`;
+  }
+
+  /**
+   * 数字を全角に変換
+   */
+  private toFullWidthNumber(num: number): string {
+    const fullWidthMap: { [key: string]: string } = {
+      '0': '０', '1': '１', '2': '２', '3': '３', '4': '４',
+      '5': '５', '6': '６', '7': '７', '8': '８', '9': '９'
+    };
+
+    return String(num).split('').map(char => fullWidthMap[char] || char).join('');
+  }
+
+  /**
+   * 指示区分コードからタイトル行を取得
+   */
+  private getInstructionTypeTitle(instructionType: string | undefined): string {
+    if (!instructionType) return '<指示期間>';
+
+    const typeMap: { [key: string]: string } = {
+      'regular': '<指示期間>',
+      'special': '<特別指示期間>',
+      'psychiatric': '<精神指示期間>',
+      'psychiatric_special': '<精神特別指示期間>',
+      'medical_observation': '<医療観察精神指示期間>',
+      'medical_observation_special': '<医療観察精神特別指示期間>'
+    };
+
+    return typeMap[instructionType] || '<指示期間>';
+  }
+
+  /**
+   * 訪問終了の状況コードから表示テキストを取得（別表15）
+   */
+  private async getServiceEndReasonText(code: string, customText: string | null | undefined): Promise<string> {
+    const reasonMap: { [key: string]: string } = {
+      '01': '１　軽快',
+      '02': '２　施設',
+      '03': '３　医療機関',
+      '04': '４　死亡',
+      '99': '５　その他'
+    };
+
+    const baseText = reasonMap[code] || '';
+    
+    // コード99（その他）の場合は、セミコロンに続けて文字データを表示
+    if (code === '99' && customText) {
+      return `${baseText}；${customText}`;
+    }
+
+    return baseText;
+  }
+
+  /**
+   * 死亡場所コードから表示テキストを取得（別表16）
+   */
+  private async getDeathPlaceText(code: string, customText: string | null | undefined): Promise<string> {
+    const locationName = await getVisitLocationName(code);
+    
+    if (!locationName) {
+      return '';
+    }
+
+    // コード99（その他）の場合は、セミコロンに続けて文字データを表示
+    if (code === '99' && customText) {
+      return `５　その他；${customText}`;
+    }
+
+    // 場所コードから番号を取得（01→1、11→2、12→3...）
+    const codeToNumber: { [key: string]: string } = {
+      '01': '１',
+      '11': '２',
+      '12': '３',
+      '13': '４',
+      '14': '５',
+      '15': '６',
+      '16': '７',
+      '31': '８',
+      '32': '９',
+      '99': '５' // その他は常に5
+    };
+
+    const number = codeToNumber[code] || '';
+    return `${number}　${locationName}`;
+  }
+
+  /**
+   * 訪問した場所２・３の表示テキストを取得（別表16）
+   */
+  private async getVisitLocation2Or3Text(code: string, customText: string | null | undefined): Promise<string> {
+    const locationName = await getVisitLocationName(code);
+    
+    if (!locationName) {
+      return '';
+    }
+
+    // コード99（その他）の場合は、セミコロンに続けて文字データを表示
+    if (code === '99' && customText) {
+      return `５　その他；${customText}`;
+    }
+
+    // 場所コードから番号を取得
+    const codeToNumber: { [key: string]: string } = {
+      '01': '１',
+      '11': '２',
+      '12': '３',
+      '13': '４',
+      '14': '５',
+      '15': '６',
+      '16': '７',
+      '31': '８',
+      '32': '９'
+    };
+
+    const number = codeToNumber[code] || '';
+    return `${number}　${locationName}`;
+  }
+
+  /**
+   * 訪問場所変更履歴を検出（CSVビルダーと同じロジック）
+   */
+  private detectVisitLocationChanges(records: ReceiptCsvData['nursingRecords']): Array<{
+    changeDate: Date | string;
+    locationCode: string;
+    locationCustom?: string | null;
+  }> {
+    if (records.length === 0) return [];
+
+    // 訪問記録を訪問日でソート
+    const sortedRecords = [...records].sort((a, b) => {
+      const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
+      const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    const changes: Array<{
+      changeDate: Date | string;
+      locationCode: string;
+      locationCustom?: string | null;
+    }> = [];
+
+    let previousLocationCode = sortedRecords[0]?.visitLocationCode || '';
+
+    for (let i = 1; i < sortedRecords.length; i++) {
+      const currentRecord = sortedRecords[i];
+      const currentLocationCode = currentRecord.visitLocationCode || '';
+
+      // 場所コードが変更された場合
+      if (currentLocationCode !== previousLocationCode && currentLocationCode) {
+        changes.push({
+          changeDate: currentRecord.visitDate,
+          locationCode: currentLocationCode,
+          locationCustom: currentRecord.visitLocationCustom
+        });
+
+        // 最大2件まで
+        if (changes.length >= 2) break;
+
+        previousLocationCode = currentLocationCode;
+      }
+    }
+
+    return changes;
   }
 
   /**
