@@ -6293,7 +6293,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         },
-        orderBy: (contracts, { desc }) => [desc(contracts.contractDate)]
+        orderBy: (contracts, { desc }) => [
+          desc(contracts.contractDate),
+          desc(contracts.createdAt)
+        ]
       });
 
       res.json(allContracts);
@@ -6313,6 +6316,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validatedData,
         facilityId: facilityId,
       };
+
+      // Convert empty string witnessedBy to null to avoid foreign key constraint violation
+      if (contractData.witnessedBy === '' || contractData.witnessedBy === undefined) {
+        contractData.witnessedBy = null;
+      }
 
       // Add file path and original filename if file was uploaded
       if (req.file) {
@@ -6363,6 +6371,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validatedData,
         updatedAt: new Date()
       };
+
+      // Convert empty string witnessedBy to null to avoid foreign key constraint violation
+      if (updateData.witnessedBy === '' || updateData.witnessedBy === undefined) {
+        updateData.witnessedBy = null;
+      }
 
       // If a new file is uploaded, delete the old one first
       if (req.file) {

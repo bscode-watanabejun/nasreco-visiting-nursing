@@ -27,12 +27,13 @@ import {
   ExternalLink,
   Download
 } from "lucide-react"
-import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, ServiceCarePlan, CarePlan, Building, MedicalInstitution, CareManager } from "@shared/schema"
+import type { Patient, NursingRecord, PaginatedResult, DoctorOrder, InsuranceCard, ServiceCarePlan, CarePlan, Contract, Building, MedicalInstitution, CareManager } from "@shared/schema"
 import { DoctorOrderDialog } from "./DoctorOrderDialog"
 import { InsuranceCardDialog } from "./InsuranceCardDialog"
 import { PublicExpenseCardDialog } from "./PublicExpenseCardDialog"
 import { ServiceCarePlanDialog } from "./ServiceCarePlanDialog"
 import { CarePlanDialog } from "./CarePlanDialog"
+import { ContractDialog } from "./ContractDialog"
 import { PatientForm } from "./PatientForm"
 import { useToast } from "@/hooks/use-toast"
 
@@ -94,6 +95,8 @@ export function PatientDetail() {
   const [editingServiceCarePlan, setEditingServiceCarePlan] = useState<ServiceCarePlan | null>(null)
   const [carePlanDialogOpen, setCarePlanDialogOpen] = useState(false)
   const [editingCarePlan, setEditingCarePlan] = useState<CarePlan | null>(null)
+  const [contractDialogOpen, setContractDialogOpen] = useState(false)
+  const [editingContract, setEditingContract] = useState<Contract | null>(null)
   const [isPatientFormOpen, setIsPatientFormOpen] = useState(false)
   const [isExportingRecordI, setIsExportingRecordI] = useState(false)
 
@@ -187,6 +190,31 @@ export function PatientDetail() {
     },
     enabled: !!id,
   })
+
+  // Fetch contracts for this patient
+  const { data: contracts = [], isLoading: isContractsLoading } = useQuery<Contract[]>({
+    queryKey: ["/api/contracts", id],
+    queryFn: async () => {
+      const response = await fetch(`/api/contracts?patientId=${id}`)
+      if (!response.ok) {
+        throw new Error("契約書・同意書の取得に失敗しました")
+      }
+      return response.json()
+    },
+    enabled: !!id,
+  })
+
+  // Fetch users for contract witness selection
+  const { data: usersResponse } = useQuery<{ data: any[]; total: number }>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const response = await fetch("/api/users?limit=100")
+      if (!response.ok) throw new Error("スタッフの取得に失敗しました")
+      return response.json()
+    },
+  })
+
+  const users = usersResponse?.data || []
 
   // Fetch special management definitions for display
   const { data: specialManagementDefinitions = [] } = useQuery<any[]>({
@@ -404,7 +432,7 @@ export function PatientDetail() {
           </TabsTrigger>
           <TabsTrigger value="care" className="text-xs sm:text-sm">
             <FileText className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">計画書</span>
+            <span className="hidden sm:inline">計画書・契約書</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1920,6 +1948,145 @@ export function PatientDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Contracts (契約書・同意書) */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>契約書・同意書</CardTitle>
+                  <CardDescription>サービス利用契約書、重要事項説明書、同意書等</CardDescription>
+                </div>
+                {!isHeadquarters && (
+                  <Button
+                    onClick={() => {
+                      setEditingContract(null)
+                      setContractDialogOpen(true)
+                    }}
+                    size="sm"
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    新規作成
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isContractsLoading ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">読み込み中...</p>
+                </div>
+              ) : contracts.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+                  <p className="text-muted-foreground">契約書・同意書が登録されていません</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {contracts.map((contract) => {
+                    const contractTypeLabels: Record<string, string> = {
+                      service_agreement: "サービス利用契約書",
+                      important_matters: "重要事項説明書",
+                      personal_info_consent: "個人情報利用同意書",
+                      medical_consent: "医療行為同意書",
+                      other: "その他"
+                    }
+                    const witnessUser = users.find((u: any) => u.id === contract.witnessedBy)
+                    return (
+                      <div key={contract.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{contractTypeLabels[contract.contractType] || contract.contractType}</span>
+                              <span className="text-sm text-muted-foreground">-</span>
+                              <span className="text-sm font-medium">{contract.title}</span>
+                            </div>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span>契約日: {contract.contractDate}</span>
+                              <span>有効期間: {contract.startDate} 〜 {contract.endDate || "無期限"}</span>
+                            </div>
+                            {contract.signedBy && (
+                              <div className="mt-2">
+                                <p className="text-xs text-muted-foreground">署名者</p>
+                                <p className="text-sm">{contract.signedBy}</p>
+                              </div>
+                            )}
+                            {witnessUser && (
+                              <div className="mt-2">
+                                <p className="text-xs text-muted-foreground">立会人</p>
+                                <p className="text-sm">{witnessUser.fullName}</p>
+                              </div>
+                            )}
+                            {contract.description && (
+                              <div className="mt-2">
+                                <p className="text-xs text-muted-foreground">説明・備考</p>
+                                <p className="text-sm whitespace-pre-wrap">{contract.description}</p>
+                              </div>
+                            )}
+                            {contract.filePath && (
+                              <div className="mt-2 flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => window.open(`/api/contracts/${contract.id}/attachment/download`, '_blank')}
+                                >
+                                  <ExternalLink className="mr-1 h-3 w-3" />
+                                  プレビュー
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    window.location.href = `/api/contracts/${contract.id}/attachment/download?download=true`
+                                  }}
+                                >
+                                  <Download className="mr-1 h-3 w-3" />
+                                  ダウンロード
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                          {!isHeadquarters && (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingContract(contract)
+                                  setContractDialogOpen(true)
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={async () => {
+                                  if (!confirm('この契約書・同意書を削除してもよろしいですか？')) return
+                                  try {
+                                    const response = await fetch(`/api/contracts/${contract.id}`, {
+                                      method: 'DELETE',
+                                    })
+                                    if (!response.ok) throw new Error('削除に失敗しました')
+                                    toast({ description: "契約書・同意書を削除しました" })
+                                    queryClient.invalidateQueries({ queryKey: ["/api/contracts", id] })
+                                  } catch (error) {
+                                    toast({ variant: "destructive", description: "削除に失敗しました" })
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -1963,6 +2130,14 @@ export function PatientDetail() {
         onOpenChange={setCarePlanDialogOpen}
         patientId={id!}
         plan={editingCarePlan}
+      />
+
+      {/* Contract Dialog */}
+      <ContractDialog
+        open={contractDialogOpen}
+        onOpenChange={setContractDialogOpen}
+        patientId={id!}
+        contract={editingContract}
       />
 
       {/* Patient Form Dialog */}
