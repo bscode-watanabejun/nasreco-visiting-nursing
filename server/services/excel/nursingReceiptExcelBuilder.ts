@@ -15,7 +15,7 @@ import { getReceiptSpecialNoteNames, getWorkRelatedReasonName, getVisitLocationN
 import { db } from '../../db';
 import { visitingNursingMasterBasic, nursingServiceCodes } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import { determineBurdenClassificationCode } from '../csv/receiptClassification';
+import { determineBurdenClassificationCode, determineReceiptTypeCode } from '../csv/receiptClassification';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,8 +84,43 @@ export class NursingReceiptExcelBuilder {
     // U2: HMレコードの訪問看護ステーションコード
     sheet.getCell('U2').value = data.facility.facilityCode || '';
 
-    // AE2, AH2, AK2: 不明（後で確認）
-    // 現時点では空欄のまま
+    // AE2, AH2, AK2: レセプト種別コードの各桁を出力
+    try {
+      // レセプト種別コードを取得（4桁）
+      const receiptTypeCode = determineReceiptTypeCode(
+        data.patient,
+        data.insuranceCard,
+        data.publicExpenses
+      );
+
+      // 提出先を判定（支払基金かどうか）
+      const reviewOrgCode = this.determineReviewOrganizationCode(data);
+      const isShaho = reviewOrgCode === '1'; // '1'=支払基金
+
+      // 各桁を抽出（1桁目は常に'6'なので、2-4桁目を使用）
+      const digit2 = receiptTypeCode.charAt(1); // 2桁目：保険種別
+      const digit3 = receiptTypeCode.charAt(2); // 3桁目：併用区分
+      const digit4 = receiptTypeCode.charAt(3); // 4桁目：本人家族区分
+
+      // マッピングテーブルで文字列に変換
+      const insuranceTypeText = this.getInsuranceTypeText(digit2, isShaho);
+      const combinationTypeText = this.getCombinationTypeText(digit3);
+      const relationshipTypeText = this.getRelationshipTypeText(digit4);
+
+      // セルに出力
+      if (insuranceTypeText) {
+        sheet.getCell('AE2').value = insuranceTypeText;
+      }
+      if (combinationTypeText) {
+        sheet.getCell('AH2').value = combinationTypeText;
+      }
+      if (relationshipTypeText) {
+        sheet.getCell('AK2').value = relationshipTypeText;
+      }
+    } catch (error) {
+      // エラー時は空欄のまま（警告ログを出力）
+      console.warn('レセプト種別コードの取得に失敗しました:', error);
+    }
   }
 
   /**
@@ -1077,6 +1112,102 @@ export class NursingReceiptExcelBuilder {
         priority: pe.priority,
       }))
     );
+  }
+
+  /**
+   * 保険者番号から審査支払機関コードを判定
+   *
+   * 別表1（審査支払機関コード）:
+   * - '1' = 社会保険診療報酬支払基金
+   * - '2' = 国民健康保険団体連合会（国保・後期高齢者医療）
+   */
+  private determineReviewOrganizationCode(data: ReceiptCsvData): string {
+    const insuranceCard = data.insuranceCard;
+
+    // 保険証に設定されている審査支払機関コードを優先使用
+    if (insuranceCard?.reviewOrganizationCode) {
+      return insuranceCard.reviewOrganizationCode;
+    }
+
+    // 保険者番号から動的判定（フォールバック）
+    const insurerNumber = insuranceCard?.insurerNumber;
+    if (!insurerNumber) {
+      // エラーを投げずにデフォルト値を返す（支払基金を想定）
+      return '1';
+    }
+
+    const length = insurerNumber.trim().length;
+    const prefix = insurerNumber.substring(0, 2);
+
+    // 6桁 → 国保連 ('2')
+    if (length === 6) {
+      return '2';
+    }
+
+    // 8桁の場合
+    if (length === 8) {
+      // 後期高齢者医療（39で始まる） → 国保連 ('2')
+      if (prefix === '39') {
+        return '2';
+      }
+      // その他の8桁 → 社保 ('1')
+      return '1';
+    }
+
+    // デフォルト（支払基金を想定）
+    return '1';
+  }
+
+  /**
+   * 2桁目（保険種別）の文字列を取得
+   */
+  private getInsuranceTypeText(digit: string, isShaho: boolean): string {
+    const insuranceTypeMap: { [key: string]: { normal: string; shaho: string } } = {
+      '1': { normal: '1 社・国', shaho: '1社保' },
+      '2': { normal: '2 公費', shaho: '2 公費' },
+      '3': { normal: '3 後期', shaho: '3 後期' },
+      '4': { normal: '4 退職', shaho: '4 退職' },
+    };
+
+    const mapping = insuranceTypeMap[digit];
+    if (!mapping) {
+      return '';
+    }
+
+    // 支払基金向けの特別ルール（2桁目が'1'の場合のみ）
+    if (isShaho && digit === '1') {
+      return mapping.shaho;
+    }
+
+    return mapping.normal;
+  }
+
+  /**
+   * 3桁目（併用区分）の文字列を取得
+   */
+  private getCombinationTypeText(digit: string): string {
+    const combinationTypeMap: { [key: string]: string } = {
+      '1': '1 単独',
+      '2': '2 2併',
+      '3': '3 3併',
+    };
+
+    return combinationTypeMap[digit] || '';
+  }
+
+  /**
+   * 4桁目（本人家族区分）の文字列を取得
+   */
+  private getRelationshipTypeText(digit: string): string {
+    const relationshipTypeMap: { [key: string]: string } = {
+      '2': '2 本人',
+      '4': '4 六歳',
+      '6': '6 家族',
+      '8': '8 高齢一',
+      '0': '0 高齢7',
+    };
+
+    return relationshipTypeMap[digit] || '';
   }
 
   /**
