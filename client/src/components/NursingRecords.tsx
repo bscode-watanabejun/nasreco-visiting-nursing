@@ -458,6 +458,11 @@ export function NursingRecords() {
   const [sortBy, setSortBy] = useState<'visitDate' | 'recordDate'>('visitDate')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filterStatus, filterPatientId, filterNurseId, filterDateFrom, filterDateTo, sortBy, sortOrder])
+
   // File attachments state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [filePreviews, setFilePreviews] = useState<string[]>([])
