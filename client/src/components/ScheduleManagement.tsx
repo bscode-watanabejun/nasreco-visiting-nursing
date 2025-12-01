@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
@@ -93,78 +93,6 @@ const getMonthDates = (currentDate: Date): Date[] => {
   return dates
 }
 
-// Record Action Button Component - shows different button based on record existence
-interface RecordActionButtonProps {
-  schedule: Schedule
-  variant?: "default" | "ghost"
-  size?: "sm" | "default"
-  showLabel?: boolean
-  className?: string
-}
-
-function RecordActionButton({ schedule, variant = "default", size = "sm", showLabel = false, className = "" }: RecordActionButtonProps) {
-  const [, setLocation] = useLocation()
-  const basePath = useBasePath()
-
-  // Fetch nursing record for this schedule
-  const { data: recordData, isLoading } = useQuery<{ hasRecord: boolean; record?: NursingRecord }>({
-    queryKey: ["nursing-record-by-schedule", schedule.id],
-    queryFn: async () => {
-      const response = await fetch(`/api/schedules/${schedule.id}/nursing-record`)
-      if (!response.ok) {
-        return { hasRecord: false }
-      }
-      return response.json()
-    },
-    staleTime: 5000, // Cache for 5 seconds (reduced from 30s for faster updates)
-  })
-
-  const hasRecord = recordData?.hasRecord ?? false
-  const recordId = recordData?.record?.id
-
-  const handleClick = () => {
-    const currentPath = `${basePath}/schedule`
-    if (hasRecord && recordId) {
-      // Navigate to view/edit existing record with returnTo parameter
-      setLocation(`${basePath}/records?recordId=${recordId}&returnTo=${encodeURIComponent(currentPath)}`)
-    } else {
-      // Navigate to create new record with returnTo parameter
-      setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}&returnTo=${encodeURIComponent(currentPath)}`)
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <Button size={size} variant={variant} disabled className={className}>
-        <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
-        {showLabel && "..."}
-      </Button>
-    )
-  }
-
-  return (
-    <Button
-      size={size}
-      variant={hasRecord ? "outline" : variant}
-      onClick={handleClick}
-      title={hasRecord ? "訪問記録を確認" : "訪問記録を作成"}
-      className={className}
-    >
-      {hasRecord ? (
-        <>
-          <Eye className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
-          {showLabel && "記録詳細"}
-        </>
-      ) : (
-        <>
-          <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
-          {showLabel && "記録作成"}
-        </>
-      )}
-    </Button>
-  )
-}
-
 // Schedule Status Badge Component - shows status considering record state
 interface ScheduleStatusBadgeProps {
   scheduleId: string
@@ -251,8 +179,23 @@ export function ScheduleManagement() {
   const queryClient = useQueryClient()
   const [, setLocation] = useLocation()
   const basePath = useBasePath()
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [viewMode, setViewMode] = useState<'week' | 'day' | 'month'>('week')
+  const isInitialMount = useRef(true)
+  
+  // URLパラメータから状態を復元
+  const urlParams = new URLSearchParams(window.location.search)
+  const urlViewMode = urlParams.get('viewMode') as 'week' | 'day' | 'month' | null
+  const urlCurrentDate = urlParams.get('currentDate')
+  
+  const [currentDate, setCurrentDate] = useState(() => {
+    if (urlCurrentDate) {
+      const date = new Date(urlCurrentDate)
+      if (!isNaN(date.getTime())) return date
+    }
+    return new Date()
+  })
+  const [viewMode, setViewMode] = useState<'week' | 'day' | 'month'>(() => {
+    return urlViewMode && ['week', 'day', 'month'].includes(urlViewMode) ? urlViewMode : 'week'
+  })
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedMonthDate, setSelectedMonthDate] = useState<Date | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -325,10 +268,115 @@ export function ScheduleManagement() {
   const users = usersData?.data || []
   const schedules = schedulesData?.data || []
 
+  // viewModeやcurrentDateが変更されたらURLを更新（ブラウザの戻るボタンでも動作するように）
+  useEffect(() => {
+    // 初期マウント時はスキップ（URLパラメータから状態を復元した直後なので）
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    
+    const params = new URLSearchParams(window.location.search)
+    const currentViewMode = params.get('viewMode')
+    const currentDateParam = params.get('currentDate')
+    
+    // 現在のURLパラメータと状態が一致している場合は更新しない
+    if (currentViewMode === viewMode && currentDateParam === currentDate.toISOString()) {
+      return
+    }
+    
+    // URLパラメータを更新
+    params.set('viewMode', viewMode)
+    params.set('currentDate', currentDate.toISOString())
+    const locationPath = basePath 
+      ? `${basePath}/schedule?${params.toString()}`
+      : `/schedule?${params.toString()}`
+    
+    setLocation(locationPath)
+  }, [viewMode, currentDate, setLocation])
+
+  // Record Action Button Component - ScheduleManagement内に移動
+  function RecordActionButton({ 
+    schedule, 
+    variant = "default", 
+    size = "sm", 
+    showLabel = false, 
+    className = "" 
+  }: {
+    schedule: Schedule
+    variant?: "default" | "ghost"
+    size?: "sm" | "default"
+    showLabel?: boolean
+    className?: string
+  }) {
+    // Fetch nursing record for this schedule
+    const { data: recordData, isLoading } = useQuery<{ hasRecord: boolean; record?: NursingRecord }>({
+      queryKey: ["nursing-record-by-schedule", schedule.id],
+      queryFn: async () => {
+        const response = await fetch(`/api/schedules/${schedule.id}/nursing-record`)
+        if (!response.ok) {
+          return { hasRecord: false }
+        }
+        return response.json()
+      },
+      staleTime: 5000, // Cache for 5 seconds (reduced from 30s for faster updates)
+    })
+
+    const hasRecord = recordData?.hasRecord ?? false
+    const recordId = recordData?.record?.id
+
+    const handleClick = () => {
+      // viewModeとcurrentDateを含めたURLパラメータを作成
+      const params = new URLSearchParams({
+        viewMode,
+        currentDate: currentDate.toISOString()
+      })
+      const currentPath = `${basePath}/schedule?${params.toString()}`
+      
+      if (hasRecord && recordId) {
+        // Navigate to view/edit existing record with returnTo parameter
+        setLocation(`${basePath}/records?recordId=${recordId}&returnTo=${encodeURIComponent(currentPath)}`)
+      } else {
+        // Navigate to create new record with returnTo parameter
+        setLocation(`${basePath}/records?mode=create&scheduleId=${schedule.id}&patientId=${schedule.patientId}&returnTo=${encodeURIComponent(currentPath)}`)
+      }
+    }
+
+    if (isLoading) {
+      return (
+        <Button size={size} variant={variant} disabled className={className}>
+          <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
+          {showLabel && "..."}
+        </Button>
+      )
+    }
+
+    return (
+      <Button
+        size={size}
+        variant={hasRecord ? "outline" : variant}
+        onClick={handleClick}
+        title={hasRecord ? "訪問記録を確認" : "訪問記録を作成"}
+        className={className}
+      >
+        {hasRecord ? (
+          <>
+            <Eye className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
+            {showLabel && "記録詳細"}
+          </>
+        ) : (
+          <>
+            <FileText className={showLabel ? "mr-1 h-3 w-3" : "h-3 w-3"} />
+            {showLabel && "記録作成"}
+          </>
+        )}
+      </Button>
+    )
+  }
+
   // Create schedule mutation
   const createScheduleMutation = useMutation({
     mutationFn: async (newSchedule: any) => {
-      console.log("送信データ:", newSchedule) // デバッグ用
       const response = await fetch("/api/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -336,7 +384,6 @@ export function ScheduleManagement() {
       })
       if (!response.ok) {
         const error = await response.json()
-        console.error("サーバーエラー:", error) // デバッグ用
         throw new Error(error.error || "スケジュール作成に失敗しました")
       }
       return response.json()
@@ -347,7 +394,6 @@ export function ScheduleManagement() {
       setIsCreateDialogOpen(false)
     },
     onError: (error) => {
-      console.error("登録エラー:", error) // デバッグ用
       alert(`エラー: ${error.message}`)
     },
   })
@@ -374,7 +420,6 @@ export function ScheduleManagement() {
   // Update schedule mutation
   const updateScheduleMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      console.log("更新データ:", data) // デバッグ用
       const response = await fetch(`/api/schedules/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -382,7 +427,6 @@ export function ScheduleManagement() {
       })
       if (!response.ok) {
         const error = await response.json()
-        console.error("サーバーエラー:", error) // デバッグ用
         throw new Error(error.error || "スケジュール更新に失敗しました")
       }
       return response.json()
@@ -393,7 +437,6 @@ export function ScheduleManagement() {
       setSelectedSchedule(null)
     },
     onError: (error) => {
-      console.error("更新エラー:", error) // デバッグ用
       alert(`エラー: ${error.message}`)
     },
   })
@@ -495,7 +538,7 @@ export function ScheduleManagement() {
           }
         }
       } catch (error) {
-        console.error('Failed to check nursing record:', error)
+        // 訪問記録の確認に失敗した場合は、通常通り削除処理を続行
       }
     }
 
