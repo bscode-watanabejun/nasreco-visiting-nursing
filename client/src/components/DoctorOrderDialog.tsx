@@ -38,6 +38,7 @@ interface FormData {
   hasInfusionInstruction: 'yes' | 'no' | ''
   hasPressureUlcerTreatment: 'yes' | 'no' | ''
   hasHomeInfusionManagement: 'yes' | 'no' | ''
+  diseasePresenceCode: '01' | '02' | '03' // 基準告示第2の1に規定する疾病等の有無コード（別表13）
 }
 
 const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
@@ -55,6 +56,7 @@ const getInitialFormData = (order?: DoctorOrder | null): FormData => ({
   hasInfusionInstruction: order?.hasInfusionInstruction ? 'yes' : order?.hasInfusionInstruction === false ? 'no' : '',
   hasPressureUlcerTreatment: order?.hasPressureUlcerTreatment ? 'yes' : order?.hasPressureUlcerTreatment === false ? 'no' : '',
   hasHomeInfusionManagement: order?.hasHomeInfusionManagement ? 'yes' : order?.hasHomeInfusionManagement === false ? 'no' : '',
+  diseasePresenceCode: (order?.diseasePresenceCode as '01' | '02' | '03') || '03', // デフォルト値は'03'（無）
 })
 
 export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: DoctorOrderDialogProps) {
@@ -164,6 +166,9 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
         if (formData.hasHomeInfusionManagement) {
           multipartData.append('hasHomeInfusionManagement', formData.hasHomeInfusionManagement === 'yes' ? 'true' : 'false')
         }
+        if (formData.diseasePresenceCode) {
+          multipartData.append('diseasePresenceCode', formData.diseasePresenceCode)
+        }
         multipartData.append('file', formData.file)
 
         response = await fetch(url, {
@@ -191,6 +196,7 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
           ...(formData.hasInfusionInstruction && { hasInfusionInstruction: formData.hasInfusionInstruction === 'yes' }),
           ...(formData.hasPressureUlcerTreatment && { hasPressureUlcerTreatment: formData.hasPressureUlcerTreatment === 'yes' }),
           ...(formData.hasHomeInfusionManagement && { hasHomeInfusionManagement: formData.hasHomeInfusionManagement === 'yes' }),
+          ...(formData.diseasePresenceCode && { diseasePresenceCode: formData.diseasePresenceCode }),
         }
 
         response = await fetch(url, {
@@ -436,6 +442,29 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
             </Select>
             <p className="text-xs text-muted-foreground">
               該当する加算の算定判定に使用されます
+            </p>
+          </div>
+
+          {/* Disease Presence Code */}
+          <div className="space-y-2">
+            <Label htmlFor="diseasePresenceCode">基準告示第2の1に規定する疾病等の有無</Label>
+            <Select
+              value={formData.diseasePresenceCode}
+              onValueChange={(value: '01' | '02' | '03') =>
+                setFormData(prev => ({ ...prev, diseasePresenceCode: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="01">別表7</SelectItem>
+                <SelectItem value="02">別表8</SelectItem>
+                <SelectItem value="03">無</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              レセプトCSV出力のJSレコードに必須出力されます（未選択時は「無」を出力）
             </p>
           </div>
 

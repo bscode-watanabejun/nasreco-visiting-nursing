@@ -673,10 +673,14 @@ export class NursingReceiptCsvBuilder {
     // 最新の訪問記録の観察事項を取得（必須フィールド）
     const mentalPhysicalState = sortedRecords[0]?.observations || '';
 
+    // 基準告示第2の1に規定する疾病等の有無コード（別表13: '01'=別表7, '02'=別表8, '03'=無）
+    // 未設定の場合はデフォルト値'03'（無）を出力
+    const diseasePresenceCode = data.doctorOrder.diseasePresenceCode || '03';
+
     const fields = [
       'JS',                    // レコード識別情報
       mentalPhysicalState,     // 心身の状態（必須、2400バイト可変）
-      '',                      // 基準告示第2の1に規定する疾病等の有無（任意）
+      diseasePresenceCode,     // 基準告示第2の1に規定する疾病等の有無（必須、2バイト固定）
       '',                      // 該当する疾病等（任意）
       '',                      // GAF尺度により判定した値（任意）
       '',                      // GAF尺度により判定した年月日（任意）

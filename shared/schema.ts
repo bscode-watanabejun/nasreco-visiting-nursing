@@ -424,6 +424,7 @@ export const doctorOrders = pgTable("doctor_orders", {
   hasInfusionInstruction: boolean("has_infusion_instruction"), // 点滴注射指示の有無
   hasPressureUlcerTreatment: boolean("has_pressure_ulcer_treatment"), // 床ずれ処置の有無
   hasHomeInfusionManagement: boolean("has_home_infusion_management"), // 在宅患者訪問点滴注射管理指導料の有無
+  diseasePresenceCode: varchar("disease_presence_code", { length: 2 }), // 基準告示第2の1に規定する疾病等の有無コード（別表13: '01'=別表7, '02'=別表8, '03'=無）
 
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),

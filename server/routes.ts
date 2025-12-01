@@ -10081,6 +10081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           diagnosis: validOrder.diagnosis,
           icd10Code: validOrder.icd10Code || '',
           instructionType: validOrder.instructionType, // Phase 3: 指示区分
+          diseasePresenceCode: validOrder.diseasePresenceCode || '03', // 基準告示第2の1に規定する疾病等の有無コード（別表13）
         },
         nursingRecords: targetRecords.map(record => ({
           id: record.id,

@@ -110,6 +110,7 @@ export interface ReceiptCsvData {
     diagnosis: string;
     icd10Code: string; // 7桁以内
     instructionType: 'regular' | 'special' | 'psychiatric' | 'psychiatric_special' | 'medical_observation' | 'medical_observation_special'; // Phase 3: 指示区分
+    diseasePresenceCode?: string; // 基準告示第2の1に規定する疾病等の有無コード（別表13: '01'=別表7, '02'=別表8, '03'=無）
   };
 
   // 訪問記録一覧
