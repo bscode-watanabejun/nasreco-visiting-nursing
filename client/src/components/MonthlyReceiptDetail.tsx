@@ -1788,6 +1788,7 @@ export default function MonthlyReceiptDetail() {
             hasInfusionInstruction: (receipt.doctorOrder.order as any).hasInfusionInstruction ?? null,
             hasPressureUlcerTreatment: (receipt.doctorOrder.order as any).hasPressureUlcerTreatment ?? null,
             hasHomeInfusionManagement: (receipt.doctorOrder.order as any).hasHomeInfusionManagement ?? null,
+            diseasePresenceCode: (receipt.doctorOrder.order as any).diseasePresenceCode || null,
             createdAt: new Date(),
             updatedAt: new Date(),
           }}
