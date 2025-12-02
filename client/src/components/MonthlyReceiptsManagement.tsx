@@ -38,6 +38,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import type { Patient } from "@shared/schema"
 import {
@@ -51,7 +56,8 @@ import {
   Unlock,
   Eye,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Info
 } from "lucide-react"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
@@ -1252,6 +1258,20 @@ export default function MonthlyReceiptsManagement() {
               対象年月と保険種別を選択してレセプトを生成します
             </DialogDescription>
           </DialogHeader>
+
+          {/* レセプト生成条件の表示 */}
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>レセプトが生成される条件</AlertTitle>
+            <AlertDescription className="mt-2 space-y-2">
+              <p>以下の条件を満たす患者のレセプトが生成されます。</p>
+              <ul className="list-disc list-inside space-y-2 text-sm text-muted-foreground pl-1 mt-2">
+                <li>対象年月に「完了」または「確認済み」ステータスの訪問記録が存在すること</li>
+                <li>患者が指定された保険種別（医療保険/介護保険）の保険証を持っていること</li>
+                <li>同じ対象年月・保険種別の確定済みレセプトが存在しないこと（既存の未確定レセプトは更新されます）</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
 
           <div className="space-y-4">
             <div>
