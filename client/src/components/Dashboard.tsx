@@ -314,6 +314,37 @@ export function Dashboard() {
   const recentRecords = recentRecordsData || []
   const criticalPatients = criticalPatientsData || []
 
+  // Fetch nursing records for today's schedules
+  const scheduleIds = schedules.map(s => s.id)
+  const { data: todayNursingRecordsData } = useQuery<Record<string, { hasRecord: boolean; record?: NursingRecord }>>({
+    queryKey: ["today-nursing-records", scheduleIds.join(",")],
+    queryFn: async () => {
+      if (scheduleIds.length === 0) return {}
+      
+      // Fetch nursing records for all schedules in parallel
+      const recordPromises = scheduleIds.map(async (scheduleId) => {
+        const response = await fetch(`/api/schedules/${scheduleId}/nursing-record`)
+        if (!response.ok) {
+          return { scheduleId, data: { hasRecord: false } }
+        }
+        const data = await response.json()
+        return { scheduleId, data }
+      })
+      
+      const results = await Promise.all(recordPromises)
+      const recordMap: Record<string, { hasRecord: boolean; record?: NursingRecord }> = {}
+      results.forEach(({ scheduleId, data }) => {
+        recordMap[scheduleId] = data
+      })
+      return recordMap
+    },
+    enabled: scheduleIds.length > 0,
+    staleTime: 0, // Always fetch fresh data on mount
+    refetchOnMount: true, // Refetch when component mounts
+  })
+
+  const todayNursingRecords = todayNursingRecordsData || {}
+
   // Calculate assigned patients count for current user
   const myNursingRecords = myNursingRecordsData?.data || []
   const mySchedules = mySchedulesData?.data || []
@@ -411,13 +442,33 @@ export function Dashboard() {
     .map((schedule) => {
       const patient = patients.find(p => p.id === schedule.patientId)
       const nurse = users.find(u => u.id === schedule.nurseId)
+      
+      // Check if there's a nursing record for this schedule
+      const recordData = todayNursingRecords[schedule.id]
+      const hasRecord = recordData?.hasRecord ?? false
+      const recordStatus = recordData?.record?.status
+      
+      // Determine status based on record existence and status
+      let status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+      if (schedule.status === 'cancelled') {
+        status = 'cancelled'
+      } else if (hasRecord && recordStatus === 'completed') {
+        // Record is completed - always show "完了" regardless of schedule status
+        status = 'completed'
+      } else if (hasRecord && recordStatus === 'draft') {
+        // Record is draft - use schedule status (usually 'in_progress')
+        status = schedule.status === 'in_progress' ? 'in_progress' : 'scheduled'
+      } else {
+        // No record - use schedule status
+        status = schedule.status || 'scheduled'
+      }
 
       return {
         id: schedule.id,
         patientName: patient ? getFullName(patient) : '患者不明',
         time: formatTime(schedule.scheduledStartTime),
         type: schedule.visitType || schedule.purpose,
-        status: schedule.status || 'scheduled',
+        status: status,
         nurse: nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当',
         patient: patient || null,
         schedule: schedule,
