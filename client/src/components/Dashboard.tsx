@@ -322,19 +322,25 @@ export function Dashboard() {
 
   // Fetch nursing records for today's schedules
   const scheduleIds = schedules.map(s => s.id)
-  const { data: todayNursingRecordsData } = useQuery<Record<string, { hasRecord: boolean; record?: NursingRecord }>>({
+  const { data: todayNursingRecordsData, isLoading: isLoadingNursingRecords } = useQuery<Record<string, { hasRecord: boolean; record?: NursingRecord }>>({
     queryKey: ["today-nursing-records", scheduleIds.join(",")],
     queryFn: async () => {
       if (scheduleIds.length === 0) return {}
       
       // Fetch nursing records for all schedules in parallel
       const recordPromises = scheduleIds.map(async (scheduleId) => {
-        const response = await fetch(`/api/schedules/${scheduleId}/nursing-record`)
-        if (!response.ok) {
+        try {
+          const response = await fetch(`/api/schedules/${scheduleId}/nursing-record`)
+          if (!response.ok) {
+            console.warn(`Failed to fetch nursing record for schedule ${scheduleId}:`, response.status, response.statusText)
+            return { scheduleId, data: { hasRecord: false } }
+          }
+          const data = await response.json()
+          return { scheduleId, data }
+        } catch (error) {
+          console.error(`Error fetching nursing record for schedule ${scheduleId}:`, error)
           return { scheduleId, data: { hasRecord: false } }
         }
-        const data = await response.json()
-        return { scheduleId, data }
       })
       
       const results = await Promise.all(recordPromises)
@@ -961,7 +967,7 @@ export function Dashboard() {
             <h2 className="text-lg font-bold mb-1">本日の訪問スケジュール</h2>
             <p className="text-xs text-muted-foreground mb-3">{today}の訪問予定です</p>
           </div>
-          {schedulesLoading ? (
+          {schedulesLoading || isLoadingNursingRecords ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
               <p className="text-muted-foreground">読み込み中...</p>
