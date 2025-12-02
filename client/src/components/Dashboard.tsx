@@ -175,6 +175,8 @@ export function Dashboard() {
       }
       return response.json()
     },
+    staleTime: 0, // Always fetch fresh data on mount
+    refetchOnMount: true, // Refetch when component mounts
   })
 
   // Fetch expiring insurance cards (within 30 days)
@@ -187,6 +189,8 @@ export function Dashboard() {
       }
       return response.json()
     },
+    staleTime: 0, // Always fetch fresh data on mount
+    refetchOnMount: true, // Refetch when component mounts
   })
 
   // Fetch recent nursing records

@@ -212,6 +212,7 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
       }
 
       await queryClient.invalidateQueries({ queryKey: ["doctor-orders"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/doctor-orders/expiring"] })
 
       toast({
         title: "保存完了",

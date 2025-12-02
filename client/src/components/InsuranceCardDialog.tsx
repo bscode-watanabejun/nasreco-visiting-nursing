@@ -296,6 +296,7 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
       }
 
       await queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards"] })
+      await queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards/expiring"] })
 
       toast({
         title: "保存完了",
