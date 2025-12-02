@@ -2322,6 +2322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       if (!schedule) {
+        console.log(`[ScheduleRecordAPI] Schedule not found: ${id}`);
         return res.status(404).json({ error: "スケジュールが見つかりません" });
       }
       
@@ -2330,11 +2331,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userFacilityId = req.facility?.id || req.user.facilityId;
       const accessibleFacilities = req.accessibleFacilities || [req.user.facilityId];
       
+      // ログ出力（本番環境でのデバッグ用）
+      console.log(`[ScheduleRecordAPI] Schedule ID: ${id}`);
+      console.log(`[ScheduleRecordAPI] Schedule facilityId: ${scheduleFacilityId}`);
+      console.log(`[ScheduleRecordAPI] req.facility?.id: ${req.facility?.id || 'null'}`);
+      console.log(`[ScheduleRecordAPI] req.user.facilityId: ${req.user.facilityId}`);
+      console.log(`[ScheduleRecordAPI] accessibleFacilities: ${JSON.stringify(accessibleFacilities)}`);
+      console.log(`[ScheduleRecordAPI] isCorporateAdmin: ${req.isCorporateAdmin || false}`);
+      
       // ユーザーがスケジュールの施設にアクセスできるか確認
       // 1. スケジュールのfacilityIdがユーザーのアクセス可能な施設リストに含まれているか
       // 2. または、コーポレート管理者の場合
       const hasAccess = accessibleFacilities.includes(scheduleFacilityId) || 
                        (req.isCorporateAdmin && req.user.accessLevel === 'corporate');
+      
+      console.log(`[ScheduleRecordAPI] hasAccess: ${hasAccess}`);
       
       if (!hasAccess) {
         console.warn(`[ScheduleRecordAPI] Access denied: User from facility ${userFacilityId} attempting to access schedule from facility ${scheduleFacilityId}`);
@@ -2353,10 +2364,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!record) {
+        console.log(`[ScheduleRecordAPI] Record not found for schedule ${id} with facilityId ${scheduleFacilityId}`);
         // Return 200 with hasRecord: false instead of 404
         return res.json({ hasRecord: false });
       }
 
+      console.log(`[ScheduleRecordAPI] Record found: ${record.id}`);
       res.json({ hasRecord: true, record });
     } catch (error) {
       console.error("Get nursing record by schedule error:", error);
