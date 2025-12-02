@@ -6740,7 +6740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 eq(nursingRecords.patientId, nursingRecord.patientId),
                 gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
                 lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-                eq(nursingRecords.status, 'completed')
+                inArray(nursingRecords.status, ['completed', 'reviewed'])
               ));
 
             // Recalculate totals
@@ -7335,7 +7335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-          eq(nursingRecords.status, 'completed')
+          inArray(nursingRecords.status, ['completed', 'reviewed'])
         ));
 
       // Get insurance cards to determine patient's insurance type
@@ -7912,7 +7912,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.patientId, patientId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-          eq(nursingRecords.status, 'completed')
+          inArray(nursingRecords.status, ['completed', 'reviewed'])
         ));
 
       // Recalculate totals (same logic as generate)
@@ -8258,7 +8258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(nursingRecords.facilityId, facilityId),
             gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
             lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-            eq(nursingRecords.status, 'completed')
+            inArray(nursingRecords.status, ['completed', 'reviewed'])
           ))
           .orderBy(nursingRecords.visitDate);
 
@@ -8558,7 +8558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.patientId, patientId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-          eq(nursingRecords.status, 'completed')
+          inArray(nursingRecords.status, ['completed', 'reviewed'])
         ));
 
       // Get doctor orders
@@ -11170,7 +11170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               eq(nursingRecords.facilityId, facilityId),
               gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
               lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-              eq(nursingRecords.status, 'completed')
+              inArray(nursingRecords.status, ['completed', 'reviewed'])
             ))
             .orderBy(nursingRecords.visitDate);
 
