@@ -49,8 +49,10 @@ const formatTime = (date: Date | string): string => {
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'completed': return 'bg-green-100 text-green-800 border-green-200'
+    case 'reviewed': return 'bg-blue-100 text-blue-800 border-blue-200'
     case 'in_progress': return 'bg-orange-100 text-orange-800 border-orange-200'
     case 'scheduled': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    case 'draft': return 'bg-gray-100 text-gray-800 border-gray-200'
     case 'cancelled': return 'bg-gray-100 text-gray-800 border-gray-200'
     default: return 'bg-gray-100 text-gray-800 border-gray-200'
   }
@@ -68,7 +70,9 @@ const getCardStatusColor = (status: string) => {
 
 const getStatusText = (status: string) => {
   switch (status) {
-    case 'completed': return '完了'
+    case 'completed': return '完成'
+    case 'reviewed': return '確認済み'
+    case 'draft': return '下書き'
     case 'in_progress': return '実施中'
     case 'scheduled': return '予定'
     case 'cancelled': return 'キャンセル'
@@ -204,6 +208,8 @@ export function Dashboard() {
       const result = await response.json()
       return result.data || []
     },
+    staleTime: 0, // Always fetch fresh data on mount
+    refetchOnMount: true, // Refetch when component mounts
   })
 
   // Fetch critical patients
