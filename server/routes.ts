@@ -2315,14 +2315,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/schedules/:id/nursing-record", requireAuth, checkSubdomainAccess, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      // Determine facility ID: use URL context facility if available, otherwise user's facility
-      const facilityId = req.facility?.id || req.user.facilityId;
+      
+      // まずスケジュールを取得して、そのスケジュールのfacilityIdを確認
+      const schedule = await db.query.schedules.findFirst({
+        where: eq(schedules.id, id),
+      });
+      
+      if (!schedule) {
+        return res.status(404).json({ error: "スケジュールが見つかりません" });
+      }
+      
+      // セキュリティチェック: ユーザーがこのスケジュールの施設にアクセスできるか確認
+      const scheduleFacilityId = schedule.facilityId;
+      const userFacilityId = req.facility?.id || req.user.facilityId;
+      const accessibleFacilities = req.accessibleFacilities || [req.user.facilityId];
+      
+      // ユーザーがスケジュールの施設にアクセスできるか確認
+      // 1. スケジュールのfacilityIdがユーザーのアクセス可能な施設リストに含まれているか
+      // 2. または、コーポレート管理者の場合
+      const hasAccess = accessibleFacilities.includes(scheduleFacilityId) || 
+                       (req.isCorporateAdmin && req.user.accessLevel === 'corporate');
+      
+      if (!hasAccess) {
+        console.warn(`[ScheduleRecordAPI] Access denied: User from facility ${userFacilityId} attempting to access schedule from facility ${scheduleFacilityId}`);
+        return res.status(403).json({ error: "このスケジュールへのアクセス権限がありません" });
+      }
 
-      // Find nursing record associated with this schedule
+      // スケジュールのfacilityIdを使用して訪問記録を検索
+      // これにより、req.facility?.idやreq.user.facilityIdがスケジュールのfacilityIdと異なる場合でも
+      // 正しく記録を見つけることができる
       const record = await db.query.nursingRecords.findFirst({
         where: and(
           eq(nursingRecords.scheduleId, id),
-          eq(nursingRecords.facilityId, facilityId),
+          eq(nursingRecords.facilityId, scheduleFacilityId),
           isNull(nursingRecords.deletedAt)
         ),
       });
