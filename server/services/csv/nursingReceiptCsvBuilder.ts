@@ -178,10 +178,7 @@ export class NursingReceiptCsvBuilder {
     // 1. HM: 訪問看護ステーション情報レコード
     this.addHMRecord(data);
 
-    // 2. GO: 訪問看護療養費請求書レコード
-    this.addGORecord();
-
-    // 3. RE: レセプト共通レコード
+    // 2. RE: レセプト共通レコード
     this.addRERecord(data);
 
     // 4. HO: 保険者レコード
@@ -225,6 +222,9 @@ export class NursingReceiptCsvBuilder {
     for (const bonus of data.bonusHistory) {
       this.addBonusKARecord(data, bonus);
     }
+
+    // 14. GO: 訪問看護療養費請求書レコード（全てのKAレコードの後）
+    this.addGORecord();
 
     // Shift_JISエンコードして返す
     return buildCsvFile(this.lines);
@@ -982,10 +982,7 @@ export class NursingReceiptCsvBuilder {
     const firstReceipt = data.receipts[0];
     this.addHMRecord(firstReceipt);
 
-    // 2. GO: 訪問看護療養費請求書レコード（1回のみ）
-    this.addGORecord();
-
-    // 3. 各レセプト（利用者）ごとに処理
+    // 2. 各レセプト（利用者）ごとに処理
     for (const receiptData of data.receipts) {
       // RE: レセプト共通レコード
       this.addRERecord(receiptData, this.currentReceiptNumber);
@@ -1034,6 +1031,9 @@ export class NursingReceiptCsvBuilder {
       // レセプト番号をインクリメント
       this.currentReceiptNumber++;
     }
+
+    // 3. GO: 訪問看護療養費請求書レコード（全てのレセプトのKAレコードの後、1回のみ）
+    this.addGORecord();
 
     // Shift_JISエンコードして返す
     return buildCsvFile(this.lines);

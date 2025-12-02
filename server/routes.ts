@@ -10811,8 +10811,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // CSV生成
       const csvBuffer = await generateMultipleNursingReceiptCsv(csvData);
 
-      // ファイル名を生成
-      const fileName = `medical_receipts_${csvData.targetYear}${String(csvData.targetMonth).padStart(2, '0')}.csv`;
+      // ファイル名を生成（複数レセプト用）
+      const fileName = 'RECEIPTH.UKE';
 
       // レスポンスヘッダー設定
       res.setHeader('Content-Type', 'text/csv; charset=Shift_JIS');

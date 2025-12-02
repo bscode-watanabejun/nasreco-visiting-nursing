@@ -417,11 +417,21 @@ export default function MonthlyReceiptsManagement() {
         throw new Error(error.error || "CSV出力に失敗しました")
       }
 
+      // レスポンスからファイル名を取得（Content-Dispositionヘッダーから）
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let fileName = 'RECEIPTH.UKE'
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename="(.+)"/)
+        if (fileNameMatch) {
+          fileName = fileNameMatch[1]
+        }
+      }
+
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `medical_receipts_${filterYear}${String(filterMonth).padStart(2, '0')}.csv`
+      a.download = fileName
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
