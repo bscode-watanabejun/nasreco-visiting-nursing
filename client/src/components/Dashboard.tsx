@@ -468,8 +468,8 @@ export function Dashboard() {
         // Record is completed - always show "完了" regardless of schedule status
         status = 'completed'
       } else if (hasRecord && recordStatus === 'draft') {
-        // Record is draft - use schedule status (usually 'in_progress')
-        status = schedule.status === 'in_progress' ? 'in_progress' : 'scheduled'
+        // Record is draft - always show "実施中" to display "記録詳細" button
+        status = 'in_progress'
       } else {
         // No record - use schedule status
         status = schedule.status || 'scheduled'
