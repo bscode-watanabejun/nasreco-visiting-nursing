@@ -2010,7 +2010,7 @@ export async function recalculateBonusesForReceipt(
       }
     }
 
-    // 同日訪問回数を計算
+    // 同日訪問回数を計算（時間順での順番を考慮）
     const visitDateStr = visitDate instanceof Date 
       ? visitDate.toISOString().split('T')[0]
       : typeof visitDate === 'string' 
@@ -2026,7 +2026,27 @@ export async function recalculateBonusesForReceipt(
       )
     });
 
-    const dailyVisitCount = sameDayVisits.length;
+    // 訪問開始時刻でソート
+    sameDayVisits.sort((a, b) => {
+      const timeA = a.actualStartTime ? new Date(a.actualStartTime).getTime() : Infinity;
+      const timeB = b.actualStartTime ? new Date(b.actualStartTime).getTime() : Infinity;
+      return timeA - timeB;
+    });
+
+    // 現在の訪問記録が時間順で何番目かを判定
+    const currentVisitStartTime = visitStartTime ? visitStartTime.getTime() : null;
+    let dailyVisitCount = 1;
+    if (currentVisitStartTime !== null) {
+      const currentIndex = sameDayVisits.findIndex(v => {
+        if (v.id === record.id) return true;
+        const visitTime = v.actualStartTime ? new Date(v.actualStartTime).getTime() : Infinity;
+        return visitTime === currentVisitStartTime;
+      });
+      dailyVisitCount = currentIndex >= 0 ? currentIndex + 1 : sameDayVisits.length;
+    } else {
+      // 開始時刻が未設定の場合は、既存の訪問数
+      dailyVisitCount = sameDayVisits.length;
+    }
 
     // 担当看護師情報を取得（専門管理加算用）
     const assignedNurse = record.nurseId ? await db.query.users.findFirst({

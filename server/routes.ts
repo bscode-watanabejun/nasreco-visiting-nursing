@@ -2998,7 +2998,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       )
     });
 
-    const dailyVisitCount = sameDayVisits.length + 1; // +1 for current visit
+    // 訪問開始時刻でソートして、現在の訪問が時間順で何番目かを判定
+    const currentVisitStartTime = recordData.actualStartTime 
+      ? new Date(recordData.actualStartTime).getTime() 
+      : null;
+
+    // 全ての訪問記録（既存 + 現在編集中）を配列にまとめる
+    const allVisits = [...sameDayVisits];
+    if (currentVisitStartTime !== null) {
+      // 現在の訪問記録も含めてソート用の配列に追加
+      allVisits.push({
+        id: nursingRecordId || 'current',
+        actualStartTime: recordData.actualStartTime,
+      } as any);
+    }
+
+    // 訪問開始時刻でソート（開始時刻が未設定の場合は最後に配置）
+    allVisits.sort((a, b) => {
+      const timeA = a.actualStartTime ? new Date(a.actualStartTime).getTime() : Infinity;
+      const timeB = b.actualStartTime ? new Date(b.actualStartTime).getTime() : Infinity;
+      return timeA - timeB;
+    });
+
+    // 現在の訪問が時間順で何番目かを判定
+    let dailyVisitCount = 1;
+    if (currentVisitStartTime !== null) {
+      const currentIndex = allVisits.findIndex(v => {
+        if (v.id === (nursingRecordId || 'current')) return true;
+        const visitTime = v.actualStartTime ? new Date(v.actualStartTime).getTime() : Infinity;
+        return visitTime === currentVisitStartTime;
+      });
+      dailyVisitCount = currentIndex >= 0 ? currentIndex + 1 : allVisits.length;
+    } else {
+      // 開始時刻が未設定の場合は、既存の訪問数+1
+      dailyVisitCount = sameDayVisits.length + 1;
+    }
 
     // サービスコードから点数を取得
     let serviceCodeId = recordData.serviceCodeId;
