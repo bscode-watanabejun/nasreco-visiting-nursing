@@ -697,11 +697,14 @@ export class NursingReceiptCsvBuilder {
     const icd10Code = data.doctorOrder.icd10Code || '0000999';
     const diagnosis = data.doctorOrder.diagnosis || '';
 
+    // 傷病名称は未コード化傷病名（0000999）の場合のみ出力
+    const diseaseName = icd10Code === '0000999' ? diagnosis : '';
+
     const fields = [
       'SY',         // レコード識別情報
       icd10Code,    // 傷病名コード (ICD-10, 7桁)
       '',           // 修飾語コード (部位等修飾語コード、40バイト可変)
-      diagnosis,    // 傷病名称 (最大40文字、80バイト可変)
+      diseaseName,  // 傷病名称 (未コード化傷病名の場合のみ、最大40文字、80バイト可変)
       '',           // 補足コメント (40バイト可変)
     ];
 
