@@ -2238,6 +2238,7 @@ function SelectedBonusServiceCodeSection({
                       placeholder="選択してください"
                       searchPlaceholder="サービスコードまたは名称で検索..."
                       emptyText="該当するサービスコードが見つかりませんでした"
+                      maxHeight="300px"
                     />
                   </div>
                   <Button
@@ -2515,6 +2516,7 @@ function UnselectedBonusServiceCodeSection({
                       placeholder="選択してください"
                       searchPlaceholder="サービスコードまたは名称で検索..."
                       emptyText="該当するサービスコードが見つかりませんでした"
+                      maxHeight="300px"
                     />
                   </div>
                   <Button
