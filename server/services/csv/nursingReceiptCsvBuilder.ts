@@ -715,17 +715,20 @@ export class NursingReceiptCsvBuilder {
    * 12. RJ: 利用者情報レコード
    */
   private addRJRecord(data: ReceiptCsvData): void {
+    // 訪問記録を日付順にソートしてから最初の訪問記録を取得
+    const sortedRecords = this.sortRecordsByDateAndTime(data.nursingRecords);
+    
     // 訪問開始年月日 (最初の訪問記録の日付)
-    const firstVisitDate = data.nursingRecords[0]?.visitDate
-      ? formatDateToYYYYMMDD(data.nursingRecords[0].visitDate)
+    const firstVisitDate = sortedRecords[0]?.visitDate
+      ? formatDateToYYYYMMDD(sortedRecords[0].visitDate)
       : '';
 
     // 訪問した場所1コード (最初の訪問記録の訪問場所、別表16)
-    const visitLocationCode = data.nursingRecords[0]?.visitLocationCode || '01';
+    const visitLocationCode = sortedRecords[0]?.visitLocationCode || '01';
 
     // 訪問した場所1文字データ（場所コード99の場合のみ）
-    const visitLocation1Text = (visitLocationCode === '99' && data.nursingRecords[0]?.visitLocationCustom)
-      ? this.formatVariable(data.nursingRecords[0].visitLocationCustom, 130)
+    const visitLocation1Text = (visitLocationCode === '99' && sortedRecords[0]?.visitLocationCustom)
+      ? this.formatVariable(sortedRecords[0].visitLocationCustom, 130)
       : '';
 
     // 訪問場所変更履歴の自動検出（場所2・3）
