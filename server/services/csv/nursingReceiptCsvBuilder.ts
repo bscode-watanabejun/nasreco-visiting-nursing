@@ -7,6 +7,9 @@
 import { buildCsvLine, buildCsvFile, toShiftJIS, formatDate } from './csvUtils';
 import type { ReceiptCsvData, MedicalInsuranceReceiptCsvData } from './types';
 import { determineReceiptTypeCode, determineBurdenClassificationCode, determineInstructionTypeCode } from './receiptClassification';
+import { db } from '../../db';
+import { visitingNursingMasterBasic, nursingServiceCodes } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 /**
  * 日付をYYYYMMDD形式の文字列に変換
@@ -22,6 +25,28 @@ function formatDateToYYYYMMDD(date: Date | string): string {
 }
 
 /**
+ * 訪問看護療養費マスターデータの型定義
+ */
+interface VisitingNursingMasterData {
+  incrementalCalculationFlag: string | null;  // きざみ値計算識別（項番19）
+  specialInstructionType: string | null;      // 特別訪問看護指示区分（項番46）
+  visitCountCategory: string | null;           // 実施回数区分（項番44）
+  staffCategoryCodes: string[] | null;        // 職種区分（項番29-43）
+  instructionType: string | null;            // 訪問看護指示区分（項番45）
+}
+
+/**
+ * 訪問看護療養費マスターデータの型定義
+ */
+interface VisitingNursingMasterData {
+  incrementalCalculationFlag: string | null;  // きざみ値計算識別（項番19）
+  specialInstructionType: string | null;      // 特別訪問看護指示区分（項番46）
+  visitCountCategory: string | null;           // 実施回数区分（項番44）
+  staffCategoryCodes: string[] | null;        // 職種区分（項番29-43）
+  instructionType: string | null;            // 訪問看護指示区分（項番45）
+}
+
+/**
  * 訪問看護療養費CSVビルダー
  */
 export class NursingReceiptCsvBuilder {
@@ -29,9 +54,53 @@ export class NursingReceiptCsvBuilder {
   private instructionTypeCodeCache: string = '01';  // HJレコードで設定した指示区分をKAレコードで再利用
   private burdenClassificationCodeCache: string = '0';  // REレコードで設定した負担区分（別表22）
   private currentReceiptNumber: number = 1;  // 複数レセプト対応時のレセプト番号管理
+  private masterDataCache: Map<string, VisitingNursingMasterData | null> = new Map();  // マスターデータのキャッシュ
 
   constructor() {
     this.lines = [];
+  }
+
+  /**
+   * サービスコードからマスターデータを取得（キャッシュ付き）
+   * @param serviceCode - 9桁のサービスコード
+   * @returns マスターデータ（存在しない場合はnull）
+   */
+  private async getMasterData(serviceCode: string): Promise<VisitingNursingMasterData | null> {
+    // キャッシュを確認
+    if (this.masterDataCache.has(serviceCode)) {
+      return this.masterDataCache.get(serviceCode) || null;
+    }
+
+    try {
+      const result = await db
+        .select({
+          incrementalCalculationFlag: visitingNursingMasterBasic.incrementalCalculationFlag,
+          specialInstructionType: visitingNursingMasterBasic.specialInstructionType,
+          visitCountCategory: visitingNursingMasterBasic.visitCountCategory,
+          staffCategoryCodes: visitingNursingMasterBasic.staffCategoryCodes,
+          instructionType: visitingNursingMasterBasic.instructionType,
+        })
+        .from(visitingNursingMasterBasic)
+        .innerJoin(nursingServiceCodes, eq(visitingNursingMasterBasic.serviceCodeId, nursingServiceCodes.id))
+        .where(eq(nursingServiceCodes.serviceCode, serviceCode))
+        .limit(1);
+
+      const masterData = result[0] ? {
+        incrementalCalculationFlag: result[0].incrementalCalculationFlag,
+        specialInstructionType: result[0].specialInstructionType,
+        visitCountCategory: result[0].visitCountCategory,
+        staffCategoryCodes: result[0].staffCategoryCodes as string[] | null,
+        instructionType: result[0].instructionType,
+      } : null;
+
+      // キャッシュに保存
+      this.masterDataCache.set(serviceCode, masterData);
+      return masterData;
+    } catch (error) {
+      console.error(`Failed to get master data for service code ${serviceCode}:`, error);
+      this.masterDataCache.set(serviceCode, null);
+      return null;
+    }
   }
 
   /**
@@ -210,17 +279,34 @@ export class NursingReceiptCsvBuilder {
 
     // 13. KA: 訪問看護療養費レコード (複数)
     // 13.1 基本訪問記録のKAレコード
-    // 訪問記録を日付と時刻でソートし、同日訪問回数を計算
+    // 訪問記録を日付と時刻でソート
     const sortedRecords = this.sortRecordsByDateAndTime(data.nursingRecords);
     
+    // 訪問記録を日付とサービスコードでグループ化
+    // 同じサービスコードの同日複数回の訪問を1つのKAレコードにまとめる
+    const groupedRecords = new Map<string, ReceiptCsvData['nursingRecords']>();
+    
     for (const record of sortedRecords) {
-      const visitOrder = this.getVisitOrderForDate(sortedRecords, record);
-      this.addKARecord(data, record, visitOrder);
+      if (!record.serviceCode) continue; // サービスコードがない場合はスキップ
+      
+      const visitDateStr = formatDateToYYYYMMDD(record.visitDate);
+      const groupKey = `${visitDateStr}_${record.serviceCode}`;
+      
+      if (!groupedRecords.has(groupKey)) {
+        groupedRecords.set(groupKey, []);
+      }
+      groupedRecords.get(groupKey)!.push(record);
     }
+    
+    // グループごとにKAレコードを出力
+    const groupPromises = Array.from(groupedRecords.entries()).map(async ([groupKey, records]) => {
+      await this.addKARecordGrouped(data, records);
+    });
+    await Promise.all(groupPromises);
 
     // 13.2 加算のKAレコード（サービスコード選択済みのもののみ）
     for (const bonus of data.bonusHistory) {
-      this.addBonusKARecord(data, bonus);
+      await this.addBonusKARecord(data, bonus);
     }
 
     // 14. GO: 訪問看護療養費請求書レコード（全てのKAレコードの後）
@@ -887,7 +973,98 @@ export class NursingReceiptCsvBuilder {
   }
 
   /**
-   * 13. KA: 訪問看護療養費レコード
+   * グループ化された訪問記録からKAレコードを生成
+   * 同じサービスコードの同日複数回の訪問を1つのKAレコードにまとめる
+   */
+  private async addKARecordGrouped(
+    data: ReceiptCsvData,
+    records: ReceiptCsvData['nursingRecords']
+  ): Promise<void> {
+    if (records.length === 0) return;
+    
+    const firstRecord = records[0];
+    const serviceCode = firstRecord.serviceCode;
+    if (!serviceCode) return;
+    
+    const visitDate = firstRecord.visitDate ? formatDateToYYYYMMDD(firstRecord.visitDate) : '';
+    const visitCount = records.length;
+    
+    // マスターデータを取得
+    const masterData = await this.getMasterData(serviceCode);
+    
+    // 数量データ（項番5）: きざみ値計算識別が「0」の場合は記録しない
+    const quantityData = masterData?.incrementalCalculationFlag === '1' ? '1' : '';
+    
+    // 金額: 1回目の訪問記録の金額を使用（同日複数回でも1回分の金額）
+    const totalAmount = (records[0].calculatedPoints || 0) * 10;
+    
+    // 職種等（項番7）: 訪問回ごとの職種等コードを連続して記録
+    // 職種区分が「00」以外の場合のみ記録（マスターデータのstaffCategoryCodesが存在する場合）
+    let staffCodes = '';
+    if (masterData?.staffCategoryCodes && masterData.staffCategoryCodes.length > 0) {
+      // 訪問回ごとの職種等コードを連続して記録
+      // 1回目、2回目、3回目以降で異なるコードを使用（別表20）
+      for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        const baseStaffCode = record.staffQualificationCode || '03';
+        let visitOrder: number;
+        
+        if (i === 0) {
+          visitOrder = 1; // 1回目
+        } else if (i === 1) {
+          visitOrder = 2; // 2回目
+        } else {
+          visitOrder = 3; // 3回目以降
+        }
+        
+        const adjustedCode = this.adjustStaffCodeForVisitOrder(baseStaffCode, visitOrder);
+        staffCodes += adjustedCode;
+      }
+    }
+    
+    // 同日訪問回数（項番8）: 実施回数区分が「0」以外の場合のみ記録
+    let visitCountCode = '';
+    if (masterData?.visitCountCategory && masterData.visitCountCategory !== '0') {
+      if (visitCount === 1) {
+        visitCountCode = ''; // 1回目の場合は省略
+      } else if (visitCount === 2) {
+        visitCountCode = '02';
+      } else {
+        visitCountCode = '03'; // 3回目以降
+      }
+    }
+    
+    // 指示区分（項番9）: 訪問看護指示区分が「1」「3」「5」、または特別訪問看護指示区分が「2」「4」「6」の場合のみ記録
+    let instructionTypeCode = '';
+    if (masterData) {
+      const instructionType = masterData.instructionType;
+      const specialInstructionType = masterData.specialInstructionType;
+      
+      if ((instructionType === '1' || instructionType === '3' || instructionType === '5') ||
+          (specialInstructionType === '2' || specialInstructionType === '4' || specialInstructionType === '6')) {
+        // HJレコードの指示区分コードを使用
+        instructionTypeCode = this.instructionTypeCodeCache;
+      }
+    }
+    
+    const fields = [
+      'KA',                                  // レコード識別
+      visitDate,                             // 算定年月日 YYYYMMDD
+      this.burdenClassificationCodeCache,    // 負担区分 (別表22)
+      serviceCode,                           // 訪問看護療養費コード (9桁)
+      quantityData,                          // 数量データ（きざみ値計算識別で判定）
+      String(totalAmount),                   // 金額 (点数×10の合計)
+      staffCodes,                            // 職種等（訪問回ごとに連続して記録）
+      visitCountCode,                        // 同日訪問回数（実施回数区分で判定）
+      instructionTypeCode,                   // 指示区分（訪問看護指示区分・特別訪問看護指示区分で判定）
+    ];
+    
+    this.lines.push(buildCsvLine(fields));
+  }
+
+  /**
+   * 13. KA: 訪問看護療養費レコード（旧実装、後方互換性のため残す）
+   * @deprecated グループ化処理を使用するため、このメソッドは使用しない
    */
   private addKARecord(
     data: ReceiptCsvData,
@@ -946,7 +1123,7 @@ export class NursingReceiptCsvBuilder {
   /**
    * 13.2 加算のKAレコード
    */
-  private addBonusKARecord(data: ReceiptCsvData, bonus: ReceiptCsvData['bonusHistory'][0]): void {
+  private async addBonusKARecord(data: ReceiptCsvData, bonus: ReceiptCsvData['bonusHistory'][0]): Promise<void> {
     const visitDate = bonus.visitDate ? formatDateToYYYYMMDD(bonus.visitDate) : '';
     
     // サービスコードが必須
@@ -956,18 +1133,44 @@ export class NursingReceiptCsvBuilder {
     }
     
     const serviceCode = bonus.serviceCode;
+    
+    // マスターデータを取得
+    const masterData = await this.getMasterData(serviceCode);
+    
+    // 数量データ（項番5）: きざみ値計算識別が「0」の場合は記録しない
+    const quantityData = masterData?.incrementalCalculationFlag === '1' ? '1' : '';
+    
     const amount = bonus.points * 10;  // 金額 = 点数 × 10
+    
+    // 職種等（項番7）: 職種区分が「00」以外の場合のみ記録（加算は通常省略）
+    const staffCodes = '';
+    
+    // 同日訪問回数（項番8）: 実施回数区分が「0」以外の場合のみ記録（加算は通常省略）
+    const visitCountCode = '';
+    
+    // 指示区分（項番9）: 訪問看護指示区分が「1」「3」「5」、または特別訪問看護指示区分が「2」「4」「6」の場合のみ記録
+    let instructionTypeCode = '';
+    if (masterData) {
+      const instructionType = masterData.instructionType;
+      const specialInstructionType = masterData.specialInstructionType;
+      
+      if ((instructionType === '1' || instructionType === '3' || instructionType === '5') ||
+          (specialInstructionType === '2' || specialInstructionType === '4' || specialInstructionType === '6')) {
+        // HJレコードの指示区分コードを使用
+        instructionTypeCode = this.instructionTypeCodeCache;
+      }
+    }
 
     const fields = [
       'KA',                                  // レコード識別
       visitDate,                             // 算定年月日 YYYYMMDD
       this.burdenClassificationCodeCache,    // 負担区分 (別表22)
       serviceCode,                           // 訪問看護療養費コード (9桁)
-      '1',                                   // 数量データ (回数)
+      quantityData,                          // 数量データ（きざみ値計算識別で判定）
       String(amount),                        // 金額 (点数×10)
-      '',                                    // 職種等（加算は省略）
-      '',                                    // 同日訪問回数（加算は省略）
-      '',                                    // 指示区分（加算は省略）
+      staffCodes,                            // 職種等（加算は通常省略）
+      visitCountCode,                        // 同日訪問回数（加算は通常省略）
+      instructionTypeCode,                   // 指示区分（訪問看護指示区分・特別訪問看護指示区分で判定）
     ];
 
     this.lines.push(buildCsvLine(fields));
@@ -1022,16 +1225,34 @@ export class NursingReceiptCsvBuilder {
 
       // KA: 訪問看護療養費レコード (複数)
       // 13.1 基本訪問記録のKAレコード
+      // 訪問記録を日付と時刻でソート
       const sortedRecords = this.sortRecordsByDateAndTime(receiptData.nursingRecords);
       
+      // 訪問記録を日付とサービスコードでグループ化
+      // 同じサービスコードの同日複数回の訪問を1つのKAレコードにまとめる
+      const groupedRecords = new Map<string, ReceiptCsvData['nursingRecords']>();
+      
       for (const record of sortedRecords) {
-        const visitOrder = this.getVisitOrderForDate(sortedRecords, record);
-        this.addKARecord(receiptData, record, visitOrder);
+        if (!record.serviceCode) continue; // サービスコードがない場合はスキップ
+        
+        const visitDateStr = formatDateToYYYYMMDD(record.visitDate);
+        const groupKey = `${visitDateStr}_${record.serviceCode}`;
+        
+        if (!groupedRecords.has(groupKey)) {
+          groupedRecords.set(groupKey, []);
+        }
+        groupedRecords.get(groupKey)!.push(record);
       }
+      
+      // グループごとにKAレコードを出力
+      const groupPromises = Array.from(groupedRecords.entries()).map(async ([groupKey, records]) => {
+        await this.addKARecordGrouped(receiptData, records);
+      });
+      await Promise.all(groupPromises);
 
       // 13.2 加算のKAレコード（サービスコード選択済みのもののみ）
       for (const bonus of receiptData.bonusHistory) {
-        this.addBonusKARecord(receiptData, bonus);
+        await this.addBonusKARecord(receiptData, bonus);
       }
 
       // レセプト番号をインクリメント
