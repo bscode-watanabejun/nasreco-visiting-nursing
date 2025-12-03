@@ -10208,7 +10208,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         db.query.nursingRecords.findMany({
           where: and(
             eq(nursingRecords.patientId, receipt.patientId),
-            eq(nursingRecords.facilityId, receipt.facilityId)
+            eq(nursingRecords.facilityId, receipt.facilityId),
+            inArray(nursingRecords.status, ['completed', 'reviewed'])
           ),
           with: {
             serviceCode: true,
@@ -10540,7 +10541,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             db.query.nursingRecords.findMany({
               where: and(
                 eq(nursingRecords.patientId, receipt.patientId),
-                eq(nursingRecords.facilityId, receipt.facilityId)
+                eq(nursingRecords.facilityId, receipt.facilityId),
+                inArray(nursingRecords.status, ['completed', 'reviewed'])
               ),
               with: {
                 serviceCode: true,

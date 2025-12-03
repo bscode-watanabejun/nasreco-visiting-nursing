@@ -6,7 +6,7 @@
  */
 
 import { db } from '../db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import {
   facilities,
   patients,
@@ -426,8 +426,12 @@ async function validateNursingRecords(
   const warnings: ValidationWarning[] = [];
 
   // 対象期間の訪問記録を取得（サービスコードリレーションを含める）
+  // 下書きは対象外（完了または確認済みのみ）
   const records = await db.query.nursingRecords.findMany({
-    where: eq(nursingRecords.patientId, patientId),
+    where: and(
+      eq(nursingRecords.patientId, patientId),
+      inArray(nursingRecords.status, ['completed', 'reviewed'])
+    ),
     with: {
       serviceCode: true, // サービスコードリレーションを含める
     },
