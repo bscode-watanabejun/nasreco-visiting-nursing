@@ -48,6 +48,10 @@ async function loadServiceCodesFromCsv() {
     isActive: boolean;
     // 訪問看護療養費マスター基本テーブル用の追加データ
     instructionType: string | null; // 訪問看護指示区分（項番45）
+    incrementalCalculationFlag: string | null; // きざみ値計算識別（項番19）
+    specialInstructionType: string | null; // 特別訪問看護指示区分（項番46）
+    visitCountCategory: string | null; // 実施回数区分（項番44）
+    staffCategoryCodes: string[] | null; // 職種区分（項番29-43、最大15項目）
     receiptSymbol1: string | null; // レセプト表示用記号①（項番56）
     receiptSymbol2: string | null; // レセプト表示用記号②（項番57）
     receiptSymbol3: string | null; // レセプト表示用記号③（項番58）
@@ -89,7 +93,22 @@ async function loadServiceCodesFromCsv() {
     const validToStr = values[71]; // 廃止年月日
     
     // 訪問看護療養費マスター基本テーブル用の追加データを抽出
+    const incrementalCalculationFlag = values[18] || null; // きざみ値計算識別（項番19）
+    const visitCountCategory = values[43] || null; // 実施回数区分（項番44）
     const instructionType = values[44] || null; // 訪問看護指示区分（項番45）
+    const specialInstructionType = values[45] || null; // 特別訪問看護指示区分（項番46）
+    
+    // 職種区分（項番29-43、列インデックス28-42、最大15項目）
+    const staffCategoryCodes: string[] = [];
+    for (let i = 28; i <= 42; i++) {
+      const code = values[i]?.trim();
+      if (code && code !== '00' && code !== '') {
+        staffCategoryCodes.push(code.padStart(2, '0')); // 2桁に0埋め
+      }
+    }
+    // 15項目未満の場合は空配列またはnull（実装方針に応じて調整）
+    const staffCategoryCodesFinal = staffCategoryCodes.length > 0 ? staffCategoryCodes : null;
+    
     const receiptSymbol1 = values[55] || null; // レセプト表示用記号①（項番56）
     const receiptSymbol2 = values[56] || null; // レセプト表示用記号②（項番57）
     const receiptSymbol3 = values[57] || null; // レセプト表示用記号③（項番58）
@@ -151,6 +170,10 @@ async function loadServiceCodesFromCsv() {
       isActive: true,
       // 訪問看護療養費マスター基本テーブル用の追加データ
       instructionType,
+      incrementalCalculationFlag,
+      specialInstructionType,
+      visitCountCategory,
+      staffCategoryCodes: staffCategoryCodesFinal,
       receiptSymbol1,
       receiptSymbol2,
       receiptSymbol3,
@@ -327,6 +350,10 @@ async function seedMasterData() {
     let masterBasicData: Array<{
       serviceCodeId: string;
       instructionType: string | null;
+      incrementalCalculationFlag: string | null;
+      specialInstructionType: string | null;
+      visitCountCategory: string | null;
+      staffCategoryCodes: string[] | null;
       receiptSymbol1: string | null;
       receiptSymbol2: string | null;
       receiptSymbol3: string | null;
@@ -359,6 +386,10 @@ async function seedMasterData() {
           masterBasicData.push({
             serviceCodeId: serviceCodeRecord.id,
             instructionType: serviceData.instructionType,
+            incrementalCalculationFlag: serviceData.incrementalCalculationFlag,
+            specialInstructionType: serviceData.specialInstructionType,
+            visitCountCategory: serviceData.visitCountCategory,
+            staffCategoryCodes: serviceData.staffCategoryCodes,
             receiptSymbol1: serviceData.receiptSymbol1,
             receiptSymbol2: serviceData.receiptSymbol2,
             receiptSymbol3: serviceData.receiptSymbol3,
@@ -388,6 +419,10 @@ async function seedMasterData() {
             target: visitingNursingMasterBasic.serviceCodeId,
             set: {
               instructionType: sql`EXCLUDED.instruction_type`,
+              incrementalCalculationFlag: sql`EXCLUDED.incremental_calculation_flag`,
+              specialInstructionType: sql`EXCLUDED.special_instruction_type`,
+              visitCountCategory: sql`EXCLUDED.visit_count_category`,
+              staffCategoryCodes: sql`EXCLUDED.staff_category_codes`,
               receiptSymbol1: sql`EXCLUDED.receipt_symbol_1`,
               receiptSymbol2: sql`EXCLUDED.receipt_symbol_2`,
               receiptSymbol3: sql`EXCLUDED.receipt_symbol_3`,

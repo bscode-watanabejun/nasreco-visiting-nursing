@@ -913,6 +913,18 @@ export const visitingNursingMasterBasic = pgTable("visiting_nursing_master_basic
   // 訪問看護指示区分（項番45）
   instructionType: varchar("instruction_type", { length: 1 }), // 0:記録不要, 1:訪問看護基本療養費, 3:精神科訪問看護基本療養費, 5:医療観察訪問看護基本料
   
+  // きざみ値計算識別（項番19）
+  incrementalCalculationFlag: varchar("incremental_calculation_flag", { length: 1 }), // 0:きざみ値により算定しない, 1:きざみ値により算定する
+  
+  // 特別訪問看護指示区分（項番46）
+  specialInstructionType: varchar("special_instruction_type", { length: 1 }), // 0:記録不要, 2:訪問看護基本療養費, 4:精神科訪問看護基本療養費, 6:医療観察訪問看護基本料
+  
+  // 実施回数区分（項番44）
+  visitCountCategory: varchar("visit_count_category", { length: 1 }), // 0:記録不要, 1:01-03のいずれか必要, 2:02が必要, 3:03が必要
+  
+  // 職種区分（項番29-43、最大15項目）
+  staffCategoryCodes: json("staff_category_codes"), // 職種等コードの配列（最大15項目、各2桁）
+  
   // レセプト表示用記号①～⑨（項番56-64）
   receiptSymbol1: varchar("receipt_symbol_1", { length: 1 }), // レセプト表示用記号①（○）
   receiptSymbol2: varchar("receipt_symbol_2", { length: 1 }), // レセプト表示用記号②（△）
