@@ -479,7 +479,7 @@ export function Dashboard() {
         id: schedule.id,
         patientName: patient ? getFullName(patient) : '患者不明',
         time: formatTime(schedule.scheduledStartTime),
-        type: schedule.visitType || schedule.purpose,
+        type: schedule.purpose,
         status: status,
         nurse: nurse?.fullName || schedule.demoStaffName || 'スタッフ未割当',
         patient: patient || null,
@@ -1051,20 +1051,22 @@ export function Dashboard() {
 
                 {/* Desktop layout */}
                 <div className="hidden sm:flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="text-left min-w-[4rem]">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="text-left min-w-[18rem] max-w-[18rem] flex-shrink-0">
                       <div className="font-semibold">{visit.time}</div>
-                      <div className="text-xs text-muted-foreground">{visit.type}</div>
+                      <div className="text-xs text-muted-foreground truncate" title={visit.type}>
+                        {visit.type}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-semibold">{visit.patientName}</h4>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-semibold truncate">{visit.patientName}</h4>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <User className="h-3 w-3" />
-                        {visit.nurse}
+                        <User className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{visit.nurse}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                     <Badge className={getStatusColor(visit.status)}>
                       {getStatusText(visit.status)}
                     </Badge>
