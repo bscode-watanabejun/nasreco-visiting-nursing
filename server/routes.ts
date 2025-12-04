@@ -7266,7 +7266,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.patientId, patientId),
           eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
-          lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0])
+          lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+          inArray(nursingRecords.status, ['completed', 'reviewed'])
         ))
         .orderBy(nursingRecords.visitDate);
 
@@ -7711,7 +7712,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(nursingRecords.patientId, patientId),
             eq(nursingRecords.facilityId, facilityId),
             sql`EXTRACT(YEAR FROM ${nursingRecords.visitDate}) = ${targetYear}`,
-            sql`EXTRACT(MONTH FROM ${nursingRecords.visitDate}) = ${targetMonth}`
+            sql`EXTRACT(MONTH FROM ${nursingRecords.visitDate}) = ${targetMonth}`,
+            inArray(nursingRecords.status, ['completed', 'reviewed'])
           )),
         db.select()
           .from(doctorOrders)
@@ -8892,7 +8894,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(and(
             eq(nursingRecords.patientId, receiptData.patientId),
             gte(nursingRecords.visitDate, startDate),
-            lt(nursingRecords.visitDate, endDate)
+            lt(nursingRecords.visitDate, endDate),
+            inArray(nursingRecords.status, ['completed', 'reviewed'])
           ))
           .orderBy(asc(nursingRecords.visitDate)),
         // 施設情報を取得
@@ -9921,7 +9924,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         db.query.nursingRecords.findMany({
           where: and(
             eq(nursingRecords.patientId, receipt.patientId),
-            eq(nursingRecords.facilityId, receipt.facilityId)
+            eq(nursingRecords.facilityId, receipt.facilityId),
+            inArray(nursingRecords.status, ['completed', 'reviewed'])
           ),
           with: {
             serviceCode: true, // サービスコードリレーションを含める
