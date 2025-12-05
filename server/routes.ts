@@ -9976,11 +9976,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // 有効な訪問看護指示書を取得
-      const validOrder = doctorOrdersData.find(order => {
-        const orderStart = new Date(order.startDate);
-        const orderEnd = new Date(order.endDate);
-        return orderStart <= startDate && orderEnd >= endDate;
-      });
+      // 訪問記録がある場合は、各訪問日が指示書の有効期限内かチェック
+      let validOrder;
+      if (targetRecords.length > 0) {
+        // 訪問記録がある場合：各訪問日が指示書の有効期限内かチェック
+        const visitDates = targetRecords.map(record => new Date(record.visitDate));
+        validOrder = doctorOrdersData.find(order => {
+          const orderStart = new Date(order.startDate);
+          const orderEnd = new Date(order.endDate);
+          // 全ての訪問日が指示書の有効期限内かチェック
+          return visitDates.every(visitDate => 
+            orderStart <= visitDate && orderEnd >= visitDate
+          );
+        });
+      } else {
+        // 訪問記録がない場合：対象月の開始日と終了日でチェック
+        validOrder = doctorOrdersData.find(order => {
+          const orderStart = new Date(order.startDate);
+          const orderEnd = new Date(order.endDate);
+          return orderStart <= startDate && orderEnd >= endDate;
+        });
+      }
 
       if (!validOrder) {
         return res.status(400).json({ error: "有効な訪問看護指示書がありません" });
@@ -10297,11 +10313,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // 有効な訪問看護指示書を取得
-      const validOrder = doctorOrdersData.find(order => {
-        const orderStart = new Date(order.startDate);
-        const orderEnd = new Date(order.endDate);
-        return orderStart <= startDate && orderEnd >= endDate;
-      });
+      // 訪問記録がある場合は、各訪問日が指示書の有効期限内かチェック
+      let validOrder;
+      if (targetRecords.length > 0) {
+        // 訪問記録がある場合：各訪問日が指示書の有効期限内かチェック
+        const visitDates = targetRecords.map(record => new Date(record.visitDate));
+        validOrder = doctorOrdersData.find(order => {
+          const orderStart = new Date(order.startDate);
+          const orderEnd = new Date(order.endDate);
+          // 全ての訪問日が指示書の有効期限内かチェック
+          return visitDates.every(visitDate => 
+            orderStart <= visitDate && orderEnd >= visitDate
+          );
+        });
+      } else {
+        // 訪問記録がない場合：対象月の開始日と終了日でチェック
+        validOrder = doctorOrdersData.find(order => {
+          const orderStart = new Date(order.startDate);
+          const orderEnd = new Date(order.endDate);
+          return orderStart <= startDate && orderEnd >= endDate;
+        });
+      }
 
       if (!validOrder) {
         return res.status(400).json({ error: "有効な訪問看護指示書がありません" });
