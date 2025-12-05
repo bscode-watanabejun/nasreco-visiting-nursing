@@ -6,7 +6,7 @@
  */
 
 import { db } from '../db';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, gte, lte } from 'drizzle-orm';
 import {
   facilities,
   patients,
@@ -339,8 +339,18 @@ async function validatePublicExpenseCards(patientId: string): Promise<Validation
 
 /**
  * 訪問看護指示書データの検証
+ * 
+ * @param patientId - 患者ID
+ * @param targetMonth - 対象月の1日
+ * @param nursingRecords - 訪問記録の配列（オプション）
+ * @param skipVisitDateCheck - 訪問日のチェックをスキップするかどうか（validateReceiptで既にチェック済みの場合にtrue）
  */
-async function validateDoctorOrder(patientId: string, targetMonth: Date): Promise<ValidationWarning[]> {
+async function validateDoctorOrder(
+  patientId: string,
+  targetMonth: Date,
+  nursingRecords?: Array<{ visitDate: string | Date }>,
+  skipVisitDateCheck: boolean = false
+): Promise<ValidationWarning[]> {
   const warnings: ValidationWarning[] = [];
 
   // 対象月の訪問看護指示書を取得
@@ -351,7 +361,96 @@ async function validateDoctorOrder(patientId: string, targetMonth: Date): Promis
     ),
   });
 
-  // 対象月をカバーする有効な指示書があるかチェック
+  // 訪問記録がある場合で、訪問日のチェックをスキップしない場合のみ、各訪問日が指示書の有効期限内かチェック
+  if (nursingRecords && nursingRecords.length > 0 && !skipVisitDateCheck) {
+    const invalidVisits: string[] = [];
+
+    nursingRecords.forEach((record) => {
+      const visitDate = new Date(record.visitDate);
+      const hasValidOrder = orders.some((order) => {
+        const startDate = new Date(order.startDate);
+        const endDate = new Date(order.endDate);
+        return startDate <= visitDate && endDate >= visitDate;
+      });
+
+      if (!hasValidOrder) {
+        // 訪問日を文字列形式で保存（YYYY-MM-DD形式）
+        const dateStr = visitDate.toISOString().split('T')[0];
+        invalidVisits.push(dateStr);
+      }
+    });
+
+    if (invalidVisits.length > 0) {
+      warnings.push({
+        field: 'doctorOrder',
+        message: `以下の訪問日に有効な指示書がありません: ${invalidVisits.join(', ')}`,
+        severity: 'error',
+        recordType: 'doctorOrder',
+      });
+      // 訪問記録のチェックでエラーがある場合は、指示書の必須フィールドチェックはスキップ
+      return warnings;
+    }
+
+    // 訪問記録が全て有効期限内の場合、有効な指示書を取得（必須フィールドチェック用）
+    const validOrders = orders.filter(order => {
+      // 少なくとも1つの訪問記録が有効期限内である指示書を取得
+      return nursingRecords.some(record => {
+        const visitDate = new Date(record.visitDate);
+        const startDate = new Date(order.startDate);
+        const endDate = new Date(order.endDate);
+        return startDate <= visitDate && endDate >= visitDate;
+      });
+    });
+
+    // 指示書の必須フィールドチェック（後続の処理で使用）
+    for (const order of validOrders) {
+      // Phase 3: 指示書の必須フィールドチェック
+      // ICD-10コードのチェック
+      if (!order.icd10Code) {
+        warnings.push({
+          field: 'icd10Code',
+          message: '訪問看護指示書にICD-10コードが未設定です',
+          severity: 'warning',
+          recordType: 'doctorOrder',
+          recordId: order.id,
+        });
+      } else if (order.icd10Code.length > 7 || !/^[A-Z0-9]+$/.test(order.icd10Code)) {
+        warnings.push({
+          field: 'icd10Code',
+          message: `ICD-10コードの形式が正しくありません（7桁以内の英数字: ${order.icd10Code}）`,
+          severity: 'error',
+          recordType: 'doctorOrder',
+          recordId: order.id,
+        });
+      }
+
+      // 保険種別のチェック
+      if (!order.insuranceType) {
+        warnings.push({
+          field: 'insuranceType',
+          message: '訪問看護指示書の保険種別が未設定です',
+          severity: 'error',
+          recordType: 'doctorOrder',
+          recordId: order.id,
+        });
+      }
+
+      // 指示区分のチェック
+      if (!order.instructionType) {
+        warnings.push({
+          field: 'instructionType',
+          message: '訪問看護指示書の指示区分が未設定です',
+          severity: 'error',
+          recordType: 'doctorOrder',
+          recordId: order.id,
+        });
+      }
+    }
+
+    return warnings;
+  }
+
+  // 訪問記録がない場合、または訪問日のチェックをスキップする場合：対象月の1日でチェック（従来通り）
   const validOrders = orders.filter(order => {
     const startDate = new Date(order.startDate);
     const endDate = new Date(order.endDate);
@@ -368,7 +467,7 @@ async function validateDoctorOrder(patientId: string, targetMonth: Date): Promis
     return warnings;
   }
 
-  // Phase 3: 指示書の必須フィールドチェック
+  // Phase 3: 指示書の必須フィールドチェック（訪問記録がない場合、または訪問日のチェックをスキップする場合）
   for (const order of validOrders) {
     // ICD-10コードのチェック
     if (!order.icd10Code) {
@@ -613,21 +712,33 @@ export async function validateMonthlyReceiptData(
   // レセプトから取得したinsuranceTypeを使用、取得できない場合は引数で渡されたinsuranceTypeを使用
   const finalInsuranceType = receipt?.insuranceType || insuranceType;
 
+  // 訪問記録を先に取得（指示書のバリデーションで使用するため）
+  const nursingRecordWarnings = await validateNursingRecords(patientId, startDate, endDate);
+  
+  // 対象期間の訪問記録を取得（指示書のバリデーション用）
+  const targetNursingRecords = await db.query.nursingRecords.findMany({
+    where: and(
+      eq(nursingRecords.patientId, patientId),
+      gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
+      lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
+      inArray(nursingRecords.status, ['completed', 'reviewed'])
+    ),
+  });
+
   // 各データの検証 (Phase 3: 保険証・公費情報の検証を追加)
+  // 注意: validateReceiptで既に訪問日のチェックが行われているため、validateDoctorOrderでは訪問日のチェックをスキップ
   const [
     facilityWarnings,
     patientWarnings,
     insuranceCardWarnings,
     publicExpenseWarnings,
     doctorOrderWarnings,
-    nursingRecordWarnings,
   ] = await Promise.all([
     validateFacility(facilityId),
     validatePatient(patientId),
     validateInsuranceCard(patientId, finalInsuranceType, facilityId), // facilityIdを追加、finalInsuranceTypeを使用
     validatePublicExpenseCards(patientId),
-    validateDoctorOrder(patientId, startDate),
-    validateNursingRecords(patientId, startDate, endDate),
+    validateDoctorOrder(patientId, startDate, targetNursingRecords, true), // skipVisitDateCheck = true
   ]);
 
   warnings.push(
