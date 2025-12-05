@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
 import {
   Dialog,
@@ -135,11 +135,25 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
       })()
     : null
 
+  // 前回のcardオブジェクトのJSON文字列を追跡（変更検知用）
+  const previousCardJsonRef = useRef<string | null>(null)
+
   // Reset form when dialog opens or card changes
   useEffect(() => {
     if (open) {
-      const initialData = getInitialFormData(card, patientId)
-      setFormData(initialData)
+      // cardオブジェクトのJSON文字列を取得（変更検知用）
+      const currentCardJson = card ? JSON.stringify(card) : null
+      const cardDataChanged = previousCardJsonRef.current !== currentCardJson
+      
+      // ダイアログが開かれたとき、またはcardが変更されたときにフォームをリセット
+      if (cardDataChanged || previousCardJsonRef.current === null) {
+        const initialData = getInitialFormData(card, patientId)
+        setFormData(initialData)
+        previousCardJsonRef.current = currentCardJson
+      }
+    } else {
+      // ダイアログが閉じられたときにリセット
+      previousCardJsonRef.current = null
     }
   }, [open, card, patientId])
 
@@ -297,6 +311,9 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
 
       await queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards"] })
       await queryClient.invalidateQueries({ queryKey: ["/api/insurance-cards/expiring"] })
+      // レセプト詳細のクエリも無効化・再取得（パターンマッチ）
+      await queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"], exact: false })
+      await queryClient.refetchQueries({ queryKey: ["/api/monthly-receipts"], exact: false })
 
       toast({
         title: "保存完了",

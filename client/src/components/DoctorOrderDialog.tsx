@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Dialog,
@@ -75,10 +75,24 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
     },
   })
 
+  // 前回のorderオブジェクトのJSON文字列を追跡（変更検知用）
+  const previousOrderJsonRef = useRef<string | null>(null)
+
   // Reset form when dialog opens or order changes
   useEffect(() => {
     if (open) {
-      setFormData(getInitialFormData(order))
+      // orderオブジェクトのJSON文字列を取得（変更検知用）
+      const currentOrderJson = order ? JSON.stringify(order) : null
+      const orderDataChanged = previousOrderJsonRef.current !== currentOrderJson
+      
+      // ダイアログが開かれたとき、またはorderが変更されたときにフォームをリセット
+      if (orderDataChanged || previousOrderJsonRef.current === null) {
+        setFormData(getInitialFormData(order))
+        previousOrderJsonRef.current = currentOrderJson
+      }
+    } else {
+      // ダイアログが閉じられたときにリセット
+      previousOrderJsonRef.current = null
     }
   }, [open, order])
 
@@ -213,6 +227,9 @@ export function DoctorOrderDialog({ open, onOpenChange, patientId, order }: Doct
 
       await queryClient.invalidateQueries({ queryKey: ["doctor-orders"] })
       await queryClient.invalidateQueries({ queryKey: ["/api/doctor-orders/expiring"] })
+      // レセプト詳細のクエリも無効化・再取得（パターンマッチ）
+      await queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"], exact: false })
+      await queryClient.refetchQueries({ queryKey: ["/api/monthly-receipts"], exact: false })
 
       toast({
         title: "保存完了",

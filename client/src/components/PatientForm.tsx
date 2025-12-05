@@ -117,6 +117,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
   const [loadedPatientId, setLoadedPatientId] = useState<string | null>(null)
   // フォームが初期化済みかどうかを追跡
   const isFormInitialized = useRef(false)
+  // 前回のpatientオブジェクトのJSON文字列を追跡（変更検知用）
+  const previousPatientJsonRef = useRef<string | null>(null)
 
   // Fetch medical institutions and care managers
   const { data: medicalInstitutions = [] } = useQuery<MedicalInstitution[]>({
@@ -197,22 +199,30 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       // ダイアログが閉じられた時はloadedPatientIdと初期化フラグをクリア
       setLoadedPatientId(null)
       isFormInitialized.current = false
+      previousPatientJsonRef.current = null
       return
     }
 
     if (isOpen) {
       // 患者IDが変更された場合、または患者データがnullから実際のデータに変わった場合は再初期化
       const currentPatientId = patient?.id || null
+      // patientオブジェクトのJSON文字列を取得（変更検知用）
+      const currentPatientJson = patient ? JSON.stringify(patient) : null
+      const patientDataChanged = previousPatientJsonRef.current !== currentPatientJson
+      
       const shouldReinitialize = 
         !isFormInitialized.current || // まだ初期化されていない
         loadedPatientId !== currentPatientId || // 患者IDが変更された
         (mode === 'edit' && patient && !loadedPatientId) || // 編集モードで患者データが新しく来た
-        (mode === 'edit' && patient && loadedPatientId === null) // 編集モードで患者データがnullから来た
+        (mode === 'edit' && patient && loadedPatientId === null) || // 編集モードで患者データがnullから来た
+        (mode === 'edit' && patient && patientDataChanged) // 編集モードで患者データが変更された
 
       if (shouldReinitialize) {
         if (patient && mode === 'edit') {
           setLoadedPatientId(patient.id)
           isFormInitialized.current = true
+          // 前回のpatientオブジェクトのJSON文字列を更新
+          previousPatientJsonRef.current = JSON.stringify(patient)
           // Reset form with patient data for editing
           form.reset({
             patientNumber: patient.patientNumber || "",
@@ -412,6 +422,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
       queryClient.invalidateQueries({ queryKey: ["patient"] })
+      // レセプト詳細のクエリも無効化（パターンマッチ）
+      queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"], exact: false })
       toast({
         title: "更新完了",
         description: "患者情報が正常に更新されました。",

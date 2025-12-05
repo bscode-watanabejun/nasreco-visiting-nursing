@@ -271,6 +271,56 @@ export default function MonthlyReceiptDetail() {
     }
   }, [patientFormOpen, receipt?.patientId, refetchPatientData])
 
+  // Fetch insurance card data for editing
+  const { data: insuranceCardData, refetch: refetchInsuranceCardData } = useQuery({
+    queryKey: [`/api/insurance-cards`, receipt?.patientId, receipt?.insuranceCard?.id],
+    queryFn: async () => {
+      if (!receipt?.patientId || !receipt?.insuranceCard?.id) return null
+      const response = await fetch(`/api/insurance-cards?patientId=${receipt.patientId}`)
+      if (!response.ok) {
+        throw new Error("保険証データの取得に失敗しました")
+      }
+      const cards = await response.json()
+      // 該当するIDの保険証を探す
+      return cards.find((card: any) => card.id === receipt?.insuranceCard?.id) || null
+    },
+    enabled: !!receipt?.patientId && !!receipt?.insuranceCard?.id,
+    staleTime: 0,
+    refetchOnMount: 'always',
+  })
+
+  // Fetch doctor order data for editing
+  const { data: doctorOrderData, refetch: refetchDoctorOrderData } = useQuery({
+    queryKey: [`/api/doctor-orders`, receipt?.patientId, receipt?.doctorOrder?.order?.id],
+    queryFn: async () => {
+      if (!receipt?.patientId || !receipt?.doctorOrder?.order?.id) return null
+      const response = await fetch(`/api/doctor-orders?patientId=${receipt.patientId}`)
+      if (!response.ok) {
+        throw new Error("訪問看護指示書データの取得に失敗しました")
+      }
+      const orders = await response.json()
+      // 該当するIDの訪問看護指示書を探す
+      return orders.find((order: any) => order.id === receipt?.doctorOrder?.order?.id) || null
+    },
+    enabled: !!receipt?.patientId && !!receipt?.doctorOrder?.order?.id,
+    staleTime: 0,
+    refetchOnMount: 'always',
+  })
+
+  // ダイアログを開くときに保険証データを再取得
+  useEffect(() => {
+    if (insuranceCardDialogOpen && receipt?.patientId && receipt?.insuranceCard?.id) {
+      refetchInsuranceCardData()
+    }
+  }, [insuranceCardDialogOpen, receipt?.patientId, receipt?.insuranceCard?.id, refetchInsuranceCardData])
+
+  // ダイアログを開くときに訪問看護指示書データを再取得
+  useEffect(() => {
+    if (doctorOrderDialogOpen && receipt?.patientId && receipt?.doctorOrder?.order?.id) {
+      refetchDoctorOrderData()
+    }
+  }, [doctorOrderDialogOpen, receipt?.patientId, receipt?.doctorOrder?.order?.id, refetchDoctorOrderData])
+
   // Fetch public expense cards for editing
   const { data: publicExpenseCards = [] } = useQuery<Array<{
     id: string
@@ -1705,93 +1755,52 @@ export default function MonthlyReceiptDetail() {
       {receipt && (
         <PatientForm
           isOpen={patientFormOpen}
-          onClose={() => {
+          onClose={async () => {
             setPatientFormOpen(false)
-            // 編集完了後はレセプトデータを再取得
-            queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+            // 編集完了後はレセプトデータと患者データを再取得
+            await queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+            await queryClient.invalidateQueries({ queryKey: [`/api/patients/${receipt?.patientId}`] })
+            await queryClient.refetchQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+            await queryClient.refetchQueries({ queryKey: [`/api/patients/${receipt?.patientId}`] })
           }}
           patient={patientData || null}
           mode="edit"
         />
       )}
 
-      {receipt.insuranceCard && (
+      {receipt.insuranceCard && insuranceCardData && (
         <InsuranceCardDialog
           open={insuranceCardDialogOpen}
-          onOpenChange={(open) => {
+          onOpenChange={async (open) => {
             setInsuranceCardDialogOpen(open)
-            // Note: キャンセル時にも検証が実行されるのを防ぐため、
-            // ここでは明示的にクエリ無効化や検証を実行しない。
-            // 保存成功時は、InsuranceCardDialog内のqueryClient.invalidateQueries()により
-            // 自動的にデータが再取得される。
+            if (!open) {
+              // 編集完了後はレセプトデータと保険証データを再取得
+              await queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+              await queryClient.invalidateQueries({ queryKey: [`/api/insurance-cards`, receipt?.patientId, receipt?.insuranceCard?.id] })
+              await queryClient.refetchQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+              await queryClient.refetchQueries({ queryKey: [`/api/insurance-cards`, receipt?.patientId, receipt?.insuranceCard?.id] })
+            }
           }}
           patientId={receipt.patientId}
-          card={{
-            id: receipt.insuranceCard.id,
-            patientId: receipt.patientId,
-            facilityId: '', // Will be filled by the dialog
-            cardType: receipt.insuranceCard.cardType as 'medical' | 'long_term_care',
-            insurerNumber: receipt.insuranceCard.insurerNumber,
-            insuredNumber: receipt.insuranceCard.insuredNumber,
-            insuredSymbol: (receipt.insuranceCard as any).insuredSymbol || '',
-            insuredCardNumber: (receipt.insuranceCard as any).insuredCardNumber || '',
-            copaymentRate: (receipt.insuranceCard.copaymentRate as '10' | '20' | '30') || null,
-            validFrom: receipt.insuranceCard.validFrom,
-            validUntil: receipt.insuranceCard.validUntil || null,
-            certificationDate: (receipt.insuranceCard as any).certificationDate || '',
-            notes: (receipt.insuranceCard as any).notes || '',
-            relationshipType: (receipt.insuranceCard as any).relationshipType || null, // Phase 3: 本人家族区分
-            ageCategory: (receipt.insuranceCard as any).ageCategory || null, // Phase 3: 年齢区分
-            elderlyRecipientCategory: (receipt.insuranceCard as any).elderlyRecipientCategory || null, // Phase 3: 高齢受給者区分
-            reviewOrganizationCode: (receipt.insuranceCard as any).reviewOrganizationCode || null, // 審査支払機関コード
-            partialBurdenCategory: (receipt.insuranceCard as any).partialBurdenCategory || null, // 一部負担金区分（別表7）
-            isActive: true,
-            filePath: null,
-            originalFileName: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }}
+          card={insuranceCardData}
         />
       )}
 
-      {receipt.doctorOrder && (
+      {receipt.doctorOrder && doctorOrderData && (
         <DoctorOrderDialog
           open={doctorOrderDialogOpen}
-          onOpenChange={(open) => {
+          onOpenChange={async (open) => {
             setDoctorOrderDialogOpen(open)
-            // Note: キャンセル時にも検証が実行されるのを防ぐため、
-            // ここでは明示的にクエリ無効化や検証を実行しない。
-            // 保存成功時は、DoctorOrderDialog内のqueryClient.invalidateQueries()により
-            // 自動的にデータが再取得される。
+            if (!open) {
+              // 編集完了後はレセプトデータと訪問看護指示書データを再取得
+              await queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+              await queryClient.invalidateQueries({ queryKey: [`/api/doctor-orders`, receipt?.patientId, receipt?.doctorOrder?.order?.id] })
+              await queryClient.refetchQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] })
+              await queryClient.refetchQueries({ queryKey: [`/api/doctor-orders`, receipt?.patientId, receipt?.doctorOrder?.order?.id] })
+            }
           }}
           patientId={receipt.patientId}
-          order={{
-            id: receipt.doctorOrder.order.id,
-            patientId: receipt.patientId,
-            facilityId: '', // Will be filled by the dialog
-            medicalInstitutionId: receipt.doctorOrder.medicalInstitution.id,
-            orderDate: receipt.doctorOrder.order.orderDate,
-            startDate: receipt.doctorOrder.order.startDate,
-            endDate: receipt.doctorOrder.order.endDate,
-            diagnosis: receipt.doctorOrder.order.diagnosis,
-            orderContent: receipt.doctorOrder.order.orderContent,
-            isActive: true,
-            notes: (receipt.doctorOrder.order as any).notes || null,
-            weeklyVisitLimit: (receipt.doctorOrder.order as any).weeklyVisitLimit || null,
-            filePath: null,
-            originalFileName: null,
-            icd10Code: (receipt.doctorOrder.order as any).icd10Code || null,
-            instructionType: (receipt.doctorOrder.order as any).instructionType || 'regular', // Phase 3: 指示区分
-            insuranceType: (receipt.doctorOrder.order as any).insuranceType || null,
-            nursingInstructionStartDate: (receipt.doctorOrder.order as any).nursingInstructionStartDate || null,
-            nursingInstructionEndDate: (receipt.doctorOrder.order as any).nursingInstructionEndDate || null,
-            hasInfusionInstruction: (receipt.doctorOrder.order as any).hasInfusionInstruction ?? null,
-            hasPressureUlcerTreatment: (receipt.doctorOrder.order as any).hasPressureUlcerTreatment ?? null,
-            hasHomeInfusionManagement: (receipt.doctorOrder.order as any).hasHomeInfusionManagement ?? null,
-            diseasePresenceCode: (receipt.doctorOrder.order as any).diseasePresenceCode || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }}
+          order={doctorOrderData}
         />
       )}
 
