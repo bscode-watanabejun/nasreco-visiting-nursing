@@ -149,24 +149,8 @@ function checkDoctorOrderValidity(
     return { errors, warnings };
   }
 
-  const targetDate = new Date(targetYear, targetMonth - 1, 15); // 月の中旬で判定
-
-  const validOrders = doctorOrders.filter((order) => {
-    const startDate = new Date(order.startDate);
-    const endDate = new Date(order.endDate);
-    return startDate <= targetDate && endDate >= targetDate;
-  });
-
-  if (validOrders.length === 0) {
-    errors.push({
-      code: 'EXPIRED_DOCTOR_ORDER',
-      message: `${targetYear}年${targetMonth}月に有効な訪問看護指示書がありません`,
-      severity: 'error',
-      field: 'doctorOrder',
-    });
-  }
-
   // Enhanced: Check each visit date against doctor order validity
+  // 訪問記録がある場合は、各訪問日をチェックし、対象月の日付でのチェックはスキップ
   if (nursingRecords && nursingRecords.length > 0) {
     const invalidVisits: string[] = [];
 
@@ -191,9 +175,31 @@ function checkDoctorOrderValidity(
         field: 'doctorOrder',
       });
     }
+    
+    // 訪問記録がある場合は、対象月の日付でのチェックはスキップ（各訪問日をチェック済み）
+    // 有効期限切れ警告のチェックのみ実行
+  } else {
+    // 訪問記録がない場合のみ、対象月の日付でチェック
+    const targetDate = new Date(targetYear, targetMonth - 1, 15); // 月の中旬で判定
+
+    const validOrders = doctorOrders.filter((order) => {
+      const startDate = new Date(order.startDate);
+      const endDate = new Date(order.endDate);
+      return startDate <= targetDate && endDate >= targetDate;
+    });
+
+    if (validOrders.length === 0) {
+      errors.push({
+        code: 'EXPIRED_DOCTOR_ORDER',
+        message: `${targetYear}年${targetMonth}月に有効な訪問看護指示書がありません`,
+        severity: 'error',
+        field: 'doctorOrder',
+      });
+    }
   }
 
   // Check for expiring orders (1 month before expiration)
+  const targetDate = new Date(targetYear, targetMonth - 1, 15); // 月の中旬で判定
   const oneMonthLater = new Date(targetYear, targetMonth, 15);
   const expiringOrders = doctorOrders.filter((order) => {
     const endDate = new Date(order.endDate);
