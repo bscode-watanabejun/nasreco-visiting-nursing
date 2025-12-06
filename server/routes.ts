@@ -6708,9 +6708,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // サービスコードを更新（nullの場合は選択解除）
+      // クリア時（serviceCodeIdがnull）はisManuallyAdjustedをtrueに設定して、再計算時に自動選択をスキップする
       await db.update(bonusCalculationHistory)
         .set({
           serviceCodeId: finalServiceCodeId,
+          isManuallyAdjusted: finalServiceCodeId === null ? true : false,
         })
         .where(eq(bonusCalculationHistory.id, id));
 

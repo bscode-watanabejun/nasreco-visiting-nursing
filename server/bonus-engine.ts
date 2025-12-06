@@ -1852,9 +1852,14 @@ export async function saveBonusCalculationHistory(
 
     // bonusMasterId -> serviceCodeId のマッピングを作成（手動選択したサービスコードを保持）
     const existingServiceCodes = new Map<string, string>();
+    // クリアされた加算（isManuallyAdjusted: true かつ serviceCodeId: null）を記録
+    const clearedBonusMasterIds = new Set<string>();
     existingHistory.forEach(h => {
       if (h.serviceCodeId) {
         existingServiceCodes.set(h.bonusMasterId, h.serviceCodeId);
+      } else if (h.isManuallyAdjusted && !h.serviceCodeId) {
+        // クリアされた加算を記録（再計算時に自動選択をスキップするため）
+        clearedBonusMasterIds.add(h.bonusMasterId);
       }
     });
 
@@ -1935,9 +1940,16 @@ export async function saveBonusCalculationHistory(
 
       // 既存のserviceCodeIdがあれば使用（手動選択したサービスコードを保持）
       let serviceCodeId: string | null = null;
+      let isManuallyAdjusted = false;
+      
       if (existingServiceCodes.has(result.bonusMasterId)) {
         serviceCodeId = existingServiceCodes.get(result.bonusMasterId)!;
         console.log(`[saveBonusCalculationHistory] Preserving manual service code for bonus: ${result.bonusMasterId}`);
+      } else if (clearedBonusMasterIds.has(result.bonusMasterId)) {
+        // クリアされた加算は自動選択をスキップして未選択状態を維持
+        serviceCodeId = null;
+        isManuallyAdjusted = true;
+        console.log(`[saveBonusCalculationHistory] Skipping auto-selection for cleared bonus: ${result.bonusMasterId}`);
       } else {
         // 既存のserviceCodeIdがない場合のみ自動選択を試みる
         // 加算マスタを取得してサービスコードを自動選択
@@ -1965,7 +1977,7 @@ export async function saveBonusCalculationHistory(
         appliedVersion: result.appliedVersion,
         calculationDetails: result.calculationDetails,
         serviceCodeId,
-        isManuallyAdjusted: false,
+        isManuallyAdjusted,
       };
 
       await tx.insert(bonusCalculationHistory).values(historyRecord);
