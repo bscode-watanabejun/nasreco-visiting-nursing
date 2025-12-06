@@ -1863,7 +1863,9 @@ export default function MonthlyReceiptDetail() {
                           patient: '患者情報',
                           medicalInstitution: '医療機関情報',
                           doctorOrder: '医師指示書',
-                          nursingRecord: '訪問記録'
+                          nursingRecord: '訪問記録',
+                          insuranceCard: '保険証情報',
+                          publicExpenseCard: '公費負担医療情報'
                         }
                         const recordTypeLabel = recordTypeLabels[err.recordType] || err.recordType
                         return (
@@ -1907,7 +1909,9 @@ export default function MonthlyReceiptDetail() {
                           patient: '患者情報',
                           medicalInstitution: '医療機関情報',
                           doctorOrder: '医師指示書',
-                          nursingRecord: '訪問記録'
+                          nursingRecord: '訪問記録',
+                          insuranceCard: '保険証情報',
+                          publicExpenseCard: '公費負担医療情報'
                         }
                         const recordTypeLabel = recordTypeLabels[warn.recordType] || warn.recordType
                         return (
