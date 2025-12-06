@@ -450,11 +450,16 @@ async function validateDoctorOrder(
     return warnings;
   }
 
-  // 訪問記録がない場合、または訪問日のチェックをスキップする場合：対象月の1日でチェック（従来通り）
+  // 訪問記録がない場合、または訪問日のチェックをスキップする場合：対象月の期間と重複する指示書を選択
+  // レセプト詳細画面と統一: 重複チェック（orderStart <= endDate && orderEnd >= startDate）
+  const targetMonthStart = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+  const targetMonthEnd = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0);
+  
   const validOrders = orders.filter(order => {
-    const startDate = new Date(order.startDate);
-    const endDate = new Date(order.endDate);
-    return startDate <= targetMonth && endDate >= targetMonth;
+    const orderStart = new Date(order.startDate);
+    const orderEnd = new Date(order.endDate);
+    // 対象月の期間と指示書の有効期間が重複しているかチェック
+    return orderStart <= targetMonthEnd && orderEnd >= targetMonthStart;
   });
 
   if (validOrders.length === 0) {
