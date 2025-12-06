@@ -1780,6 +1780,50 @@ export async function selectServiceCodeForBonus(
         return codes.length > 0 ? codes[0].id : null;
       }
 
+      case 'medical_multiple_visit_2times_1-2':
+      case 'medical_multiple_visit_3times': {
+        // 複数回訪問加算: 同一建物内人数を判定
+        let isLowOccupancy = true; // デフォルトは1-2人
+        
+        if (!context.buildingId) {
+          // buildingId未設定時はデフォルトで1-2人として扱う
+          console.warn(`[selectServiceCodeForBonus] Building ID not set for patient ${context.patientId}, defaulting to occupancy_1_2`);
+        } else {
+          // 同一建物の同日訪問患者数を取得
+          const sameBuildingVisits = await db
+            .select()
+            .from(nursingRecords)
+            .innerJoin(patients, eq(nursingRecords.patientId, patients.id))
+            .where(
+              and(
+                eq(patients.buildingId, context.buildingId),
+                eq(nursingRecords.visitDate, visitDateStr),
+                eq(nursingRecords.facilityId, context.facilityId),
+                // 現在の訪問記録を除外（編集時）
+                ne(nursingRecords.id, context.nursingRecordId)
+              )
+            );
+          
+          const occupancy = sameBuildingVisits.length + 1; // +1 for current visit
+          isLowOccupancy = occupancy <= 2;
+        }
+        
+        // サービスコードを選択
+        let serviceCode: string;
+        if (bonusCode === 'medical_multiple_visit_2times_1-2') {
+          serviceCode = isLowOccupancy ? '510001970' : '510002070';
+        } else { // medical_multiple_visit_3times
+          serviceCode = isLowOccupancy ? '510002170' : '510002270';
+        }
+        
+        const codes = await db
+          .select()
+          .from(nursingServiceCodes)
+          .where(and(...baseConditions, eq(nursingServiceCodes.serviceCode, serviceCode)));
+        
+        return codes.length > 0 ? codes[0].id : null;
+      }
+
       default:
         // Phase 1以外の加算は自動選択しない
         return null;
