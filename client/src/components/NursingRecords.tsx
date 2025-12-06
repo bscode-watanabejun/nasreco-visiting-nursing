@@ -264,9 +264,11 @@ const convertFormDataToApiFormat = (
     // Phase 3: レセプトCSV対応フィールド（サーバー側のスキーマに合わせてフィールド名を修正）
     // サービスコードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
     serviceCodeId: serviceCodeId || null,
-    ...(formData.visitLocation && { visitLocationCode: formData.visitLocation }),
+    // 訪問場所コードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
+    visitLocationCode: formData.visitLocation || null,
     ...(formData.visitLocation === '99' && formData.visitLocationCustom && { visitLocationCustom: formData.visitLocationCustom }),
-    ...(formData.staffQualification && { staffQualificationCode: formData.staffQualification }),
+    // 職員資格コードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
+    staffQualificationCode: formData.staffQualification || null,
     // RJレコード用：訪問終了情報
     isServiceEnd: formData.isServiceEnd,
     ...(formData.isServiceEnd && {
