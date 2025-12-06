@@ -601,12 +601,12 @@ async function validateNursingRecords(
 
     // 訪問場所コードのチェック
     if (!record.visitLocationCode) {
-      recordWarnings.push('訪問場所コード');
+      recordWarnings.push('訪問場所コードが設定されていません');
     }
 
     // 職員資格コードのチェック
     if (!record.staffQualificationCode) {
-      recordWarnings.push('職員資格コード');
+      recordWarnings.push('職員資格コードが設定されていません');
     }
 
     if (recordWarnings.length > 0) {
@@ -658,6 +658,29 @@ async function validateNursingRecords(
           : String(record.visitDate);
       }
 
+      // 「が設定されていません」で終わるメッセージをまとめる
+      const notSetMessages: string[] = [];
+      const otherMessages: string[] = [];
+      
+      for (const warning of recordWarnings) {
+        if (warning.endsWith('が設定されていません')) {
+          // 「が設定されていません」を除いた項目名を抽出
+          const fieldName = warning.replace('が設定されていません', '');
+          notSetMessages.push(fieldName);
+        } else {
+          otherMessages.push(warning);
+        }
+      }
+      
+      // メッセージを構築
+      const messageParts: string[] = [];
+      if (notSetMessages.length > 0) {
+        messageParts.push(`${notSetMessages.join('、')}が設定されていません`);
+      }
+      messageParts.push(...otherMessages);
+      
+      const finalMessage = messageParts.join('、');
+
       // 基本療養費のサービスコードに関する警告はwarning、その他はerror
       const hasBasicServiceWarning = recordWarnings.some(w => 
         w.includes('基本療養費のサービスコードは適用されません')
@@ -666,7 +689,7 @@ async function validateNursingRecords(
 
       warnings.push({
         field: 'nursingRecord',
-        message: `訪問記録（${dateTimeStr}）: ${recordWarnings.join('、')}`,
+        message: `訪問記録（${dateTimeStr}）: ${finalMessage}`,
         severity,
         recordType: 'nursingRecord',
         recordId: record.id,
