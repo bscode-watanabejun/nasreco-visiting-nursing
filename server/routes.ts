@@ -11040,6 +11040,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           for (const item of relatedRecords) {
             const record = item.record;
             const serviceCode = item.serviceCode?.serviceCode || '';
+            
+            // サービスコードが空文字列または無効な場合はスキップ
+            if (!serviceCode || (serviceCode.length !== 6 && serviceCode.length !== 9)) {
+              console.warn(`患者 ${patient.patientNumber} の訪問記録（ID: ${record.id}）に無効なサービスコードが設定されています。スキップします。`);
+              continue;
+            }
+            
             const { typeCode, itemCode } = processServiceCode(serviceCode);
             const key = `${typeCode}-${itemCode}`;
 
@@ -11072,6 +11079,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           for (const item of bonusHistory) {
             if (!item.bonus || !item.serviceCode) continue;
             const serviceCode = item.serviceCode.serviceCode;
+            
+            // サービスコードが空文字列または無効な場合はスキップ
+            if (!serviceCode || (serviceCode.length !== 6 && serviceCode.length !== 9)) {
+              console.warn(`患者 ${patient.patientNumber} の加算履歴に無効なサービスコードが設定されています。スキップします。`);
+              continue;
+            }
+            
             const { typeCode, itemCode } = processServiceCode(serviceCode);
             const key = `${typeCode}-${itemCode}`;
 
@@ -11127,15 +11141,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
               validFrom: pe.validFrom,
               validUntil: pe.validUntil,
             })),
-            serviceCarePlan: {
-              planDate: serviceCarePlanData[0]?.planDate || '',
-              certificationPeriodStart: serviceCarePlanData[0]?.certificationPeriodStart || null,
-              certificationPeriodEnd: serviceCarePlanData[0]?.certificationPeriodEnd || null,
-              planPeriodStart: serviceStartDate || null,
-              planPeriodEnd: null,
-              creatorType: (serviceCarePlanData[0]?.creatorType as '1' | '2' | '3' | null) || '1', // DBから取得、なければデフォルト値「1」
-              careManagerOfficeNumber: serviceCarePlanData[0]?.careManagerOfficeNumber || null, // DBから取得
-            },
+            serviceCarePlan: (() => {
+              const dbCreatorType = serviceCarePlanData[0]?.creatorType as '1' | '2' | '3' | null;
+              const dbOfficeNumber = serviceCarePlanData[0]?.careManagerOfficeNumber;
+              
+              // 作成区分を決定
+              let finalCreatorType: '1' | '2' | '3' = '2'; // デフォルトは「2」（自己作成）
+              
+              if (dbCreatorType) {
+                // 作成区分が「1」または「3」で事業所番号が未入力の場合は「2」に変更
+                if ((dbCreatorType === '1' || dbCreatorType === '3') && !dbOfficeNumber) {
+                  console.warn(`患者 ${patient.patientNumber} の居宅サービス計画で、作成区分が「${dbCreatorType}」ですが事業所番号が未入力です。作成区分を「2」（自己作成）に変更します。`);
+                  finalCreatorType = '2';
+                } else {
+                  finalCreatorType = dbCreatorType;
+                }
+              }
+              
+              return {
+                planDate: serviceCarePlanData[0]?.planDate || '',
+                certificationPeriodStart: serviceCarePlanData[0]?.certificationPeriodStart || null,
+                certificationPeriodEnd: serviceCarePlanData[0]?.certificationPeriodEnd || null,
+                planPeriodStart: serviceStartDate || null,
+                planPeriodEnd: null,
+                creatorType: finalCreatorType,
+                careManagerOfficeNumber: dbOfficeNumber || null,
+              };
+            })(),
             nursingRecords: Array.from(recordGroups.values()).map(group => ({
               id: '',
               visitDate: '',

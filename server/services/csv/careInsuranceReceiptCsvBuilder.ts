@@ -338,7 +338,7 @@ export class CareInsuranceReceiptCsvBuilder {
     const fields = [
       '2', // レコード種別（固定値「2」）
       padLeft(this.getNextRecordNumber(), 9), // レコード番号
-      '7131', // 交換情報識別番号（固定値「7131」）
+      this.getExchangeInfoId(patientData.patient.careLevel), // 交換情報識別番号（介護度に応じて7131または7132）
       '01', // レコード種別コード（基本情報レコード）
       `${targetYear}${String(targetMonth).padStart(2, '0')}`, // サービス提供年月（YYYYMM）
       padRight(facility.facilityCode, 10), // 事業所番号（10桁）
@@ -413,7 +413,7 @@ export class CareInsuranceReceiptCsvBuilder {
       const fields = [
         '2', // レコード種別（固定値「2」）
         padLeft(this.getNextRecordNumber(), 9), // レコード番号
-        '7131', // 交換情報識別番号（固定値「7131」）
+        this.getExchangeInfoId(patientData.patient.careLevel), // 交換情報識別番号（介護度に応じて7131または7132）
         '02', // レコード種別コード（明細情報レコード）
         `${targetYear}${String(targetMonth).padStart(2, '0')}`, // サービス提供年月（YYYYMM）
         padRight(facility.facilityCode, 10), // 事業所番号（10桁）
@@ -441,7 +441,7 @@ export class CareInsuranceReceiptCsvBuilder {
       const fields = [
         '2', // レコード種別（固定値「2」）
         padLeft(this.getNextRecordNumber(), 9), // レコード番号
-        '7131', // 交換情報識別番号（固定値「7131」）
+        this.getExchangeInfoId(patientData.patient.careLevel), // 交換情報識別番号（介護度に応じて7131または7132）
         '02', // レコード種別コード（明細情報レコード）
         `${targetYear}${String(targetMonth).padStart(2, '0')}`, // サービス提供年月（YYYYMM）
         padRight(facility.facilityCode, 10), // 事業所番号（10桁）
@@ -526,7 +526,7 @@ export class CareInsuranceReceiptCsvBuilder {
       const fields = [
         '2', // レコード種別（固定値「2」）
         padLeft(this.getNextRecordNumber(), 9), // レコード番号
-        '7131', // 交換情報識別番号（固定値「7131」）
+        this.getExchangeInfoId(patientData.patient.careLevel), // 交換情報識別番号（介護度に応じて7131または7132）
         '10', // レコード種別コード（集計情報レコード）
         `${targetYear}${String(targetMonth).padStart(2, '0')}`, // サービス提供年月（YYYYMM）
         padRight(facility.facilityCode, 10), // 事業所番号（10桁）
@@ -634,6 +634,26 @@ export class CareInsuranceReceiptCsvBuilder {
     };
 
     return mapping[careLevel] || '';
+  }
+
+  /**
+   * 介護度に基づいて交換情報識別番号を取得
+   * - 要介護1〜5 → 7131
+   * - 要支援1・2 → 7132
+   */
+  private getExchangeInfoId(careLevel: string | null): string {
+    if (!careLevel) {
+      // 介護度が未設定の場合はデフォルトで7131（既存の動作を維持）
+      return '7131';
+    }
+    
+    // 要支援1・2の場合は7132
+    if (careLevel === 'support1' || careLevel === 'support2') {
+      return '7132';
+    }
+    
+    // 要介護1〜5の場合は7131
+    return '7131';
   }
 }
 
