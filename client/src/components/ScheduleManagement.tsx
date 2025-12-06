@@ -679,6 +679,7 @@ export function ScheduleManagement() {
                       {getMonthDates(currentDate).map((date, idx) => {
                         const isCurrentMonth = date.getMonth() === currentDate.getMonth()
                         const isToday = date.toDateString() === new Date().toDateString()
+                        const isSelected = selectedMonthDate && date.toDateString() === selectedMonthDate.toDateString()
                         const daySchedules = schedules
                           .filter(s => new Date(s.scheduledDate).toDateString() === date.toDateString())
                           .filter(s => {
@@ -697,12 +698,12 @@ export function ScheduleManagement() {
                             className={`
                               min-h-[80px] border rounded-lg p-2 cursor-pointer transition-colors
                               ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}
-                              ${isToday ? 'border-blue-500 border-2' : 'border-gray-200'}
+                              ${isToday ? 'border-blue-500 border-2' : isSelected ? 'border-gray-400 border-2 bg-gray-100' : 'border-gray-200'}
                               ${daySchedules.length > 0 ? 'hover:bg-blue-50' : 'hover:bg-gray-100'}
                             `}
                             onClick={() => setSelectedMonthDate(date)}
                           >
-                            <div className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600' : isCurrentMonth ? '' : 'text-gray-400'}`}>
+                            <div className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600' : isSelected ? 'text-gray-700' : isCurrentMonth ? '' : 'text-gray-400'}`}>
                               {date.getDate()}
                             </div>
                             {daySchedules.length > 0 && (
