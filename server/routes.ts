@@ -6826,7 +6826,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
 
-            // 各訪問記録のサービスコードから点数を取得
+            // 各訪問記録のサービスコードから点数を取得（一括取得でN+1クエリ問題を解消）
             const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
               where: and(
                 eq(nursingServiceCodes.serviceCode, '510000110'),
@@ -6834,13 +6834,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ),
             });
 
+            // 必要なサービスコードIDを収集
+            const serviceCodeIds = records
+              .map(r => r.serviceCodeId)
+              .filter((id): id is string => id !== null);
+
+            // サービスコードを一括取得
+            const serviceCodes = serviceCodeIds.length > 0
+              ? await db.query.nursingServiceCodes.findMany({
+                  where: inArray(nursingServiceCodes.id, serviceCodeIds),
+                })
+              : [];
+
+            // Mapに変換して高速検索可能にする
+            const serviceCodeMap = new Map(serviceCodes.map(sc => [sc.id, sc]));
+
             for (const record of records) {
               let recordPoints = 0;
 
               if (record.serviceCodeId) {
-                const serviceCode = await db.query.nursingServiceCodes.findFirst({
-                  where: eq(nursingServiceCodes.id, record.serviceCodeId),
-                });
+                const serviceCode = serviceCodeMap.get(record.serviceCodeId);
                 if (serviceCode) {
                   recordPoints = serviceCode.points;
                 }

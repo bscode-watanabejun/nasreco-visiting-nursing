@@ -1973,6 +1973,25 @@ export async function recalculateBonusesForReceipt(
     where: eq(facilities.id, receipt.facilityId),
   });
 
+  // 担当看護師情報を一括取得（N+1クエリ問題を解消）
+  const nurseIds = targetRecords
+    .map(r => r.nurseId)
+    .filter((id): id is string => id !== null);
+
+  const nurses = nurseIds.length > 0
+    ? await db.query.users.findMany({
+        where: inArray(users.id, nurseIds),
+        columns: {
+          id: true,
+          fullName: true,
+          specialistCertifications: true,
+        },
+      })
+    : [];
+
+  // Mapに変換して高速検索可能にする
+  const nurseMap = new Map(nurses.map(n => [n.id, n]));
+
   // 各訪問記録の加算を再計算
   for (const record of targetRecords) {
     // 日付型の変換
@@ -2048,15 +2067,8 @@ export async function recalculateBonusesForReceipt(
       dailyVisitCount = sameDayVisits.length;
     }
 
-    // 担当看護師情報を取得（専門管理加算用）
-    const assignedNurse = record.nurseId ? await db.query.users.findFirst({
-      where: eq(users.id, record.nurseId),
-      columns: {
-        id: true,
-        fullName: true,
-        specialistCertifications: true,
-      }
-    }) : undefined;
+    // 担当看護師情報を取得（専門管理加算用）- Mapから取得（一括取得済み）
+    const assignedNurse = record.nurseId ? nurseMap.get(record.nurseId) : undefined;
 
     const context: BonusCalculationContext = {
       nursingRecordId: record.id,
