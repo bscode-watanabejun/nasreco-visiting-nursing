@@ -2203,8 +2203,8 @@ function SelectedBonusServiceCodeSection({
           const visitTime = `${startTime} - ${endTime}`
 
           return (
-            <div key={bonus.history.id} className="border rounded-md p-4 bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+            <div key={bonus.history.id} className="border rounded-md py-3 px-4 bg-white">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
                 <div>
                   <div className="text-sm text-muted-foreground">訪問日</div>
                   <div className="font-medium">{visitDate}</div>
@@ -2231,7 +2231,7 @@ function SelectedBonusServiceCodeSection({
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>サービスコード変更</Label>
                 <div className="flex gap-2">
                   <div className="flex-1">
@@ -2480,8 +2480,8 @@ function UnselectedBonusServiceCodeSection({
           const visitTime = `${startTime} - ${endTime}`
 
           return (
-            <div key={bonus.history.id} className="border rounded-md p-4 bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+            <div key={bonus.history.id} className="border rounded-md py-3 px-4 bg-white">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
                 <div>
                   <div className="text-sm text-muted-foreground">訪問日</div>
                   <div className="font-medium">{visitDate}</div>
@@ -2503,7 +2503,7 @@ function UnselectedBonusServiceCodeSection({
                   <div className="font-medium text-xs">{bonus.bonus.bonusCode}</div>
                 </div>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>サービスコード</Label>
                 <div className="flex gap-2">
                   <div className="flex-1">
