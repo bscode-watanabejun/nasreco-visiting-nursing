@@ -7300,7 +7300,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
 
       // Get doctor order information
-      const doctorOrderData = await db.select({
+      // 訪問記録がある場合は各訪問日が有効期限内の指示書を選択
+      // 訪問記録がない場合は対象月の期間で有効な指示書を選択
+      // 利用者詳細画面と統一: isActive = true の指示書のみを対象とし、現在日時点で有効な指示書を優先
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const allDoctorOrders = await db.select({
         order: doctorOrders,
         medicalInstitution: medicalInstitutions,
       })
@@ -7308,10 +7314,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .leftJoin(medicalInstitutions, eq(doctorOrders.medicalInstitutionId, medicalInstitutions.id))
         .where(and(
           eq(doctorOrders.patientId, patientId),
-          eq(doctorOrders.facilityId, facilityId)
+          eq(doctorOrders.facilityId, facilityId),
+          eq(doctorOrders.isActive, true) // 利用者詳細画面と統一
         ))
-        .orderBy(desc(doctorOrders.orderDate))
-        .limit(1);
+        .orderBy(desc(doctorOrders.orderDate));
+
+      let doctorOrderData: typeof allDoctorOrders = [];
+      
+      if (relatedRecords.length > 0) {
+        // 訪問記録がある場合：各訪問日が有効期限内の指示書を選択
+        const visitDates = relatedRecords.map(r => new Date(r.record.visitDate));
+        const validOrders = allDoctorOrders.filter(orderData => {
+          const orderStart = new Date(orderData.order.startDate);
+          const orderEnd = new Date(orderData.order.endDate);
+          // 全ての訪問日が指示書の有効期限内かチェック
+          return visitDates.every(visitDate => 
+            orderStart <= visitDate && orderEnd >= visitDate
+          );
+        });
+        
+        // 利用者詳細画面と統一: 現在日時点で有効な指示書を優先
+        const currentlyValidOrders = validOrders.filter(orderData => {
+          const orderEnd = new Date(orderData.order.endDate);
+          return orderEnd >= today;
+        });
+        
+        // 【優先度1】現在日時点で有効で、かつ訪問記録の全ての日をカバーする指示書
+        if (currentlyValidOrders.length > 0) {
+          doctorOrderData = [currentlyValidOrders[0]];
+        } 
+        // 【優先度2】訪問記録の全ての日をカバーする指示書（期限切れでも可）
+        else if (validOrders.length > 0) {
+          doctorOrderData = [validOrders[0]];
+        } 
+        // 【優先度3】訪問記録の全ての日をカバーする指示書がない場合、
+        // 対象月の期間と重複する指示書を選択（訪問記録の一部がカバーされない場合でも表示）
+        else {
+          // 対象月の期間と指示書の有効期間が重複しているかチェック
+          const overlappingOrders = allDoctorOrders.filter(orderData => {
+            const orderStart = new Date(orderData.order.startDate);
+            const orderEnd = new Date(orderData.order.endDate);
+            return orderStart <= endDate && orderEnd >= startDate;
+          });
+          
+          if (overlappingOrders.length > 0) {
+            // 現在日時点で有効な指示書を優先
+            const currentlyValidOverlapping = overlappingOrders.filter(orderData => {
+              const orderEnd = new Date(orderData.order.endDate);
+              return orderEnd >= today;
+            });
+            
+            // 【優先度3-1】対象月と重複し、かつ現在有効な指示書
+            if (currentlyValidOverlapping.length > 0) {
+              doctorOrderData = [currentlyValidOverlapping[0]];
+            } 
+            // 【優先度3-2】対象月と重複する指示書（期限切れでも可）
+            else {
+              doctorOrderData = [overlappingOrders[0]];
+            }
+          }
+        }
+      } else {
+        // 訪問記録がない場合：現在日時点で有効な指示書を優先的に選択
+        // 利用者詳細画面と統一: endDate >= 現在日 の指示書を優先
+        const currentlyValidOrders = allDoctorOrders.filter(orderData => {
+          const orderEnd = new Date(orderData.order.endDate);
+          return orderEnd >= today;
+        });
+        
+        if (currentlyValidOrders.length > 0) {
+          // 現在日時点で有効な指示書がある場合は、対象月の期間と重複しているものを選択
+          const validOrders = currentlyValidOrders.filter(orderData => {
+            const orderStart = new Date(orderData.order.startDate);
+            const orderEnd = new Date(orderData.order.endDate);
+            return orderStart <= endDate && orderEnd >= startDate;
+          });
+          
+          if (validOrders.length > 0) {
+            doctorOrderData = [validOrders[0]];
+          } else {
+            // 対象月と重複していなくても、現在日時点で有効な最新の指示書を選択
+            doctorOrderData = [currentlyValidOrders[0]];
+          }
+        } else {
+          // 現在日時点で有効な指示書がない場合、対象月の期間と重複している指示書を選択（過去のレセプト表示用）
+          const validOrders = allDoctorOrders.filter(orderData => {
+            const orderStart = new Date(orderData.order.startDate);
+            const orderEnd = new Date(orderData.order.endDate);
+            return orderStart <= endDate && orderEnd >= startDate;
+          });
+          
+          if (validOrders.length > 0) {
+            doctorOrderData = [validOrders[0]];
+          }
+        }
+      }
 
       // Get public expense cards information
       const publicExpenseCardsData = await db.select()
@@ -9977,11 +10074,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 有効な訪問看護指示書を取得
       // 訪問記録がある場合は、各訪問日が指示書の有効期限内かチェック
+      // レセプト詳細画面と統一: 現在日時点で有効な指示書を優先
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
       let validOrder;
       if (targetRecords.length > 0) {
-        // 訪問記録がある場合：各訪問日が指示書の有効期限内かチェック
+        // 訪問記録がある場合：全ての訪問日が指示書の有効期限内かチェック（必須）
         const visitDates = targetRecords.map(record => new Date(record.visitDate));
-        validOrder = doctorOrdersData.find(order => {
+        const validOrders = doctorOrdersData.filter(order => {
           const orderStart = new Date(order.startDate);
           const orderEnd = new Date(order.endDate);
           // 全ての訪問日が指示書の有効期限内かチェック
@@ -9989,13 +10090,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
             orderStart <= visitDate && orderEnd >= visitDate
           );
         });
+        
+        if (validOrders.length > 0) {
+          // 現在日時点で有効な指示書を優先
+          const currentlyValidOrders = validOrders.filter(order => {
+            const orderEnd = new Date(order.endDate);
+            return orderEnd >= today;
+          });
+          
+          // 現在有効な指示書がある場合はそれを選択、なければ訪問日をカバーする指示書を選択
+          validOrder = currentlyValidOrders.length > 0 ? currentlyValidOrders[0] : validOrders[0];
+        }
       } else {
-        // 訪問記録がない場合：対象月の開始日と終了日でチェック
-        validOrder = doctorOrdersData.find(order => {
+        // 訪問記録がない場合：対象月の期間と重複する指示書を選択
+        // レセプト詳細画面と統一: 重複チェック（orderStart <= endDate && orderEnd >= startDate）
+        const overlappingOrders = doctorOrdersData.filter(order => {
           const orderStart = new Date(order.startDate);
           const orderEnd = new Date(order.endDate);
-          return orderStart <= startDate && orderEnd >= endDate;
+          // 対象月の期間と指示書の有効期間が重複しているかチェック
+          return orderStart <= endDate && orderEnd >= startDate;
         });
+        
+        if (overlappingOrders.length > 0) {
+          // 現在日時点で有効な指示書を優先
+          const currentlyValidOrders = overlappingOrders.filter(order => {
+            const orderEnd = new Date(order.endDate);
+            return orderEnd >= today;
+          });
+          
+          // 現在有効な指示書がある場合はそれを選択、なければ対象月と重複する指示書を選択
+          validOrder = currentlyValidOrders.length > 0 ? currentlyValidOrders[0] : overlappingOrders[0];
+        }
       }
 
       if (!validOrder) {
@@ -10314,11 +10439,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 有効な訪問看護指示書を取得
       // 訪問記録がある場合は、各訪問日が指示書の有効期限内かチェック
+      // レセプト詳細画面と統一: 現在日時点で有効な指示書を優先
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
       let validOrder;
       if (targetRecords.length > 0) {
-        // 訪問記録がある場合：各訪問日が指示書の有効期限内かチェック
+        // 訪問記録がある場合：全ての訪問日が指示書の有効期限内かチェック（必須）
         const visitDates = targetRecords.map(record => new Date(record.visitDate));
-        validOrder = doctorOrdersData.find(order => {
+        const validOrders = doctorOrdersData.filter(order => {
           const orderStart = new Date(order.startDate);
           const orderEnd = new Date(order.endDate);
           // 全ての訪問日が指示書の有効期限内かチェック
@@ -10326,13 +10455,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
             orderStart <= visitDate && orderEnd >= visitDate
           );
         });
+        
+        if (validOrders.length > 0) {
+          // 現在日時点で有効な指示書を優先
+          const currentlyValidOrders = validOrders.filter(order => {
+            const orderEnd = new Date(order.endDate);
+            return orderEnd >= today;
+          });
+          
+          // 現在有効な指示書がある場合はそれを選択、なければ訪問日をカバーする指示書を選択
+          validOrder = currentlyValidOrders.length > 0 ? currentlyValidOrders[0] : validOrders[0];
+        }
       } else {
-        // 訪問記録がない場合：対象月の開始日と終了日でチェック
-        validOrder = doctorOrdersData.find(order => {
+        // 訪問記録がない場合：対象月の期間と重複する指示書を選択
+        // レセプト詳細画面と統一: 重複チェック（orderStart <= endDate && orderEnd >= startDate）
+        const overlappingOrders = doctorOrdersData.filter(order => {
           const orderStart = new Date(order.startDate);
           const orderEnd = new Date(order.endDate);
-          return orderStart <= startDate && orderEnd >= endDate;
+          // 対象月の期間と指示書の有効期間が重複しているかチェック
+          return orderStart <= endDate && orderEnd >= startDate;
         });
+        
+        if (overlappingOrders.length > 0) {
+          // 現在日時点で有効な指示書を優先
+          const currentlyValidOrders = overlappingOrders.filter(order => {
+            const orderEnd = new Date(order.endDate);
+            return orderEnd >= today;
+          });
+          
+          // 現在有効な指示書がある場合はそれを選択、なければ対象月と重複する指示書を選択
+          validOrder = currentlyValidOrders.length > 0 ? currentlyValidOrders[0] : overlappingOrders[0];
+        }
       }
 
       if (!validOrder) {
