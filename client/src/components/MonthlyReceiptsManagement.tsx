@@ -321,60 +321,6 @@ export default function MonthlyReceiptsManagement() {
     generateMutation.mutate()
   }
 
-  const handleDownloadCSV = async (insuranceType: 'medical' | 'care') => {
-    if (filterYear === 'all' || filterMonth === 'all') {
-      toast({
-        title: "エラー",
-        description: "年月を選択してください",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const endpoint = insuranceType === 'care'
-        ? `/api/monthly-receipts/export/care-insurance?year=${filterYear}&month=${filterMonth}`
-        : `/api/monthly-receipts/export/medical-insurance?year=${filterYear}&month=${filterMonth}`
-
-      const response = await fetch(endpoint)
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          const insuranceTypeName = insuranceType === 'care' ? '介護保険' : '医療保険'
-          toast({
-            title: "データなし",
-            description: `${filterYear}年${filterMonth}月の${insuranceTypeName}レセプトがありません`,
-            variant: "destructive",
-          })
-          return
-        }
-        const error = await response.json()
-        throw new Error(error.error || "CSV出力に失敗しました")
-      }
-
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `receipt_${insuranceType}_${filterYear}_${filterMonth}.csv`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-
-      toast({
-        title: "ダウンロード完了",
-        description: "CSVファイルをダウンロードしました",
-      })
-    } catch (error) {
-      toast({
-        title: "エラー",
-        description: error instanceof Error ? error.message : "CSV出力に失敗しました",
-        variant: "destructive",
-      })
-    }
-  }
-
   const handleDownloadMedicalInsuranceBatchCSV = async () => {
     // 表示されているレセプトのうち、確定済みかつ医療保険のレセプトIDを収集
     const targetReceiptIds = receipts

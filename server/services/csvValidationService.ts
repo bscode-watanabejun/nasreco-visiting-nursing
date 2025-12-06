@@ -117,16 +117,7 @@ async function validatePatient(patientId: string): Promise<ValidationWarning[]> 
     });
   }
 
-  // 保険番号のチェック
-  if (!patient.insuranceNumber) {
-    warnings.push({
-      field: 'insuranceNumber',
-      message: `患者「${patient.lastName} ${patient.firstName}」の保険番号が未設定です`,
-      severity: 'error',
-      recordType: 'patient',
-      recordId: patientId,
-    });
-  }
+  // 保険番号のチェックは削除（任意フィールドのため）
 
   // Phase 3: 保険種別のチェック
   if (!patient.insuranceType) {

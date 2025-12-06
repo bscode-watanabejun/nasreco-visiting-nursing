@@ -52,7 +52,6 @@ export interface ReceiptCsvData {
     kanaName: string; // 全角カタカナ
     dateOfBirth: Date | string;
     gender: 'male' | 'female' | 'other';
-    insuranceNumber: string;
     insuranceType: string | null; // Phase 3: 保険種別（動的判定用）
     deathDate?: Date | string | null; // 死亡日（RJレコード用）
     deathTime?: string | null; // 死亡時刻（HHMM形式）
