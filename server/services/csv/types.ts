@@ -90,6 +90,7 @@ export interface ReceiptCsvData {
     reviewOrganizationCode?: string | null;  // 審査支払機関コード ('1'=社保, '2'=国保連)
     copaymentRate?: '10' | '20' | '30' | null;  // 負担割合（1割・2割・3割、給付割合計算用）
     partialBurdenCategory?: '1' | '3' | null;  // 一部負担金区分（別表7: '1'=適用区分II, '3'=適用区分I）
+    branchNumber?: string | null;  // 枝番（2桁、医療保険のみ）
   };
 
   // 公費負担医療情報（Phase 3: 動的判定用）

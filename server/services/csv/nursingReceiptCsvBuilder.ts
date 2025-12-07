@@ -610,7 +610,19 @@ export class NursingReceiptCsvBuilder {
    */
   private addSNRecordForPayer(data: ReceiptCsvData, payerType: string): void {
     // 保険者分（負担者種別"1"）の場合のみ枝番を記録
-    const branchNumber = payerType === '1' ? '01' : '';
+    let branchNumber = '';
+
+    if (payerType === '1') {
+      // 後期高齢者医療の場合は省略（保険者番号が8桁で"39"で始まる）
+      const insurerNumber = data.insuranceCard.insurerNumber || '';
+      const isElderlyInsurance = insurerNumber.length === 8 && insurerNumber.substring(0, 2) === '39';
+
+      if (!isElderlyInsurance && data.insuranceCard.branchNumber) {
+        // 枝番が存在する場合、2桁に0埋めして記録
+        branchNumber = String(data.insuranceCard.branchNumber).padStart(2, '0').substring(0, 2);
+      }
+      // 枝番が存在しない場合、または後期高齢者医療の場合は空文字列（省略可）
+    }
 
     const fields = [
       'SN',     // レコード識別情報
@@ -619,7 +631,7 @@ export class NursingReceiptCsvBuilder {
       '',       // 保険者番号等（資格確認）- 一次請求では省略
       '',       // 被保険者証記号（資格確認）- 一次請求では省略
       '',       // 被保険者証番号（資格確認）- 一次請求では省略
-      branchNumber, // 枝番（保険者のみ、2桁）
+      branchNumber, // 枝番（保険者のみ、2桁、存在しない場合は空文字列）
       '',       // 受給者番号 - 一次請求では省略
       '',       // 予備
     ];

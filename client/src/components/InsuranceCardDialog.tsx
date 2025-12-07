@@ -40,6 +40,7 @@ interface FormData {
   elderlyRecipientCategory: 'general_low' | 'seventy' | ''
   reviewOrganizationCode: '1' | '2' | ''
   partialBurdenCategory: '1' | '3' | undefined
+  branchNumber: string
 }
 
 const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: string): FormData => ({
@@ -61,6 +62,7 @@ const getInitialFormData = (card?: InsuranceCard | null, initialPatientId?: stri
   partialBurdenCategory: (card?.partialBurdenCategory === '1' || card?.partialBurdenCategory === '3') 
     ? card.partialBurdenCategory 
     : undefined,
+  branchNumber: card?.branchNumber || '',
 })
 
 // 年齢区分を計算する関数
@@ -245,6 +247,10 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
         multipartData.append('validFrom', formData.validFrom)
         if (formData.insuredSymbol) multipartData.append('insuredSymbol', formData.insuredSymbol)
         if (formData.insuredCardNumber) multipartData.append('insuredCardNumber', formData.insuredCardNumber)
+        // 医療保険の場合、枝番を常に送信（空文字列でも送信してnullに変換）
+        if (formData.cardType === 'medical') {
+          multipartData.append('branchNumber', formData.branchNumber || '')
+        }
         if (formData.copaymentRate) multipartData.append('copaymentRate', formData.copaymentRate)
         if (formData.validUntil) multipartData.append('validUntil', formData.validUntil)
         if (formData.certificationDate) multipartData.append('certificationDate', formData.certificationDate)
@@ -282,6 +288,8 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
           validFrom: formData.validFrom,
           ...(formData.insuredSymbol && { insuredSymbol: formData.insuredSymbol }),
           ...(formData.insuredCardNumber && { insuredCardNumber: formData.insuredCardNumber }),
+          // 医療保険の場合、枝番を常に送信（空文字列でも送信してnullに変換）
+          ...(formData.cardType === 'medical' && { branchNumber: formData.branchNumber || '' }),
           ...(formData.copaymentRate && { copaymentRate: formData.copaymentRate }),
           ...(formData.validUntil && { validUntil: formData.validUntil }),
           ...(formData.certificationDate && { certificationDate: formData.certificationDate }),
@@ -455,26 +463,45 @@ export function InsuranceCardDialog({ open, onOpenChange, patientId, card }: Ins
 
           {/* Medical Insurance Only Fields */}
           {formData.cardType === 'medical' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="insuredSymbol">記号（医療保険のみ）</Label>
-                <Input
-                  id="insuredSymbol"
-                  value={formData.insuredSymbol}
-                  onChange={(e) => setFormData(prev => ({ ...prev, insuredSymbol: e.target.value }))}
-                  placeholder="例: 01234"
-                />
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="insuredSymbol">記号（医療保険のみ）</Label>
+                  <Input
+                    id="insuredSymbol"
+                    value={formData.insuredSymbol}
+                    onChange={(e) => setFormData(prev => ({ ...prev, insuredSymbol: e.target.value }))}
+                    placeholder="例: 01234"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="insuredCardNumber">番号（医療保険のみ）</Label>
+                  <Input
+                    id="insuredCardNumber"
+                    value={formData.insuredCardNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, insuredCardNumber: e.target.value }))}
+                    placeholder="例: 56789"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="insuredCardNumber">番号（医療保険のみ）</Label>
+                <Label htmlFor="branchNumber">枝番（医療保険のみ）</Label>
                 <Input
-                  id="insuredCardNumber"
-                  value={formData.insuredCardNumber}
-                  onChange={(e) => setFormData(prev => ({ ...prev, insuredCardNumber: e.target.value }))}
-                  placeholder="例: 56789"
+                  id="branchNumber"
+                  value={formData.branchNumber}
+                  onChange={(e) => {
+                    // 2桁以内の数字のみ許可
+                    const value = e.target.value.replace(/[^0-9]/g, '').substring(0, 2);
+                    setFormData(prev => ({ ...prev, branchNumber: value }))
+                  }}
+                  placeholder="例: 01（2桁以内）"
+                  maxLength={2}
                 />
+                <p className="text-xs text-muted-foreground">
+                  被保険者証に枝番が記載されている場合のみ入力してください。未記載の場合は省略可です。
+                </p>
               </div>
-            </div>
+            </>
           )}
 
           {/* Copayment Rate */}

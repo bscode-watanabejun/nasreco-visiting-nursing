@@ -135,8 +135,18 @@ export class NursingReceiptExcelBuilder {
     const certificateSymbolOrNumber = data.insuranceCard.certificateSymbol || data.insuranceCard.certificateNumber || '';
     sheet.getCell('F7').value = certificateSymbolOrNumber;
 
-    // G8: SNレコードの枝番（保険者分のSNレコードの枝番、通常は"01"）
-    sheet.getCell('G8').value = '01';
+    // G8: SNレコードの枝番（保険者分のSNレコードの枝番）
+    let branchNumber = '';
+    // 後期高齢者医療の場合は省略（保険者番号が8桁で"39"で始まる）
+    const insurerNumber = data.insuranceCard.insurerNumber || '';
+    const isElderlyInsurance = insurerNumber.length === 8 && insurerNumber.substring(0, 2) === '39';
+
+    if (!isElderlyInsurance && data.insuranceCard.branchNumber) {
+      // 枝番が存在する場合、2桁に0埋めして記録
+      branchNumber = String(data.insuranceCard.branchNumber).padStart(2, '0').substring(0, 2);
+    }
+    // 枝番が存在しない場合、または後期高齢者医療の場合は空文字列（省略可）
+    sheet.getCell('G8').value = branchNumber;
 
     // I7: HOレコードの実日数
     const actualDays = new Set(

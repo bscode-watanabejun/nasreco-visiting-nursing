@@ -460,6 +460,9 @@ export const insuranceCards = pgTable("insurance_cards", {
   // 一部負担金区分（別表7: '1'=適用区分II, '3'=適用区分I, null=該当なし）
   partialBurdenCategory: varchar("partial_burden_category", { length: 1 }),
 
+  // 枝番（2桁、医療保険のみ）
+  branchNumber: varchar("branch_number", { length: 2 }),
+
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

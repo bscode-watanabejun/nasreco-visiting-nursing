@@ -4844,6 +4844,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (validatedData.partialBurdenCategory === '') {
         cardData.partialBurdenCategory = null;
       }
+      if (validatedData.branchNumber === '') {
+        cardData.branchNumber = null;
+      }
 
       // Add file path and original filename if file was uploaded
       if (req.file) {
@@ -4884,6 +4887,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // FormDataで空文字列が送信された場合、nullに変換
       if (validatedData.partialBurdenCategory === '') {
         updateData.partialBurdenCategory = null;
+      }
+      if (validatedData.branchNumber === '') {
+        updateData.branchNumber = null;
       }
 
       // If a new file is uploaded, delete the old one first
@@ -9862,6 +9868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           partialBurdenCategory: (targetInsuranceCard.partialBurdenCategory === '1' || targetInsuranceCard.partialBurdenCategory === '3') 
             ? targetInsuranceCard.partialBurdenCategory 
             : null, // 一部負担金区分（別表7）
+          branchNumber: targetInsuranceCard.branchNumber || null, // 枝番（2桁、医療保険のみ）
         },
         // Phase 3: 公費負担医療情報（優先順位順）
         publicExpenses: publicExpensesData.map(pe => ({
@@ -10226,6 +10233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           reviewOrganizationCode: targetInsuranceCard.reviewOrganizationCode as any,
           copaymentRate: targetInsuranceCard.copaymentRate as any,
           partialBurdenCategory: targetInsuranceCard.partialBurdenCategory as any,
+          branchNumber: targetInsuranceCard.branchNumber || null, // 枝番（2桁、医療保険のみ）
         },
         publicExpenses: publicExpensesData.map(pe => ({
           id: pe.id,
