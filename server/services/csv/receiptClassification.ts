@@ -22,6 +22,7 @@ interface InsuranceCardInfo {
   relationshipType: 'self' | 'preschool' | 'family' | 'elderly_general' | 'elderly_70' | null;
   ageCategory: 'preschool' | 'general' | 'elderly' | null;
   elderlyRecipientCategory: 'general_low' | 'seventy' | null;
+  insurerNumber?: string | null; // 保険者番号（詳細な保険種別判定用）
 }
 
 interface PublicExpenseInfo {
@@ -59,7 +60,38 @@ export function determineReceiptTypeCode(
   }
 
   // 医療保険の判定
-  const insuranceType = patient.insuranceType;
+  // 患者情報の保険種別は'medical'または'care'の値しか持たないため、
+  // 保険証情報の保険者番号から詳細な保険種別を判定する
+  let insuranceType: string | null = null;
+  
+  // 保険証が登録されている場合、保険者番号から判定
+  if (insuranceCard.insurerNumber) {
+    const insurerNumber = insuranceCard.insurerNumber.trim();
+    const length = insurerNumber.length;
+    const prefix = insurerNumber.substring(0, 2);
+    
+    if (length === 8 && prefix === '39') {
+      // 8桁で'39'で始まる → 後期高齢者医療
+      insuranceType = 'medical_elderly';
+    } else if (length === 6) {
+      // 6桁 → 国民健康保険
+      insuranceType = 'national_health';
+    } else if (length === 8) {
+      // 8桁で'39'以外 → 社会保険（健康保険組合など）
+      insuranceType = 'medical_insurance';
+    }
+  }
+  
+  // 保険証が登録されていない場合、患者情報の保険種別から判定を試みる
+  if (!insuranceType) {
+    if (patient.insuranceType === 'medical') {
+      // デフォルトとして社会保険を想定
+      insuranceType = 'medical_insurance';
+    } else if (patient.insuranceType === 'care') {
+      // 介護保険は訪問看護レセプトには使用できない（既にチェック済み）
+      insuranceType = null;
+    }
+  }
 
   // 公費のみのケース（医保/国保なし）
   if (!insuranceType || insuranceType === 'none') {
@@ -67,7 +99,10 @@ export function determineReceiptTypeCode(
     if (publicExpenseCount === 2) return '6222'; // 訪問看護・２種の公費併用
     if (publicExpenseCount === 3) return '6232'; // 訪問看護・３種の公費併用
     if (publicExpenseCount === 4) return '6242'; // 訪問看護・４種の公費併用
-    throw new Error('保険種別が設定されていません');
+    // 保険種別が設定されていない場合、デフォルトとして「6112」（訪問看護・医保単独/国保単独・本人/世帯主）を返す
+    // これは保険証が登録されていない場合の暫定対応
+    console.warn('保険種別が設定されていません。デフォルト値「6112」を使用します。');
+    return '6112';
   }
 
   // 後期高齢者医療の場合

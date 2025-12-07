@@ -93,6 +93,12 @@ export class NursingReceiptExcelBuilder {
         data.publicExpenses
       );
 
+      // レセプト種別コードが4桁未満の場合はエラー
+      if (!receiptTypeCode || receiptTypeCode.length < 4) {
+        console.warn(`レセプト種別コードが不正です: ${receiptTypeCode}`);
+        return;
+      }
+
       // 提出先を判定（支払基金かどうか）
       const reviewOrgCode = this.determineReviewOrganizationCode(data);
       const isShaho = reviewOrgCode === '1'; // '1'=支払基金
@@ -107,7 +113,7 @@ export class NursingReceiptExcelBuilder {
       const combinationTypeText = this.getCombinationTypeText(digit3);
       const relationshipTypeText = this.getRelationshipTypeText(digit4);
 
-      // セルに出力
+      // セルに出力（値が存在する場合のみ設定）
       if (insuranceTypeText) {
         sheet.getCell('AE2').value = insuranceTypeText;
       }
