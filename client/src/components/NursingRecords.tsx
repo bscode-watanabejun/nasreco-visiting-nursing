@@ -913,6 +913,13 @@ export function NursingRecords() {
     }
   }, [scheduleIdFromUrl, scheduleFromUrl, scheduleFromUrlError, modeFromUrl, patientIdFromUrl, basePath])
 
+  // Reset activeTab to 'basic' when opening create/edit form
+  useEffect(() => {
+    if (isCreating || isEditing) {
+      setActiveTab('basic')
+    }
+  }, [isCreating, isEditing])
+
   // Handle recordId from URL to open record detail view
   useEffect(() => {
     if (recordIdFromUrl && recordFromUrl && !isCreating) {
