@@ -195,6 +195,12 @@ interface MonthlyReceiptDetail {
       points: number
     } | null
   }>
+  bonusBreakdown?: Array<{
+    bonusCode: string
+    bonusName: string
+    count: number
+    points: number
+  }>
 }
 
 export default function MonthlyReceiptDetail() {
@@ -1327,24 +1333,50 @@ export default function MonthlyReceiptDetail() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground">訪問回数</div>
-                <div className="text-2xl font-bold">{receipt.visitCount}回</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">基本点数</div>
-                <div className="text-2xl font-bold">{receipt.totalVisitPoints.toLocaleString()}点</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">合計点数</div>
-                <div className="text-2xl font-bold">{receipt.totalPoints.toLocaleString()}点</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">合計金額</div>
-                <div className="text-2xl font-bold">¥{receipt.totalAmount.toLocaleString()}</div>
-              </div>
-            </div>
+            {/* 加算点数の合計を計算 */}
+            {(() => {
+              // bonusBreakdownから加算点数の合計を計算（優先）
+              // bonusBreakdownがない場合は、個別の加算点数フィールドから計算
+              let totalBonusPoints = 0;
+              
+              if (receipt.bonusBreakdown && receipt.bonusBreakdown.length > 0) {
+                // bonusBreakdownから合計を計算
+                totalBonusPoints = receipt.bonusBreakdown.reduce((sum, b) => sum + (b.points || 0), 0);
+              } else {
+                // 個別の加算点数フィールドから計算（フォールバック）
+                totalBonusPoints = 
+                  (receipt.specialManagementPoints ?? 0) +
+                  (receipt.emergencyPoints ?? 0) +
+                  (receipt.longDurationPoints ?? 0) +
+                  (receipt.multipleVisitPoints ?? 0) +
+                  (receipt.sameBuildingReduction ?? 0);
+              }
+              
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">訪問回数</div>
+                    <div className="text-2xl font-bold">{receipt.visitCount}回</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">基本点数</div>
+                    <div className="text-2xl font-bold">{receipt.totalVisitPoints.toLocaleString()}点</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">加算点数</div>
+                    <div className="text-2xl font-bold">{totalBonusPoints.toLocaleString()}点</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">合計点数</div>
+                    <div className="text-2xl font-bold">{receipt.totalPoints.toLocaleString()}点</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">合計金額</div>
+                    <div className="text-2xl font-bold">¥{receipt.totalAmount.toLocaleString()}</div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </CardContent>
       </Card>
