@@ -390,10 +390,10 @@ export class NursingReceiptCsvBuilder {
    * 3. RE: レセプト共通レコード
    */
   private addRERecord(data: ReceiptCsvData, receiptNumber?: number): void {
-    // レセプト番号 (6桁連番)
+    // レセプト番号 (可変項目、0埋め不要)
     const receiptNum = receiptNumber !== undefined 
-      ? String(receiptNumber).padStart(6, '0')
-      : String(1).padStart(6, '0');
+      ? String(receiptNumber)
+      : String(1);
 
     // Phase 3: レセプト種別コードを動的判定（4桁コードをそのまま使用）
     const receiptType = determineReceiptTypeCode(
