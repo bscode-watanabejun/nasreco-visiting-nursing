@@ -10,7 +10,7 @@ import {
   type PaginationOptions, type PaginatedResult,
   users, companies, facilities, patients, visits, nursingRecords, medications, schedules, nursingRecordEditHistory
 } from "@shared/schema";
-import { eq, and, desc, asc, count, isNull, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, asc, count, isNull, gte, lte, sql, ne } from "drizzle-orm";
 import { db } from "./db";
 
 // Storage interface for all visiting nursing system operations
@@ -110,7 +110,7 @@ export interface IStorage {
   searchNursingRecordsPaginated(facilityId: string, searchParams: {
     page: number;
     limit: number;
-    status?: 'draft' | 'completed' | 'reviewed';
+    status?: 'draft' | 'completed' | 'reviewed' | 'not-draft';
     patientId?: string;
     nurseId?: string;
     dateFrom?: string;
@@ -896,7 +896,7 @@ export class PostgreSQLStorage implements IStorage {
   async searchNursingRecordsPaginated(facilityId: string, searchParams: {
     page: number;
     limit: number;
-    status?: 'draft' | 'completed' | 'reviewed';
+    status?: 'draft' | 'completed' | 'reviewed' | 'not-draft';
     patientId?: string;
     nurseId?: string;
     dateFrom?: string;
@@ -917,7 +917,12 @@ export class PostgreSQLStorage implements IStorage {
     ];
 
     if (status) {
-      conditions.push(eq(nursingRecords.status, status));
+      if (status === 'not-draft') {
+        // 下書き以外（完成・確認済み）をフィルタ
+        conditions.push(ne(nursingRecords.status, 'draft'));
+      } else {
+        conditions.push(eq(nursingRecords.status, status));
+      }
     }
 
     if (patientId) {
@@ -1008,9 +1013,11 @@ export class PostgreSQLStorage implements IStorage {
     return {
       ...paginatedResult,
       stats: {
-        draft: Number(draftCount[0].count),
-        completed: Number(completedCount[0].count),
-        reviewed: Number(reviewedCount[0].count)
+        // 「下書き以外」フィルタの場合は下書き件数を0にする
+        draft: status === 'not-draft' ? 0 : Number(draftCount[0].count),
+        // 「下書きのみ」フィルタの場合は完成・確認済み件数を0にする
+        completed: status === 'draft' ? 0 : Number(completedCount[0].count),
+        reviewed: status === 'draft' ? 0 : Number(reviewedCount[0].count)
       }
     };
   }

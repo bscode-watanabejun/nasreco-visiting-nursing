@@ -2848,7 +2848,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await storage.searchNursingRecordsPaginated(targetFacilityId, {
         page,
         limit,
-        status: status as 'draft' | 'completed' | 'reviewed' | undefined,
+        status: status as 'draft' | 'completed' | 'reviewed' | 'not-draft' | undefined,
         patientId: patientId as string | undefined,
         nurseId: nurseId as string | undefined,
         dateFrom: dateFrom as string | undefined,

@@ -452,7 +452,7 @@ export function NursingRecords() {
 
   // Advanced search/filter state
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
-  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'completed' | 'reviewed'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'completed' | 'reviewed' | 'not-draft'>('all')
   const [filterPatientId, setFilterPatientId] = useState<string>('all')
   const [filterNurseId, setFilterNurseId] = useState<string>('all')
   const [filterDateFrom, setFilterDateFrom] = useState<string>('')
@@ -4493,6 +4493,18 @@ export function NursingRecords() {
             <Button
               variant="outline"
               size="sm"
+              className="w-full md:w-auto"
+              onClick={() => {
+                setFilterStatus('not-draft')
+                setCurrentPage(1)
+              }}
+            >
+              <CheckCircle className="mr-1 h-4 w-4 md:mr-2" />
+              <span className="text-xs sm:text-sm">下書き以外</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               className="w-full md:w-auto col-span-2 sm:col-span-1"
               onClick={() => {
                 // Reset all filters
@@ -4537,7 +4549,10 @@ export function NursingRecords() {
               )}
               {filterStatus !== 'all' && (
                 <Badge variant="secondary" className="gap-1 text-xs">
-                  {filterStatus === 'draft' ? '下書き' : filterStatus === 'completed' ? '完成' : '確認済み'}
+                  {filterStatus === 'draft' ? '下書き' : 
+                   filterStatus === 'completed' ? '完成' : 
+                   filterStatus === 'reviewed' ? '確認済み' : 
+                   filterStatus === 'not-draft' ? '下書き以外' : ''}
                   <X
                     className="h-3 w-3 cursor-pointer flex-shrink-0"
                     onClick={() => setFilterStatus('all')}
@@ -4602,6 +4617,7 @@ export function NursingRecords() {
                     <SelectItem value="draft">下書き</SelectItem>
                     <SelectItem value="completed">完成</SelectItem>
                     <SelectItem value="reviewed">確認済み</SelectItem>
+                    <SelectItem value="not-draft">下書き以外</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
