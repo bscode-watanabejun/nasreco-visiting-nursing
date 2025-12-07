@@ -3332,9 +3332,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 編集時は、ユーザーが明示的にサービスコードを未選択にした場合はそれを尊重する
       // 自動設定は行わない（calculateBonusesAndPoints関数内で処理される）
+      // 編集時であることを示すためにnursingRecordIdを渡す（これにより、サービスコード未選択時の自動設定を防ぐ）
 
       // Recalculate bonuses and points
-      const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(mergedData, req.user.facilityId);
+      const { calculatedPoints, appliedBonuses } = await calculateBonusesAndPoints(mergedData, req.user.facilityId, id);
       validatedData.calculatedPoints = calculatedPoints;
       validatedData.appliedBonuses = appliedBonuses;
 
