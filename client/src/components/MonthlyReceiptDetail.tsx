@@ -78,8 +78,6 @@ interface MonthlyReceiptDetail {
   isConfirmed: boolean
   confirmedAt: string | null
   confirmedBy: string | null
-  isSent: boolean
-  sentAt: string | null
   hasErrors: boolean
   hasWarnings: boolean
   errorMessages: string[] | null
@@ -770,14 +768,6 @@ export default function MonthlyReceiptDetail() {
         </Badge>
       )
     }
-    if (receipt.isSent) {
-      return (
-        <Badge variant="default" className="gap-1 px-2.5 py-1 text-xs font-semibold">
-          <CheckCircle className="w-3 h-3" />
-          送信済み
-        </Badge>
-      )
-    }
     if (receipt.isConfirmed) {
       return (
         <Badge variant="secondary" className="gap-1 px-2.5 py-1 text-xs font-semibold">
@@ -880,7 +870,7 @@ export default function MonthlyReceiptDetail() {
               variant="outline"
               size="default"
               onClick={() => reopenMutation.mutate()}
-              disabled={reopenMutation.isPending || receipt.isSent}
+              disabled={reopenMutation.isPending}
               className="gap-2"
             >
               <Unlock className="w-4 h-4" />
@@ -1759,12 +1749,6 @@ export default function MonthlyReceiptDetail() {
                 <div className="text-sm text-muted-foreground">確定者</div>
                 <div className="font-medium">{receipt.confirmedByUser?.fullName || '-'}</div>
               </div>
-              {receipt.isSent && (
-                <div>
-                  <div className="text-sm text-muted-foreground">送信日時</div>
-                  <div className="font-medium">{receipt.sentAt ? new Date(receipt.sentAt).toLocaleString('ja-JP') : '-'}</div>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>

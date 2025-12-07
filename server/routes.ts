@@ -7981,10 +7981,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "未確定のレセプトです" });
       }
 
-      if (existing[0].isSent) {
-        return res.status(400).json({ error: "送信済みのレセプトは再開できません" });
-      }
-
       const [updated] = await db.update(monthlyReceipts)
         .set({
           isConfirmed: false,
@@ -8227,8 +8223,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "レセプトが見つかりません" });
       }
 
-      if (existing[0].isConfirmed || existing[0].isSent) {
-        return res.status(400).json({ error: "確定済みまたは送信済みのレセプトは削除できません" });
+      if (existing[0].isConfirmed) {
+        return res.status(400).json({ error: "確定済みのレセプトは削除できません" });
       }
 
       await db.delete(monthlyReceipts)
@@ -10761,9 +10757,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ステータスを文字列に変換する関数
       const getStatusText = (receipt: typeof receiptsWithInsuranceCards[0]): string => {
-        if (receipt.isSent) {
-          return '送信済み';
-        }
         if (receipt.isConfirmed) {
           if (receipt.hasErrors) {
             return 'エラーあり';

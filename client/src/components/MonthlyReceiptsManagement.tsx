@@ -74,7 +74,6 @@ interface MonthlyReceipt {
   totalPoints: number
   totalAmount: number
   isConfirmed: boolean
-  isSent: boolean
   hasErrors: boolean
   hasWarnings: boolean
   errorMessages: string[] | null
@@ -185,8 +184,6 @@ export default function MonthlyReceiptsManagement() {
     if (filterStatus === 'confirmed') return receipt.isConfirmed && !receipt.hasErrors
     // 未確定: 未確定でエラーも警告もないもの
     if (filterStatus === 'unconfirmed') return !receipt.isConfirmed && !receipt.hasErrors && !receipt.hasWarnings
-    // 送信済み: 送信済みのもの
-    if (filterStatus === 'sent') return receipt.isSent
     return true
   })
 
@@ -595,9 +592,6 @@ export default function MonthlyReceiptsManagement() {
     if (receipt.hasErrors) {
       return <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="w-3 h-3" />エラーあり</Badge>
     }
-    if (receipt.isSent) {
-      return <Badge variant="default" className="flex items-center gap-1"><CheckCircle className="w-3 h-3" />送信済み</Badge>
-    }
     if (receipt.isConfirmed) {
       return <Badge variant="secondary" className="flex items-center gap-1"><Lock className="w-3 h-3" />確定済み</Badge>
     }
@@ -845,7 +839,6 @@ export default function MonthlyReceiptsManagement() {
                   <SelectItem value="warning">警告あり</SelectItem>
                   <SelectItem value="unconfirmed">未確定</SelectItem>
                   <SelectItem value="confirmed">確定済み</SelectItem>
-                  <SelectItem value="sent">送信済み</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1180,7 +1173,7 @@ export default function MonthlyReceiptsManagement() {
                                 <Eye className="w-3 h-3" />
                                 詳細
                               </Button>
-                              {!receipt.isSent && (
+                              {receipt.isConfirmed && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
