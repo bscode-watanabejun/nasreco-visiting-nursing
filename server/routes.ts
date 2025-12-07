@@ -6836,13 +6836,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // 各訪問記録のサービスコードから点数を取得（一括取得でN+1クエリ問題を解消）
-            const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
-              where: and(
-                eq(nursingServiceCodes.serviceCode, '510000110'),
-                eq(nursingServiceCodes.isActive, true)
-              ),
-            });
-
             // 必要なサービスコードIDを収集
             const serviceCodeIds = records
               .map(r => r.serviceCodeId)
@@ -6867,10 +6860,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   recordPoints = serviceCode.points;
                 }
               } else {
-                // サービスコードが選択されていない場合、デフォルトで510000110を使用
-                if (defaultServiceCode) {
-                  recordPoints = defaultServiceCode.points;
-                }
+                // サービスコードが選択されていない場合、0点として扱う
+                recordPoints = 0;
               }
 
               totalVisitPoints += recordPoints;
@@ -7582,13 +7573,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // 各訪問記録のサービスコードから点数を取得
-        const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
-          where: and(
-            eq(nursingServiceCodes.serviceCode, '510000110'),
-            eq(nursingServiceCodes.isActive, true)
-          ),
-        });
-
         for (const recordItem of records) {
           const record = recordItem.record;
           let recordPoints = 0;
@@ -7601,10 +7585,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               recordPoints = serviceCode.points;
             }
           } else {
-            // サービスコードが選択されていない場合、デフォルトで510000110を使用
-            if (defaultServiceCode) {
-              recordPoints = defaultServiceCode.points;
-            }
+            // サービスコードが選択されていない場合、0点として扱う
+            recordPoints = 0;
           }
 
           totalVisitPoints += recordPoints;
@@ -8120,13 +8102,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // 各訪問記録のサービスコードから点数を取得
-      const defaultServiceCode = await db.query.nursingServiceCodes.findFirst({
-        where: and(
-          eq(nursingServiceCodes.serviceCode, '510000110'),
-          eq(nursingServiceCodes.isActive, true)
-        ),
-      });
-
       for (const record of records) {
         let recordPoints = 0;
 
@@ -8138,10 +8113,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             recordPoints = serviceCode.points;
           }
         } else {
-          // サービスコードが選択されていない場合、デフォルトで510000110を使用
-          if (defaultServiceCode) {
-            recordPoints = defaultServiceCode.points;
-          }
+          // サービスコードが選択されていない場合、0点として扱う
+          recordPoints = 0;
         }
 
         totalVisitPoints += recordPoints;
