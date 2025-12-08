@@ -51,6 +51,7 @@ import {
 import { Combobox } from "@/components/ui/combobox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -98,6 +99,8 @@ interface MonthlyReceiptDetail {
   } | null
   // 高額療養費適用状況（MFレコード用）
   highCostCategory: 'high_cost' | 'high_cost_multiple' | null
+  // 心身の状態（JSレコード用）
+  mentalPhysicalState: string | null
   patient: {
     id: string
     patientNumber: string
@@ -371,6 +374,9 @@ export default function MonthlyReceiptDetail() {
   // 高額療養費適用状況のローカル状態（MFレコード用）
   const [localHighCostCategory, setLocalHighCostCategory] = useState<'high_cost' | 'high_cost_multiple' | null>(null);
 
+  // 心身の状態のローカル状態（JSレコード用）
+  const [localMentalPhysicalState, setLocalMentalPhysicalState] = useState<string>('');
+
   // receiptが変更されたときにローカル状態を更新
   useEffect(() => {
     if (receipt) {
@@ -387,11 +393,13 @@ export default function MonthlyReceiptDetail() {
       if (receiptValue !== localHighCostCategory) {
         setLocalHighCostCategory(receiptValue);
       }
+      // 心身の状態のローカル状態を更新
+      setLocalMentalPhysicalState(receipt.mentalPhysicalState || '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt]);
 
-  // Update receipt mutation (一部負担金額・減免情報用)
+  // Update receipt mutation (一部負担金額・減免情報・心身の状態用)
   const updateReceiptMutation = useMutation({
     mutationFn: async (data: Partial<MonthlyReceiptDetail>) => {
       const response = await fetch(`/api/monthly-receipts/${receiptId}`, {
@@ -405,12 +413,20 @@ export default function MonthlyReceiptDetail() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [`/api/monthly-receipts/${receiptId}`] });
-      toast({
-        title: "更新しました",
-        description: "一部負担金額・減免情報を更新しました",
-      });
+      // 更新したフィールドに応じてメッセージを変更
+      if ('mentalPhysicalState' in variables) {
+        toast({
+          title: "更新しました",
+          description: "心身の状態を更新しました",
+        });
+      } else {
+        toast({
+          title: "更新しました",
+          description: "一部負担金額・減免情報を更新しました",
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -441,6 +457,19 @@ export default function MonthlyReceiptDetail() {
         reductionAmount: localReductionCategory === '1' ? localReductionAmount : null,
         certificateNumber: localCertificateNumber,
         highCostCategory: localHighCostCategory,
+      });
+    }
+  };
+
+  // 心身の状態の保存処理（onBlur時）
+  const handleSaveMentalPhysicalState = () => {
+    if (!receipt) return;
+    
+    const hasChanges = localMentalPhysicalState !== (receipt.mentalPhysicalState || '');
+    
+    if (hasChanges) {
+      updateReceiptMutation.mutate({
+        mentalPhysicalState: localMentalPhysicalState || null,
       });
     }
   };
@@ -1566,6 +1595,45 @@ export default function MonthlyReceiptDetail() {
                   高額療養費制度の適用状況を選択してください。
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 心身の状態入力セクション（医療保険レセプトのみ） */}
+      {receipt.insuranceType === 'medical' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              心身の状態（JSレコード用）
+            </CardTitle>
+            <CardDescription>
+              利用者の心身の状態や日常生活動作の状態等を入力してください。CSV出力のJSレコードに反映されます。必須項目です。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="mentalPhysicalState">心身の状態 <span className="text-red-500">*</span></Label>
+              <Textarea
+                id="mentalPhysicalState"
+                placeholder="利用者の心身の状態や日常生活動作の状態等を入力してください（最大1200文字）"
+                value={localMentalPhysicalState}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // 最大1200文字（2400バイト）に制限
+                  if (value.length <= 1200) {
+                    setLocalMentalPhysicalState(value);
+                  }
+                }}
+                onBlur={handleSaveMentalPhysicalState}
+                disabled={receipt.isConfirmed || updateReceiptMutation.isPending}
+                rows={6}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                {localMentalPhysicalState.length} / 1200 文字（最大2400バイト）
+              </p>
             </div>
           </CardContent>
         </Card>

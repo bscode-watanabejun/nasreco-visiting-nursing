@@ -32,6 +32,8 @@ export interface ReceiptCsvData {
     highCostCategory?: 'high_cost' | 'high_cost_multiple' | null; // 'high_cost'=01, 'high_cost_multiple'=02
     // ⭐ 追加: 給付割合（REレコード用、Excel出力用）
     benefitRatio?: string | null; // 3桁、例: "070", "080", "090"（国保の場合のみ）
+    // 心身の状態（JSレコード用）
+    mentalPhysicalState?: string | null; // 心身の状態（最大2400バイト、1200文字）
   };
 
   // 施設情報

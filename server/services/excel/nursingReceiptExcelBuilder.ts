@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import type { ReceiptCsvData } from '../csv/types';
 import { formatJapaneseDateWithEraName, formatBenefitRatio } from './japaneseDateUtils';
 import { calculateVisitDateSymbols } from './visitDateSymbolCalculator';
-import { getReceiptSpecialNoteNames, getWorkRelatedReasonName, getVisitLocationName } from './codeMasterUtils';
+import { getReceiptSpecialNoteNames, getWorkRelatedReasonName, getVisitLocationName, getDiseasePresenceName, getGafScaleName } from './codeMasterUtils';
 import { db } from '../../db';
 import { visitingNursingMasterBasic, nursingServiceCodes } from '@shared/schema';
 import { eq } from 'drizzle-orm';
@@ -389,6 +389,48 @@ export class NursingReceiptExcelBuilder {
   private async buildInfoField(data: ReceiptCsvData): Promise<string> {
     const sections: string[] = [];
 
+    // ========== ア: 主たる傷病名 ==========
+    if (data.doctorOrder.icd10Code && data.doctorOrder.diagnosis) {
+      sections.push('<主たる傷病名>');
+      
+      // 傷病名コードが0000999（未コード化傷病名）の場合は、傷病名称のみ表示
+      if (data.doctorOrder.icd10Code === '0000999') {
+        sections.push(`　１　${data.doctorOrder.diagnosis}`);
+      } else {
+        // ICD-10コードと傷病名称を表示
+        sections.push(`　１　${data.doctorOrder.icd10Code} ${data.doctorOrder.diagnosis}`);
+      }
+    }
+
+    // ========== イ: 心身の状態 ==========
+    const mentalPhysicalState = data.receipt.mentalPhysicalState || '';
+    if (mentalPhysicalState) {
+      sections.push('<心身の状態>');
+      sections.push(mentalPhysicalState);
+      
+      // 基準告示第2の1に規定する疾病等の有無
+      const diseasePresenceCode = data.doctorOrder.diseasePresenceCode || '03';
+      if (diseasePresenceCode && diseasePresenceCode !== '03') {
+        const diseasePresenceName = getDiseasePresenceName(diseasePresenceCode);
+        if (diseasePresenceName) {
+          sections.push('（基準告示第２の１に規定する疾病等の有無）');
+          sections.push(`　${diseasePresenceCode}　${diseasePresenceName}`);
+        }
+      }
+      
+      // 該当する疾病等（別表14）とGAF尺度（別表28）は現時点ではCSV出力でも空文字のため、実装しない
+    }
+
+    // ========== Phase 1実装: ウ 指示期間 ==========
+    if (data.doctorOrder.startDate && data.doctorOrder.endDate) {
+      const instructionTypeTitle = this.getInstructionTypeTitle(data.doctorOrder.instructionType);
+      const startDate = this.formatDateForInfoField(data.doctorOrder.startDate);
+      const endDate = this.formatDateForInfoField(data.doctorOrder.endDate);
+      
+      sections.push(instructionTypeTitle);
+      sections.push(`${startDate}　～　${endDate}`);
+    }
+
     // ========== Phase 1実装: エ 訪問開始年月日・訪問終了年月日・訪問終了時刻・訪問終了の状況 ==========
     if (data.nursingRecords.length > 0) {
       // 訪問記録を訪問日でソート
@@ -454,16 +496,6 @@ export class NursingReceiptExcelBuilder {
       }
     }
 
-    // ========== Phase 1実装: ウ 指示期間 ==========
-    if (data.doctorOrder.startDate && data.doctorOrder.endDate) {
-      const instructionTypeTitle = this.getInstructionTypeTitle(data.doctorOrder.instructionType);
-      const startDate = this.formatDateForInfoField(data.doctorOrder.startDate);
-      const endDate = this.formatDateForInfoField(data.doctorOrder.endDate);
-      
-      sections.push(instructionTypeTitle);
-      sections.push(`${startDate}　～　${endDate}`);
-    }
-
     // ========== Phase 1実装: コ 訪問した場所２・３ ==========
     if (data.nursingRecords.length > 0) {
       const locationChanges = this.detectVisitLocationChanges(data.nursingRecords);
@@ -492,8 +524,6 @@ export class NursingReceiptExcelBuilder {
     }
 
     // ========== Phase 2以降（将来実装予定） ==========
-    // ア: 主たる傷病名
-    // イ: 心身の状態
     // カ: 情報提供先
     // キ: 特記事項
     // ク: 専門の研修

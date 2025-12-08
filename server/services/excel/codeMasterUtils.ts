@@ -86,3 +86,48 @@ export async function getReceiptSpecialNoteNames(codes: string): Promise<string>
   return names.filter(name => name).join(' ');
 }
 
+/**
+ * 基準告示第2の1に規定する疾病等の有無コードの名称を取得（別表13）
+ * '01'=別表7, '02'=別表8, '03'=無
+ */
+export function getDiseasePresenceName(code: string): string {
+  const mapping: Record<string, string> = {
+    '01': '別表７',
+    '02': '別表８',
+    '03': '無',
+  };
+  return mapping[code] || '';
+}
+
+/**
+ * 疾病等コードの名称を取得（別表14）
+ * 現時点では簡易実装（コードをそのまま表示）
+ * 将来的にマスターテーブルが追加された場合は、DBから取得するように変更
+ */
+export function getApplicableDiseaseName(code: string): string {
+  // 別表14のマスターデータは現時点では未実装のため、コードをそのまま返す
+  // 将来的にマスターテーブルが追加された場合は、DBから取得するように変更
+  return code || '';
+}
+
+/**
+ * GAF尺度により判定した値コードの名称を取得（別表28）
+ */
+export function getGafScaleName(code: string): string {
+  const mapping: Record<string, string> = {
+    '01': 'GAF尺度100-91',
+    '02': 'GAF尺度90-81',
+    '03': 'GAF尺度80-71',
+    '04': 'GAF尺度70-61',
+    '05': 'GAF尺度60-51',
+    '06': 'GAF尺度50-41',
+    '07': 'GAF尺度40-31',
+    '08': 'GAF尺度30-21',
+    '09': 'GAF尺度20-11',
+    '10': 'GAF尺度10-1',
+    '11': 'GAF尺度0',
+    '20': '家族への訪問看護でありGAF尺度による判定が行えなかった(当該月に利用者本人への訪問看護を行わなかった)',
+  };
+  return mapping[code] || '';
+}
+

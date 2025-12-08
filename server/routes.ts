@@ -9801,6 +9801,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             insurerNumber: targetInsuranceCard.insurerNumber || null,
             copaymentRate: targetInsuranceCard.copaymentRate || null,
           }),
+          // 心身の状態（JSレコード用）
+          mentalPhysicalState: receipt.mentalPhysicalState || null,
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',
@@ -10155,6 +10157,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             insurerNumber: targetInsuranceCard.insurerNumber || null,
             copaymentRate: targetInsuranceCard.copaymentRate || null,
           }),
+          // 心身の状態（JSレコード用）
+          mentalPhysicalState: receipt.mentalPhysicalState || null,
         },
         facility: {
           facilityCode: facility.facilityCode || '0000000',
@@ -10219,6 +10223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           diagnosis: validOrder.diagnosis,
           icd10Code: validOrder.icd10Code || '',
           instructionType: validOrder.instructionType as any,
+          diseasePresenceCode: validOrder.diseasePresenceCode || '03', // 基準告示第2の1に規定する疾病等の有無コード（別表13）
         },
         nursingRecords: targetRecords.map(record => {
           // actualStartTimeとactualEndTimeを文字列に変換
@@ -10494,6 +10499,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               highCostCategory: (receipt.highCostCategory === 'high_cost' || receipt.highCostCategory === 'high_cost_multiple')
                 ? receipt.highCostCategory
                 : null,
+              // 心身の状態（JSレコード用）
+              mentalPhysicalState: receipt.mentalPhysicalState || null,
             },
             facility: {
               facilityCode: facility.facilityCode || '0000000',

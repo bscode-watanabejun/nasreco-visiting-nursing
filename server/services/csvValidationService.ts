@@ -22,7 +22,7 @@ export interface ValidationWarning {
   field: string;
   message: string;
   severity: 'error' | 'warning';
-  recordType: 'facility' | 'patient' | 'nursingRecord' | 'doctorOrder' | 'medicalInstitution' | 'insuranceCard' | 'publicExpenseCard';
+  recordType: 'facility' | 'patient' | 'nursingRecord' | 'doctorOrder' | 'medicalInstitution' | 'insuranceCard' | 'publicExpenseCard' | 'receipt';
   recordId?: string;
 }
 
@@ -780,6 +780,18 @@ export async function validateMonthlyReceiptData(
   for (const order of orders) {
     const institutionWarnings = await validateMedicalInstitution(order.medicalInstitutionId);
     warnings.push(...institutionWarnings);
+  }
+
+  // 医療保険レセプトの場合、心身の状態（JSレコード用）の必須チェック
+  if (receipt && finalInsuranceType === 'medical') {
+    if (!receipt.mentalPhysicalState || receipt.mentalPhysicalState.trim() === '') {
+      warnings.push({
+        field: 'mentalPhysicalState',
+        message: '心身の状態（JSレコード用）が入力されていません',
+        severity: 'error',
+        recordType: 'receipt',
+      });
+    }
   }
 
   // エラーと警告を分類

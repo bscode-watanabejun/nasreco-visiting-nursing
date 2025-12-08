@@ -876,6 +876,9 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   // 高額療養費適用状況（MFレコード用）
   highCostCategory: varchar("high_cost_category", { length: 20 }), // 'high_cost' | 'high_cost_multiple' | null
 
+  // 心身の状態（JSレコード用）
+  mentalPhysicalState: text("mental_physical_state"), // 心身の状態（最大2400バイト、1200文字）
+
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

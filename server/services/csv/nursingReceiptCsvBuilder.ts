@@ -760,16 +760,8 @@ export class NursingReceiptCsvBuilder {
    * 10. JS: 心身の状態レコード
    */
   private addJSRecord(data: ReceiptCsvData): void {
-    // 最新の訪問記録の観察事項を取得（訪問日が最新のもの）
-    // 訪問記録を訪問日で降順ソートして最新のものを取得
-    const sortedRecords = [...data.nursingRecords].sort((a, b) => {
-      const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
-      const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
-      return dateB.getTime() - dateA.getTime();
-    });
-    
-    // 最新の訪問記録の観察事項を取得（必須フィールド）
-    const mentalPhysicalState = sortedRecords[0]?.observations || '';
+    // レセプトの心身の状態を使用（必須項目）
+    const mentalPhysicalState = data.receipt.mentalPhysicalState || '';
 
     // 基準告示第2の1に規定する疾病等の有無コード（別表13: '01'=別表7, '02'=別表8, '03'=無）
     // 未設定の場合はデフォルト値'03'（無）を出力
