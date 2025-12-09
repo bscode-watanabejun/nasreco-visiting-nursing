@@ -791,6 +791,24 @@ async function evaluateMonthlyVisitLimit(
     const thisMonthEnd = new Date(visitDate.getFullYear(), visitDate.getMonth() + 1, 0, 23, 59, 59);
 
     // 今月のこの加算の算定回数を取得（bonusCalculationHistoryとnursingRecordsをJOIN）
+    // 現在の訪問記録に紐づく既存の加算履歴も除外（更新時に古い履歴がカウントされないようにする）
+    const whereConditions = [
+      eq(nursingRecords.patientId, context.patientId),
+      eq(bonusMaster.bonusCode, bonusCode),
+      gte(nursingRecords.visitDate, thisMonthStart.toISOString().split('T')[0]),
+      lte(nursingRecords.visitDate, thisMonthEnd.toISOString().split('T')[0]),
+      // ステータスが「完了」または「確認済み」のみを対象
+      inArray(nursingRecords.status, ['completed', 'reviewed']),
+      // 削除フラグが設定されていない（削除されていない）記録のみを対象
+      isNull(nursingRecords.deletedAt),
+    ];
+
+    // 現在の訪問記録が指定されている場合、その記録に紐づく加算履歴を除外
+    // これにより、訪問記録更新時に古い加算履歴が月次制限チェックに含まれないようになる
+    if (context.nursingRecordId && context.nursingRecordId !== "") {
+      whereConditions.push(ne(bonusCalculationHistory.nursingRecordId, context.nursingRecordId));
+    }
+
     const existingRecords = await db
       .select({
         id: bonusCalculationHistory.id,
@@ -800,20 +818,7 @@ async function evaluateMonthlyVisitLimit(
       .from(bonusCalculationHistory)
       .innerJoin(nursingRecords, eq(bonusCalculationHistory.nursingRecordId, nursingRecords.id))
       .innerJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
-      .where(
-        and(
-          eq(nursingRecords.patientId, context.patientId),
-          eq(bonusMaster.bonusCode, bonusCode),
-          gte(nursingRecords.visitDate, thisMonthStart.toISOString().split('T')[0]),
-          lte(nursingRecords.visitDate, thisMonthEnd.toISOString().split('T')[0]),
-          // ステータスが「完了」または「確認済み」のみを対象
-          inArray(nursingRecords.status, ['completed', 'reviewed']),
-          // 削除フラグが設定されていない（削除されていない）記録のみを対象
-          isNull(nursingRecords.deletedAt),
-          // 現在の訪問記録は除外
-          ne(bonusCalculationHistory.nursingRecordId, context.nursingRecordId)
-        )
-      );
+      .where(and(...whereConditions));
 
     const currentCount = existingRecords.length;
 
