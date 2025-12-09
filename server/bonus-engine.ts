@@ -666,11 +666,11 @@ function evaluatePatientHasSpecialManagement(context: BonusCalculationContext): 
  * 開始日・終了日の範囲内かどうかもチェック
  * 
  * @param context 計算コンテキスト
- * @returns 適用すべき加算コード ('special_management_1' | 'special_management_2' | null)
+ * @returns 適用すべき加算コード ('special_management_1' | 'special_management_2' | 'care_special_management_1' | 'care_special_management_2' | null)
  */
 async function evaluateSpecialManagementBonusType(
   context: BonusCalculationContext
-): Promise<'special_management_1' | 'special_management_2' | null> {
+): Promise<'special_management_1' | 'special_management_2' | 'care_special_management_1' | 'care_special_management_2' | null> {
   const specialManagementTypes = context.specialManagementTypes || [];
   
   if (specialManagementTypes.length === 0) {
@@ -715,8 +715,12 @@ async function evaluateSpecialManagementBonusType(
   });
 
   if (definitions.length === 0) {
-    // 定義が見つからない場合は、デフォルトでspecial_management_2を返す
-    return 'special_management_2';
+    // 定義が見つからない場合は、保険種別に応じてデフォルト値を返す
+    if (context.insuranceType === 'medical') {
+      return 'special_management_2';
+    } else {
+      return 'care_special_management_2';
+    }
   }
 
   // 保険種別に応じた適切な加算コードを判定
@@ -725,9 +729,9 @@ async function evaluateSpecialManagementBonusType(
     const hasMedical5000 = definitions.some(def => def.insuranceType === 'medical_5000');
     return hasMedical5000 ? 'special_management_1' : 'special_management_2';
   } else if (context.insuranceType === 'care') {
-    // 介護保険の場合: care_500があればspecial_management_1、なければspecial_management_2
+    // 介護保険の場合: care_500があればcare_special_management_1、なければcare_special_management_2
     const hasCare500 = definitions.some(def => def.insuranceType === 'care_500');
-    return hasCare500 ? 'special_management_1' : 'special_management_2';
+    return hasCare500 ? 'care_special_management_1' : 'care_special_management_2';
   }
 
   return null;
@@ -1523,7 +1527,8 @@ export async function calculateBonuses(
       console.log(`[calculateBonuses] Evaluating bonus: ${bonus.bonusCode}`);
 
       // 2.0 特別管理加算の特別処理: 患者の特別管理項目に基づいて適切な加算コードのみを評価
-      if (bonus.bonusCode === 'special_management_1' || bonus.bonusCode === 'special_management_2') {
+      if (bonus.bonusCode === 'special_management_1' || bonus.bonusCode === 'special_management_2' ||
+          bonus.bonusCode === 'care_special_management_1' || bonus.bonusCode === 'care_special_management_2') {
         if (!specialManagementBonusType) {
           console.log(`Skipping ${bonus.bonusCode}: 特別管理項目が設定されていません`);
           continue;
