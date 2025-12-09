@@ -70,6 +70,10 @@ export interface BonusCalculationContext {
     specialistCertifications?: string[] | null; // 専門資格配列
   };
 
+  // 24時間対応体制加算の適用タイミング制御
+  isReceiptRecalculation?: boolean; // レセプト生成時/再計算時かどうか
+  isFirstRecordOfMonth?: boolean; // その月の最初の訪問記録かどうか
+
   // 追加コンテキスト（必要に応じて拡張）
   [key: string]: any;
 }
@@ -1470,6 +1474,14 @@ export async function calculateBonuses(
         }
       }
 
+      // 2.0.5 24時間対応体制加算の特別処理: レセプト生成時/再計算時かつその月の最初の訪問記録の場合のみ適用
+      if (bonus.bonusCode === '24h_response_system_basic' || bonus.bonusCode === '24h_response_system_enhanced') {
+        if (context.isReceiptRecalculation !== true || context.isFirstRecordOfMonth !== true) {
+          console.log(`Skipping ${bonus.bonusCode}: レセプト生成時/再計算時かつその月の最初の訪問記録の場合のみ適用可能`);
+          continue;
+        }
+      }
+
       // 2.1 併算定チェック
       const combinationCheck = checkCombination(bonus.bonusCode, bonus, appliedBonusCodes);
       if (!combinationCheck.allowed) {
@@ -1850,7 +1862,8 @@ export async function selectServiceCodeForBonus(
 export async function saveBonusCalculationHistory(
   nursingRecordId: string,
   results: BonusCalculationResult[],
-  userId?: string
+  userId?: string,
+  isReceiptRecalculation?: boolean
 ): Promise<void> {
   // トランザクションで処理
   await db.transaction(async (tx) => {
@@ -1871,6 +1884,23 @@ export async function saveBonusCalculationHistory(
         clearedBonusMasterIds.add(h.bonusMasterId);
       }
     });
+
+    // 24時間対応体制加算の既存履歴を保存（訪問記録更新時のみ）
+    const preserved24hBonuses: typeof existingHistory = [];
+    if (isReceiptRecalculation === false) {
+      // 24時間対応体制加算の加算マスタIDを取得
+      const bonusMasters = await tx.query.bonusMaster.findMany({
+        where: inArray(bonusMaster.bonusCode, ['24h_response_system_basic', '24h_response_system_enhanced']),
+      });
+      const bonusMasterIds = new Set(bonusMasters.map(b => b.id));
+      
+      // 既存履歴から24時間対応体制加算を抽出
+      existingHistory.forEach(h => {
+        if (bonusMasterIds.has(h.bonusMasterId)) {
+          preserved24hBonuses.push(h);
+        }
+      });
+    }
 
     // 既存の加算履歴を削除（該当のnursingRecordIdに紐づくもののみ）
     await tx.delete(bonusCalculationHistory)
@@ -1991,6 +2021,26 @@ export async function saveBonusCalculationHistory(
 
       await tx.insert(bonusCalculationHistory).values(historyRecord);
     }
+
+    // 24時間対応体制加算の既存履歴を再保存（訪問記録更新時のみ）
+    if (isReceiptRecalculation === false && preserved24hBonuses.length > 0) {
+      for (const preserved of preserved24hBonuses) {
+        // 新しいIDで再保存（既存のIDは削除されているため）
+        await tx.insert(bonusCalculationHistory).values({
+          nursingRecordId: preserved.nursingRecordId,
+          bonusMasterId: preserved.bonusMasterId,
+          calculatedPoints: preserved.calculatedPoints,
+          appliedVersion: preserved.appliedVersion,
+          calculationDetails: preserved.calculationDetails,
+          serviceCodeId: preserved.serviceCodeId,
+          isManuallyAdjusted: preserved.isManuallyAdjusted,
+          manualAdjustmentReason: preserved.manualAdjustmentReason,
+          adjustedBy: preserved.adjustedBy,
+          adjustedAt: preserved.adjustedAt,
+        });
+      }
+      console.log(`[saveBonusCalculationHistory] Preserved ${preserved24hBonuses.length} 24h bonus history records`);
+    }
   });
 }
 
@@ -2007,7 +2057,7 @@ export async function recalculateBonusesForReceipt(
     insuranceType: 'medical' | 'care'
   }
 ): Promise<void> {
-  // 対象月の訪問記録を取得（completedのみ）
+  // 対象月の訪問記録を取得（completedのみ、削除されていない記録のみ）
   const startDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 1);
   const endDate = new Date(receipt.targetYear, receipt.targetMonth, 0);
 
@@ -2017,7 +2067,8 @@ export async function recalculateBonusesForReceipt(
       eq(nursingRecords.facilityId, receipt.facilityId),
       gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
       lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-      eq(nursingRecords.status, 'completed')
+      eq(nursingRecords.status, 'completed'),
+      isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
     ),
   });
 
@@ -2057,8 +2108,25 @@ export async function recalculateBonusesForReceipt(
   // Mapに変換して高速検索可能にする
   const nurseMap = new Map(nurses.map(n => [n.id, n]));
 
+  // 訪問記録を訪問日と訪問開始時刻でソート（昇順）して最初の訪問記録を特定
+  const sortedRecords = [...targetRecords].sort((a, b) => {
+    // 1. 訪問日で比較
+    const dateA = typeof a.visitDate === 'string' ? new Date(a.visitDate) : a.visitDate;
+    const dateB = typeof b.visitDate === 'string' ? new Date(b.visitDate) : b.visitDate;
+    const dateDiff = dateA.getTime() - dateB.getTime();
+    if (dateDiff !== 0) return dateDiff;
+    
+    // 2. 同じ日付の場合、訪問開始時刻で比較
+    const timeA = a.actualStartTime ? (typeof a.actualStartTime === 'string' ? new Date(a.actualStartTime).getTime() : a.actualStartTime.getTime()) : Infinity;
+    const timeB = b.actualStartTime ? (typeof b.actualStartTime === 'string' ? new Date(b.actualStartTime).getTime() : b.actualStartTime.getTime()) : Infinity;
+    return timeA - timeB;
+  });
+
+  // 最初の訪問記録のIDを特定
+  const firstRecordId = sortedRecords.length > 0 ? sortedRecords[0].id : null;
+
   // 各訪問記録の加算を再計算
-  for (const record of targetRecords) {
+  for (const record of sortedRecords) {
     // 日付型の変換
     const visitDate = typeof record.visitDate === 'string'
       ? new Date(record.visitDate)
@@ -2175,12 +2243,15 @@ export async function recalculateBonusesForReceipt(
         fullName: assignedNurse.fullName,
         specialistCertifications: assignedNurse.specialistCertifications as string[] | null,
       } : undefined,
+      // 24時間対応体制加算の適用タイミング制御
+      isReceiptRecalculation: true,
+      isFirstRecordOfMonth: record.id === firstRecordId,
     };
 
     // 加算を計算
     const results = await calculateBonuses(context);
 
     // 加算履歴を保存（既存の履歴は削除される）
-    await saveBonusCalculationHistory(record.id, results);
+    await saveBonusCalculationHistory(record.id, results, undefined, true);
   }
 }

@@ -2976,8 +2976,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // 既存の加算計算履歴を削除（nursingRecordIdが存在する場合）
       if (nursingRecordId) {
         const { saveBonusCalculationHistory } = await import("./bonus-engine");
-        // 空の結果を渡すことで既存の履歴が削除される
-        await saveBonusCalculationHistory(nursingRecordId, []);
+        // 空の結果を渡すことで既存の履歴が削除される（ただし24時間対応体制加算は保持される）
+        await saveBonusCalculationHistory(nursingRecordId, [], undefined, false);
       }
       return { calculatedPoints, appliedBonuses };
     }
@@ -3155,6 +3155,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fullName: assignedNurse.fullName,
         specialistCertifications: assignedNurse.specialistCertifications as string[] | null,
       } : undefined,
+      // 24時間対応体制加算の適用タイミング制御
+      isReceiptRecalculation: false,
     };
 
     // Calculate bonuses using the new rule engine
@@ -3176,7 +3178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Save calculation history if nursingRecordId is provided
     if (nursingRecordId) {
-      await saveBonusCalculationHistory(nursingRecordId, bonusResults);
+      await saveBonusCalculationHistory(nursingRecordId, bonusResults, undefined, false);
     }
 
     return {
@@ -8068,7 +8070,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.patientId, patientId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-          inArray(nursingRecords.status, ['completed', 'reviewed'])
+          inArray(nursingRecords.status, ['completed', 'reviewed']),
+          isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
         ));
 
       // Recalculate totals (same logic as generate)
