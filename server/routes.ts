@@ -3148,6 +3148,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       deathPlaceText: (patient as any).deathPlaceText || null,
       // Phase 4: 特別管理情報
       specialManagementTypes: patient.specialManagementTypes || [],
+      specialManagementStartDate: patient.specialManagementStartDate ? new Date(patient.specialManagementStartDate) : null,
+      specialManagementEndDate: patient.specialManagementEndDate ? new Date(patient.specialManagementEndDate) : null,
       // Week 3: 専門管理加算用フィールド
       specialistCareType: recordData.specialistCareType || null,
       assignedNurse: assignedNurse ? {

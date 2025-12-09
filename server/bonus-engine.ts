@@ -61,6 +61,8 @@ export interface BonusCalculationContext {
   deathDate?: Date | null; // 死亡日
   deathPlaceCode?: string | null; // 死亡場所コード（別表16）: '01'(自宅), '16'(施設)等
   specialManagementTypes?: string[] | null; // 特別管理項目（配列）
+  specialManagementStartDate?: Date | null; // 特別管理加算開始日
+  specialManagementEndDate?: Date | null; // 特別管理加算終了日（nullは継続中）
 
   // Week 3: 専門管理加算用コンテキスト
   specialistCareType?: string | null; // 専門的ケアの種類
@@ -610,25 +612,58 @@ async function evaluateTerminalCareRequirement(
 
 /**
  * Phase 4: 患者が特別管理の対象かチェック
+ * 開始日・終了日の範囲内かどうかもチェック
  */
 function evaluatePatientHasSpecialManagement(context: BonusCalculationContext): ConditionEvaluationResult {
   const specialManagementTypes = context.specialManagementTypes || [];
 
-  if (specialManagementTypes.length > 0) {
+  if (specialManagementTypes.length === 0) {
     return {
-      passed: true,
-      reason: `特別管理項目: ${specialManagementTypes.join(', ')}`,
+      passed: false,
+      reason: "特別管理対象外",
     };
   }
 
+  // 開始日・終了日の範囲チェック
+  const visitDate = context.visitDate;
+  const startDate = context.specialManagementStartDate;
+  const endDate = context.specialManagementEndDate;
+
+  // 開始日が設定されている場合、訪問日が開始日以降かチェック
+  if (startDate) {
+    const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate());
+    
+    if (visitDateOnly < startDateOnly) {
+      return {
+        passed: false,
+        reason: `特別管理加算の開始日（${startDateOnly.toLocaleDateString('ja-JP')}）より前の訪問のため対象外`,
+      };
+    }
+  }
+
+  // 終了日が設定されている場合、訪問日が終了日以前かチェック
+  if (endDate) {
+    const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate());
+    
+    if (visitDateOnly > endDateOnly) {
+      return {
+        passed: false,
+        reason: `特別管理加算の終了日（${endDateOnly.toLocaleDateString('ja-JP')}）より後の訪問のため対象外`,
+      };
+    }
+  }
+
   return {
-    passed: false,
-    reason: "特別管理対象外",
+    passed: true,
+    reason: `特別管理項目: ${specialManagementTypes.join(', ')}`,
   };
 }
 
 /**
  * Phase 4: 特別管理項目のinsuranceTypeに基づいて適切な加算コードを判定
+ * 開始日・終了日の範囲内かどうかもチェック
  * 
  * @param context 計算コンテキスト
  * @returns 適用すべき加算コード ('special_management_1' | 'special_management_2' | null)
@@ -640,6 +675,31 @@ async function evaluateSpecialManagementBonusType(
   
   if (specialManagementTypes.length === 0) {
     return null;
+  }
+
+  // 開始日・終了日の範囲チェック
+  const visitDate = context.visitDate;
+  const startDate = context.specialManagementStartDate;
+  const endDate = context.specialManagementEndDate;
+
+  // 開始日が設定されている場合、訪問日が開始日以降かチェック
+  if (startDate) {
+    const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate());
+    
+    if (visitDateOnly < startDateOnly) {
+      return null; // 開始日より前のため対象外
+    }
+  }
+
+  // 終了日が設定されている場合、訪問日が終了日以前かチェック
+  if (endDate) {
+    const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate());
+    
+    if (visitDateOnly > endDateOnly) {
+      return null; // 終了日より後のため対象外
+    }
   }
 
   // 患者の特別管理項目のカテゴリから、対応する特別管理定義を取得
@@ -2237,6 +2297,8 @@ export async function recalculateBonusesForReceipt(
       deathPlaceCode: (patient as any).deathPlaceCode || null,
       // Phase 4: 特別管理情報
       specialManagementTypes: patient.specialManagementTypes || [],
+      specialManagementStartDate: patient.specialManagementStartDate ? new Date(patient.specialManagementStartDate) : null,
+      specialManagementEndDate: patient.specialManagementEndDate ? new Date(patient.specialManagementEndDate) : null,
       // Week 3: 専門管理加算用フィールド
       assignedNurse: assignedNurse ? {
         id: assignedNurse.id,

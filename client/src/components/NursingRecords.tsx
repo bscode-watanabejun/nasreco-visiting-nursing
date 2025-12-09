@@ -2001,32 +2001,67 @@ export function NursingRecords() {
             </div>
 
             {/* 特別管理加算対象患者エリア */}
-            {selectedPatient?.specialManagementTypes && selectedPatient.specialManagementTypes.length > 0 && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-sm text-yellow-900">特別管理加算対象患者</p>
-                    <div className="text-xs text-yellow-800 mt-1">
-                      <p>対象項目:</p>
-                      <ul className="list-disc list-inside ml-2 mt-1">
-                        {Array.from(new Set(selectedPatient.specialManagementTypes))
-                          .filter(typeCode => {
-                            const definition = specialManagementDefinitions.find(d => d.category === typeCode)
-                            return definition && definition.isActive
-                          })
-                          .map((typeCode) => {
-                            const definition = specialManagementDefinitions.find(d => d.category === typeCode)
-                            return (
-                              <li key={typeCode}>{definition?.displayName || typeCode}</li>
-                            )
-                          })}
-                      </ul>
+            {(() => {
+              const selectedPatient = patientsData?.data.find(p => p.id === formData.patientId)
+              if (!selectedPatient?.specialManagementTypes || selectedPatient.specialManagementTypes.length === 0) {
+                return null
+              }
+
+              // 開始日・終了日の範囲チェック
+              const visitDate = formData.visitDate ? new Date(formData.visitDate) : null
+              const startDate = selectedPatient?.specialManagementStartDate ? new Date(selectedPatient.specialManagementStartDate) : null
+              const endDate = selectedPatient?.specialManagementEndDate ? new Date(selectedPatient.specialManagementEndDate) : null
+
+              // 訪問日が設定されている場合のみ範囲チェック
+              if (visitDate) {
+                // 開始日が設定されている場合、訪問日が開始日以降かチェック
+                if (startDate) {
+                  const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+                  const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate())
+                  
+                  if (visitDateOnly < startDateOnly) {
+                    return null // 開始日より前のため非表示
+                  }
+                }
+
+                // 終了日が設定されている場合、訪問日が終了日以前かチェック
+                if (endDate) {
+                  const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+                  const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate())
+                  
+                  if (visitDateOnly > endDateOnly) {
+                    return null // 終了日より後のため非表示
+                  }
+                }
+              }
+
+              return (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-sm text-yellow-900">特別管理加算対象患者</p>
+                      <div className="text-xs text-yellow-800 mt-1">
+                        <p>対象項目:</p>
+                        <ul className="list-disc list-inside ml-2 mt-1">
+                          {Array.from(new Set(selectedPatient.specialManagementTypes))
+                            .filter(typeCode => {
+                              const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                              return definition && definition.isActive
+                            })
+                            .map((typeCode) => {
+                              const definition = specialManagementDefinitions.find(d => d.category === typeCode)
+                              return (
+                                <li key={typeCode}>{definition?.displayName || typeCode}</li>
+                              )
+                            })}
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* バリデーションエラー表示 */}
             {saveError && (
@@ -3785,6 +3820,48 @@ export function NursingRecords() {
               {(() => {
                 const selectedPatient = patientsData?.data.find(p => p.id === formData.patientId)
                 const patientSpecialTypes = selectedPatient?.specialManagementTypes || []
+
+                // 開始日・終了日の範囲チェック
+                const visitDate = formData.visitDate ? new Date(formData.visitDate) : null
+                const startDate = selectedPatient?.specialManagementStartDate ? new Date(selectedPatient.specialManagementStartDate) : null
+                const endDate = selectedPatient?.specialManagementEndDate ? new Date(selectedPatient.specialManagementEndDate) : null
+
+                // 訪問日が設定されていない場合は表示しない
+                if (!visitDate) {
+                  return (
+                    <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                      <p className="text-sm">訪問日を設定してください</p>
+                    </div>
+                  )
+                }
+
+                // 開始日が設定されている場合、訪問日が開始日以降かチェック
+                if (startDate) {
+                  const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+                  const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate())
+                  
+                  if (visitDateOnly < startDateOnly) {
+                    return (
+                      <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                        <p className="text-sm">この訪問日は特別管理加算の開始日（{startDateOnly.toLocaleDateString('ja-JP')}）より前のため、特管記録は入力できません</p>
+                      </div>
+                    )
+                  }
+                }
+
+                // 終了日が設定されている場合、訪問日が終了日以前かチェック
+                if (endDate) {
+                  const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+                  const visitDateOnly = new Date(visitDate.getFullYear(), visitDate.getMonth(), visitDate.getDate())
+                  
+                  if (visitDateOnly > endDateOnly) {
+                    return (
+                      <div className="p-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                        <p className="text-sm">この訪問日は特別管理加算の終了日（{endDateOnly.toLocaleDateString('ja-JP')}）より後のため、特管記録は入力できません</p>
+                      </div>
+                    )
+                  }
+                }
 
                 // 有効な特別管理定義のみをフィルタリング
                 // 重複を排除し、有効な定義に存在するもののみを表示
