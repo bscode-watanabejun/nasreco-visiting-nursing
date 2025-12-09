@@ -806,6 +806,10 @@ async function evaluateMonthlyVisitLimit(
           eq(bonusMaster.bonusCode, bonusCode),
           gte(nursingRecords.visitDate, thisMonthStart.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, thisMonthEnd.toISOString().split('T')[0]),
+          // ステータスが「完了」または「確認済み」のみを対象
+          inArray(nursingRecords.status, ['completed', 'reviewed']),
+          // 削除フラグが設定されていない（削除されていない）記録のみを対象
+          isNull(nursingRecords.deletedAt),
           // 現在の訪問記録は除外
           ne(bonusCalculationHistory.nursingRecordId, context.nursingRecordId)
         )

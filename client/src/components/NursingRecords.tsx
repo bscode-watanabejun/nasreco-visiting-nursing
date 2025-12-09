@@ -2578,6 +2578,17 @@ export function NursingRecords() {
                       </div>
                     </div>
                   )}
+
+                  {/* 下書きステータスの注意書き */}
+                  {selectedRecord.status === 'draft' && (
+                    <div className="bg-yellow-50 border border-yellow-300 rounded-md p-3 flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-900">下書き状態のため加算は適用されません</p>
+                        <p className="text-xs text-yellow-700 mt-1">この訪問記録は下書き状態です。算定点数や適用加算は「完了」または「確認済み」ステータスに変更するまで適用されません。</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

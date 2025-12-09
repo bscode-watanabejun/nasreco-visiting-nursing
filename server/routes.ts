@@ -2970,6 +2970,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const appliedBonuses: any[] = [];
     let calculatedPoints = 0;
 
+    // ステータスが「下書き」の場合は加算を適用しない
+    const recordStatus = recordData.status || 'draft';
+    if (recordStatus === 'draft') {
+      // 既存の加算計算履歴を削除（nursingRecordIdが存在する場合）
+      if (nursingRecordId) {
+        const { saveBonusCalculationHistory } = await import("./bonus-engine");
+        // 空の結果を渡すことで既存の履歴が削除される
+        await saveBonusCalculationHistory(nursingRecordId, []);
+      }
+      return { calculatedPoints, appliedBonuses };
+    }
+
     // Get patient information for context (needed for visit date calculation)
     const patient = await db.query.patients.findFirst({
       where: eq(patients.id, recordData.patientId)
