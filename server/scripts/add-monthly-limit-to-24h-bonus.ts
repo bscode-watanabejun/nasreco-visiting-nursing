@@ -4,13 +4,47 @@
  * 24時間対応体制加算（基本）および24時間対応体制加算（看護業務負担軽減）に
  * 利用者1名につき月1回までの制限を追加します。
  *
- * 実行方法:
- * npx tsx server/scripts/add-monthly-limit-to-24h-bonus.ts
+ * ⚠️ 警告: このスクリプトは本番データベースに書き込みを行います。
+ *    ユーザーの明示的な承認なしに実行しないでください。
+ *
+ * 実行方法（開発環境）:
+ *   npx tsx server/scripts/add-monthly-limit-to-24h-bonus.ts
+ *
+ * 実行方法（本番環境）:
+ *   PRODUCTION_DB_URL="postgresql://..." npx tsx server/scripts/add-monthly-limit-to-24h-bonus.ts
  */
 
-import { db } from "../db";
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import ws from "ws";
+import * as schema from "@shared/schema";
 import { bonusMaster } from "@shared/schema";
 import { eq } from "drizzle-orm";
+
+// 本番環境用のDB接続を設定
+const PRODUCTION_DB_URL = process.env.PRODUCTION_DB_URL;
+const DATABASE_URL = process.env.DATABASE_URL;
+
+// 本番環境の場合は警告を表示
+if (PRODUCTION_DB_URL) {
+  console.log("⚠️  本番環境のデータベースに接続します");
+  console.log("");
+}
+
+// 使用するDB接続文字列を決定
+const dbUrl = PRODUCTION_DB_URL || DATABASE_URL;
+
+if (!dbUrl) {
+  console.error("❌ DATABASE_URL または PRODUCTION_DB_URL 環境変数が設定されていません");
+  process.exit(1);
+}
+
+// Neon用の設定
+neonConfig.webSocketConstructor = ws;
+
+// DB接続を作成
+const pool = new Pool({ connectionString: dbUrl });
+const db = drizzle({ client: pool, schema });
 
 async function addMonthlyLimitTo24hBonus() {
   console.log("🌱 24時間対応体制加算に月次制限を追加中...");
