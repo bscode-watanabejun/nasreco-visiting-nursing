@@ -6791,7 +6791,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 eq(nursingRecords.patientId, nursingRecord.patientId),
                 gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
                 lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-                inArray(nursingRecords.status, ['completed', 'reviewed'])
+                inArray(nursingRecords.status, ['completed', 'reviewed']),
+                isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
               ));
 
             // Recalculate totals
@@ -7288,7 +7289,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-          inArray(nursingRecords.status, ['completed', 'reviewed'])
+          inArray(nursingRecords.status, ['completed', 'reviewed']),
+          isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
         ))
         .orderBy(nursingRecords.visitDate);
 
@@ -7488,7 +7490,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           eq(nursingRecords.facilityId, facilityId),
           gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
           lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-          inArray(nursingRecords.status, ['completed', 'reviewed'])
+          inArray(nursingRecords.status, ['completed', 'reviewed']),
+          isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
         ));
 
       // Get insurance cards to determine patient's insurance type
@@ -8586,7 +8589,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(nursingRecords.patientId, receiptData.patientId),
             gte(nursingRecords.visitDate, startDate),
             lt(nursingRecords.visitDate, endDate),
-            inArray(nursingRecords.status, ['completed', 'reviewed'])
+            inArray(nursingRecords.status, ['completed', 'reviewed']),
+            isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
           ))
           .orderBy(asc(nursingRecords.visitDate)),
         // 施設情報を取得
@@ -9616,7 +9620,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           where: and(
             eq(nursingRecords.patientId, receipt.patientId),
             eq(nursingRecords.facilityId, receipt.facilityId),
-            inArray(nursingRecords.status, ['completed', 'reviewed'])
+            inArray(nursingRecords.status, ['completed', 'reviewed']),
+            isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
           ),
           with: {
             serviceCode: true, // サービスコードリレーションを含める
@@ -10992,7 +10997,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               eq(nursingRecords.facilityId, facilityId),
               gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
               lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-              inArray(nursingRecords.status, ['completed', 'reviewed'])
+              inArray(nursingRecords.status, ['completed', 'reviewed']),
+              isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
             ))
             .orderBy(nursingRecords.visitDate);
 

@@ -6,7 +6,7 @@
  */
 
 import { db } from '../db';
-import { eq, and, desc, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, inArray, gte, lte, isNull } from 'drizzle-orm';
 import {
   facilities,
   patients,
@@ -526,7 +526,8 @@ async function validateNursingRecords(
   const records = await db.query.nursingRecords.findMany({
     where: and(
       eq(nursingRecords.patientId, patientId),
-      inArray(nursingRecords.status, ['completed', 'reviewed'])
+      inArray(nursingRecords.status, ['completed', 'reviewed']),
+      isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
     ),
     with: {
       serviceCode: true, // サービスコードリレーションを含める
@@ -760,7 +761,8 @@ export async function validateMonthlyReceiptData(
       eq(nursingRecords.patientId, patientId),
       gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
       lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-      inArray(nursingRecords.status, ['completed', 'reviewed'])
+      inArray(nursingRecords.status, ['completed', 'reviewed']),
+      isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
     ),
   });
 
