@@ -17,8 +17,22 @@ import { visitingNursingMasterBasic, nursingServiceCodes } from '@shared/schema'
 import { eq } from 'drizzle-orm';
 import { determineBurdenClassificationCode, determineReceiptTypeCode } from '../csv/receiptClassification';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/**
+ * テンプレートファイルのパスを取得
+ * 本番環境ではprocess.cwd()を使用（esbuildでバンドル後も正しく動作）
+ */
+const getTemplatePath = (): string => {
+  if (process.env.NODE_ENV === 'production') {
+    // 本番環境: dist/index.jsから実行されるため、process.cwd()はプロジェクトルート
+    // テンプレートファイルは dist/templates/ にコピーされている
+    return path.join(process.cwd(), 'dist/templates/訪問看護療養費明細書フォーマット.xlsx');
+  } else {
+    // 開発環境: server/services/excel/ から server/templates/
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    return path.join(__dirname, '../../templates/訪問看護療養費明細書フォーマット.xlsx');
+  }
+};
 
 /**
  * 訪問看護療養費明細書Excelビルダー
@@ -29,11 +43,7 @@ export class NursingReceiptExcelBuilder {
    */
   public async build(data: ReceiptCsvData): Promise<Buffer> {
     // テンプレートファイルのパスを取得
-    // 開発環境: server/services/excel/ から server/templates/
-    // 本番環境: dist/services/excel/ から dist/templates/
-    const templatePath = process.env.NODE_ENV === 'production'
-      ? path.join(__dirname, '../templates/訪問看護療養費明細書フォーマット.xlsx')
-      : path.join(__dirname, '../../templates/訪問看護療養費明細書フォーマット.xlsx');
+    const templatePath = getTemplatePath();
 
     // テンプレートファイルの存在確認
     if (!fs.existsSync(templatePath)) {

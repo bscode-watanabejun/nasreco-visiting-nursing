@@ -2,8 +2,22 @@ import ExcelJS from 'exceljs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/**
+ * テンプレートファイルのパスを取得
+ * 本番環境ではprocess.cwd()を使用（esbuildでバンドル後も正しく動作）
+ */
+const getTemplatePath = (): string => {
+  if (process.env.NODE_ENV === 'production') {
+    // 本番環境: dist/index.jsから実行されるため、process.cwd()はプロジェクトルート
+    // テンプレートファイルは dist/templates/ にコピーされている
+    return path.join(process.cwd(), 'dist/templates/訪問看護記録書Iフォーマット.xlsx');
+  } else {
+    // 開発環境: server/excel-generators/ から server/templates/
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    return path.join(__dirname, '../templates/訪問看護記録書Iフォーマット.xlsx');
+  }
+};
 
 interface NursingRecordIData {
   patient: {
@@ -143,12 +157,8 @@ function translateContentStatus(content: string): string {
  * 訪問看護記録書Iを生成
  */
 export async function generateNursingRecordIExcel(data: NursingRecordIData): Promise<Buffer> {
-  // 開発環境と本番環境でパスを切り替え
-  // 本番環境: dist/index.js から dist/templates/
-  // 開発環境: server/excel-generators/nursing-record-i.ts から server/templates/
-  const templatePath = process.env.NODE_ENV === 'production'
-    ? path.join(__dirname, 'templates/訪問看護記録書Iフォーマット.xlsx')
-    : path.join(__dirname, '../templates/訪問看護記録書Iフォーマット.xlsx');
+  // テンプレートファイルのパスを取得
+  const templatePath = getTemplatePath();
 
   // テンプレートを読み込み
   const workbook = new ExcelJS.Workbook();

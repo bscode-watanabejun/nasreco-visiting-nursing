@@ -10319,7 +10319,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       console.error("Error exporting receipt Excel:", error);
-      res.status(500).json({ error: "Excel出力に失敗しました" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error details:", {
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        receiptId: req.params.id,
+      });
+      res.status(500).json({ 
+        error: "Excel出力に失敗しました",
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      });
     }
   });
 
