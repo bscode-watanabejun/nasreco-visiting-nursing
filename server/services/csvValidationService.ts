@@ -16,6 +16,7 @@ import {
   monthlyReceipts,
   insuranceCards,
   publicExpenseCards,
+  bonusCalculationHistory,
 } from '@shared/schema';
 
 export interface ValidationWarning {
@@ -547,6 +548,20 @@ async function validateNursingRecords(
     return warnings;
   }
 
+  // 対象期間の訪問記録IDを取得して、加算計算履歴を一括取得
+  const recordIds = targetRecords.map(r => r.id);
+  const bonusHistories = recordIds.length > 0
+    ? await db.query.bonusCalculationHistory.findMany({
+        where: inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+      })
+    : [];
+  
+  // 訪問記録IDごとの加算計算履歴の有無をMapで管理
+  const hasBonusHistoryMap = new Map<string, boolean>();
+  for (const history of bonusHistories) {
+    hasBonusHistoryMap.set(history.nursingRecordId, true);
+  }
+
   // 同日の訪問記録をグループ化して訪問回数を計算
   const recordsByDate = new Map<string, typeof targetRecords>();
   for (const record of targetRecords) {
@@ -578,10 +593,15 @@ async function validateNursingRecords(
 
     // サービスコードのチェック
     // 同日2回目以降の訪問では基本療養費のサービスコードは適用されないため、未設定でもエラーにしない
+    // また、加算が適用されている場合は基本療養費のサービスコードが未設定でもエラーにしない
     if (!record.serviceCodeId) {
-      // 1回目の訪問ではサービスコードが必須
+      // 1回目の訪問ではサービスコードが必須（ただし、加算が適用されている場合は例外）
       if (visitOrder === 1) {
-        recordWarnings.push('サービスコードが設定されていません');
+        // 加算計算履歴がある場合は基本療養費のサービスコードが未設定でもエラーにしない
+        const hasBonusHistory = hasBonusHistoryMap.get(record.id) || false;
+        if (!hasBonusHistory) {
+          recordWarnings.push('サービスコードが設定されていません');
+        }
       }
       // 2回目以降の訪問では基本療養費のサービスコードは不要（加算のサービスコードは別途チェック）
     } else if (!record.serviceCode) {

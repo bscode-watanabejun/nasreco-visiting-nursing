@@ -3345,8 +3345,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "看護記録が見つかりません" });
       }
 
-      // Recalculate and save bonus history with record ID (Phase 4)
-      await calculateBonusesAndPoints(mergedData, req.user.facilityId, id);
+      // Recalculate and save bonus history with updated record data (Phase 4)
+      // 更新後のrecordデータを使って再計算することで、最新の状態で加算計算が実行される
+      const updatedRecordData = {
+        ...record,
+        // 日付フィールドを文字列形式に変換（calculateBonusesAndPoints関数が期待する形式）
+        visitDate: record.visitDate,
+        actualStartTime: record.actualStartTime ? new Date(record.actualStartTime).toISOString() : null,
+        actualEndTime: record.actualEndTime ? new Date(record.actualEndTime).toISOString() : null,
+      };
+      await calculateBonusesAndPoints(updatedRecordData, req.user.facilityId, id);
 
       // Fetch patient and nurse information for the response
       const patient = await storage.getPatient(record.patientId);
