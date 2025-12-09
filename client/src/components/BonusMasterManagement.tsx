@@ -77,7 +77,12 @@ const initialFormData: BonusFormData = {
 
 // Helper component to display predefined conditions
 function PredefinedConditionsDisplay({ conditions }: { conditions: unknown }) {
-  const conditionsArray = conditions as any[];
+  // conditionsが配列でない場合（単一オブジェクト）も配列に変換
+  const conditionsArray = Array.isArray(conditions) 
+    ? conditions 
+    : conditions && typeof conditions === 'object' && conditions !== null
+      ? [conditions]
+      : [];
 
   // パターン名から人間が読みやすい具体的な表現を生成
   const getReadableCondition = (condition: any): string => {
