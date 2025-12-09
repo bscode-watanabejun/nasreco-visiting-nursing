@@ -332,8 +332,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       const patientData: InsertPatient = {
         ...data,
         dateOfBirth: formatDateForAPI(data.dateOfBirth), // Convert to YYYY-MM-DD
-        specialManagementStartDate: data.specialManagementStartDate ? formatDateForAPI(data.specialManagementStartDate) : undefined,
-        specialManagementEndDate: data.specialManagementEndDate ? formatDateForAPI(data.specialManagementEndDate) : undefined,
+        specialManagementStartDate: data.specialManagementStartDate ? formatDateForAPI(data.specialManagementStartDate) : null,
+        specialManagementEndDate: data.specialManagementEndDate ? formatDateForAPI(data.specialManagementEndDate) : null,
         // undefinedの場合はnullを送信してフィールドをクリア
         lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
         lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
@@ -389,8 +389,8 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
       const updateData: UpdatePatient = {
         ...data,
         dateOfBirth: formatDateForAPI(data.dateOfBirth), // Convert to YYYY-MM-DD
-        specialManagementStartDate: data.specialManagementStartDate ? formatDateForAPI(data.specialManagementStartDate) : undefined,
-        specialManagementEndDate: data.specialManagementEndDate ? formatDateForAPI(data.specialManagementEndDate) : undefined,
+        specialManagementStartDate: data.specialManagementStartDate ? formatDateForAPI(data.specialManagementStartDate) : null,
+        specialManagementEndDate: data.specialManagementEndDate ? formatDateForAPI(data.specialManagementEndDate) : null,
         // undefinedの場合はnullを送信してフィールドをクリア
         lastDischargeDate: data.lastDischargeDate ? formatDateForAPI(data.lastDischargeDate) : null,
         lastPlanCreatedDate: data.lastPlanCreatedDate ? formatDateForAPI(data.lastPlanCreatedDate) : null,
@@ -1319,88 +1319,98 @@ export function PatientForm({ isOpen, onClose, patient, mode }: PatientFormProps
                   <FormField
                     control={form.control}
                     name="specialManagementStartDate"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>開始日</FormLabel>
-                        <Popover open={isStartDateOpen} onOpenChange={setIsStartDateOpen}>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                className="w-full pl-3 text-left font-normal bg-background hover:bg-background"
-                              >
-                                {field.value ? (
-                                  format(field.value, "yyyy年MM月dd日", { locale: ja })
-                                ) : (
-                                  <span className="text-muted-foreground">開始日を選択</span>
-                                )}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            {isStartDateOpen && (
-                              <DatePickerWithYearMonth
-                                selected={field.value}
-                                onSelect={(date) => {
-                                  field.onChange(date)
-                                  setIsStartDateOpen(false)
-                                }}
-                                disabled={(date) =>
-                                  date > new Date() || date < new Date("2000-01-01")
-                                }
-                                minYear={2000}
-                                maxYear={new Date().getFullYear()}
-                              />
-                            )}
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      // 常に最新の値を取得
+                      const currentValue = form.watch("specialManagementStartDate")
+
+                      return (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>開始日</FormLabel>
+                          <Popover open={isStartDateOpen} onOpenChange={setIsStartDateOpen}>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  className={`w-full pl-3 text-left font-normal bg-background hover:bg-background ${!currentValue && "text-muted-foreground"}`}
+                                >
+                                  {currentValue ? (
+                                    format(currentValue, "yyyy年MM月dd日", { locale: ja })
+                                  ) : (
+                                    <span>開始日を選択</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              {isStartDateOpen && (
+                                <DatePickerWithYearMonth
+                                  selected={currentValue}
+                                  onSelect={(date) => {
+                                    field.onChange(date)
+                                    setTimeout(() => setIsStartDateOpen(false), 0)
+                                  }}
+                                  disabled={(date) =>
+                                    date > new Date() || date < new Date("2000-01-01")
+                                  }
+                                  minYear={2000}
+                                  maxYear={new Date().getFullYear()}
+                                />
+                              )}
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )
+                    }}
                   />
                   <FormField
                     control={form.control}
                     name="specialManagementEndDate"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>終了日（空白は継続中）</FormLabel>
-                        <Popover open={isEndDateOpen} onOpenChange={setIsEndDateOpen}>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                className="w-full pl-3 text-left font-normal bg-background hover:bg-background"
-                              >
-                                {field.value ? (
-                                  format(field.value, "yyyy年MM月dd日", { locale: ja })
-                                ) : (
-                                  <span className="text-muted-foreground">終了日を選択</span>
-                                )}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            {isEndDateOpen && (
-                              <DatePickerWithYearMonth
-                                selected={field.value}
-                                onSelect={(date) => {
-                                  field.onChange(date)
-                                  setIsEndDateOpen(false)
-                                }}
-                                disabled={(date) =>
-                                  date < new Date("2000-01-01")
-                                }
-                                minYear={2000}
-                                maxYear={new Date().getFullYear() + 5}
-                              />
-                            )}
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      // 常に最新の値を取得
+                      const currentValue = form.watch("specialManagementEndDate")
+
+                      return (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>終了日（空白は継続中）</FormLabel>
+                          <Popover open={isEndDateOpen} onOpenChange={setIsEndDateOpen}>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  className={`w-full pl-3 text-left font-normal bg-background hover:bg-background ${!currentValue && "text-muted-foreground"}`}
+                                >
+                                  {currentValue ? (
+                                    format(currentValue, "yyyy年MM月dd日", { locale: ja })
+                                  ) : (
+                                    <span>終了日を選択</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              {isEndDateOpen && (
+                                <DatePickerWithYearMonth
+                                  selected={currentValue}
+                                  onSelect={(date) => {
+                                    field.onChange(date)
+                                    setTimeout(() => setIsEndDateOpen(false), 0)
+                                  }}
+                                  disabled={(date) =>
+                                    date < new Date("2000-01-01")
+                                  }
+                                  minYear={2000}
+                                  maxYear={new Date().getFullYear() + 5}
+                                />
+                              )}
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )
+                    }}
                   />
                 </div>
               </CardContent>
