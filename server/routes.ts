@@ -6813,6 +6813,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Recalculate totals
             let totalVisitPoints = 0;
+            let totalManagementPoints = 0;
             let specialManagementPoints = 0;
             const bonusMap = new Map<string, { bonusCode: string; bonusName: string; count: number; points: number }>();
 
@@ -6866,6 +6867,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .map(r => r.serviceCodeId)
               .filter((id): id is string => id !== null);
 
+            // 管理療養費のサービスコードIDも収集
+            const managementServiceCodeIds = records
+              .map(r => r.managementServiceCodeId)
+              .filter((id): id is string => id !== null);
+
             // サービスコードを一括取得
             const serviceCodes = serviceCodeIds.length > 0
               ? await db.query.nursingServiceCodes.findMany({
@@ -6873,8 +6879,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 })
               : [];
 
+            // 管理療養費のサービスコードを一括取得
+            const managementServiceCodes = managementServiceCodeIds.length > 0
+              ? await db.query.nursingServiceCodes.findMany({
+                  where: inArray(nursingServiceCodes.id, managementServiceCodeIds),
+                })
+              : [];
+
             // Mapに変換して高速検索可能にする
             const serviceCodeMap = new Map(serviceCodes.map(sc => [sc.id, sc]));
+            const managementServiceCodeMap = new Map(managementServiceCodes.map(sc => [sc.id, sc]));
 
             for (const record of records) {
               let recordPoints = 0;
@@ -6890,11 +6904,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
 
               totalVisitPoints += recordPoints;
+
+              // 管理療養費の点数を集計
+              if (record.managementServiceCodeId) {
+                const managementServiceCode = managementServiceCodeMap.get(record.managementServiceCodeId);
+                if (managementServiceCode) {
+                  totalManagementPoints += managementServiceCode.points;
+                }
+              }
             }
 
             const bonusBreakdown = Array.from(bonusMap.values());
             const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
-            const totalPoints = totalVisitPoints + totalBonusPoints;
+            const totalPoints = totalVisitPoints + totalManagementPoints + totalBonusPoints;
             const totalAmount = totalPoints * 10;
 
             // Run CSV export validation (don't block recalculation if this fails)
@@ -6925,6 +6947,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .set({
                 visitCount: records.length,
                 totalVisitPoints,
+                totalManagementPoints,
                 specialManagementPoints,
                 bonusBreakdown,
                 totalPoints,
@@ -7600,6 +7623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // 各訪問記録のサービスコードから点数を取得
+        let totalManagementPoints = 0;
         for (const recordItem of records) {
           const record = recordItem.record;
           let recordPoints = 0;
@@ -7617,11 +7641,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           totalVisitPoints += recordPoints;
+
+          // 管理療養費の点数を集計
+          if (record.managementServiceCodeId) {
+            const managementServiceCode = await db.query.nursingServiceCodes.findFirst({
+              where: eq(nursingServiceCodes.id, record.managementServiceCodeId),
+            });
+            if (managementServiceCode) {
+              totalManagementPoints += managementServiceCode.points;
+            }
+          }
         }
 
         const bonusBreakdown = Array.from(bonusMap.values());
         const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
-        const totalPoints = totalVisitPoints + totalBonusPoints;
+        const totalPoints = totalVisitPoints + totalManagementPoints + totalBonusPoints;
         const totalAmount = insuranceType === 'medical' ? totalPoints * 10 : totalPoints * 10; // Convert to yen
 
         // Run validation for this receipt
@@ -7737,6 +7771,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .set({
               visitCount: records.length,
               totalVisitPoints,
+              totalManagementPoints,
               specialManagementPoints,
               bonusBreakdown,
               totalPoints,
@@ -7765,6 +7800,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               insuranceType,
               visitCount: records.length,
               totalVisitPoints,
+              totalManagementPoints,
               specialManagementPoints,
               bonusBreakdown,
               totalPoints,
@@ -8078,6 +8114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Recalculate totals (same logic as generate)
       let totalVisitPoints = 0;
+      let totalManagementPoints = 0;
       let specialManagementPoints = 0;
       const bonusMap = new Map<string, { bonusCode: string; bonusName: string; count: number; points: number }>();
 
@@ -8142,11 +8179,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         totalVisitPoints += recordPoints;
+
+        // 管理療養費の点数を集計
+        if (record.managementServiceCodeId) {
+          const managementServiceCode = await db.query.nursingServiceCodes.findFirst({
+            where: eq(nursingServiceCodes.id, record.managementServiceCodeId),
+          });
+          if (managementServiceCode) {
+            totalManagementPoints += managementServiceCode.points;
+          }
+        }
       }
 
       const bonusBreakdown = Array.from(bonusMap.values());
       const totalBonusPoints = bonusBreakdown.reduce((sum, b) => sum + b.points, 0);
-      const totalPoints = totalVisitPoints + totalBonusPoints;
+      const totalPoints = totalVisitPoints + totalManagementPoints + totalBonusPoints;
       const totalAmount = totalPoints * 10;
 
       // Run CSV export validation (don't block recalculation if this fails)
@@ -8176,6 +8223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({
           visitCount: records.length,
           totalVisitPoints,
+          totalManagementPoints,
           specialManagementPoints,
           bonusBreakdown,
           totalPoints,
@@ -9641,7 +9689,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
           ),
           with: {
-            serviceCode: true, // サービスコードリレーションを含める
+            serviceCode: true, // サービスコードリレーションを含める（基本療養費）
+            managementServiceCode: true, // サービスコードリレーションを含める（管理療養費）
           },
         }),
         db.query.doctorOrders.findMany({
@@ -9904,26 +9953,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
           instructionType: validOrder.instructionType, // Phase 3: 指示区分
           diseasePresenceCode: validOrder.diseasePresenceCode || '03', // 基準告示第2の1に規定する疾病等の有無コード（別表13）
         },
-        nursingRecords: targetRecords.map(record => ({
-          id: record.id,
-          visitDate: record.visitDate,
-          publicExpenseId: record.publicExpenseId || null,
-          actualStartTime: record.actualStartTime instanceof Date
-            ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
-            : (record.actualStartTime || ''),
-          actualEndTime: record.actualEndTime instanceof Date
-            ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
-            : (record.actualEndTime || ''),
-          serviceCode: record.serviceCode?.serviceCode || '', // 実際の9桁サービスコードを取得
-          visitLocationCode: record.visitLocationCode || '01', // デフォルトは'01'（自宅、別表16）
-          visitLocationCustom: record.visitLocationCustom || null,
-          staffQualificationCode: record.staffQualificationCode || '00',
-          calculatedPoints: record.calculatedPoints || 0,
-          observations: record.observations || '', // 観察事項（JSレコードの心身の状態用）
-          isServiceEnd: record.isServiceEnd || false,
-          serviceEndReasonCode: record.serviceEndReasonCode || null,
-          serviceEndReasonText: record.serviceEndReasonText || null,
-          appliedBonuses: (record.appliedBonuses as any[]) || [],
+        nursingRecords: await Promise.all(targetRecords.map(async (record) => {
+          // 管理療養費のサービスコードを取得
+          let managementServiceCode: string | undefined = undefined;
+          if ((record as any).managementServiceCode?.serviceCode) {
+            managementServiceCode = (record as any).managementServiceCode.serviceCode;
+          } else if (record.managementServiceCodeId) {
+            // リレーションが読み込まれていない場合、直接取得
+            const managementServiceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+              where: eq(nursingServiceCodes.id, record.managementServiceCodeId),
+            });
+            if (managementServiceCodeRecord) {
+              managementServiceCode = managementServiceCodeRecord.serviceCode;
+            }
+          }
+          
+          return {
+            id: record.id,
+            visitDate: record.visitDate,
+            publicExpenseId: record.publicExpenseId || null,
+            actualStartTime: record.actualStartTime instanceof Date
+              ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
+              : (record.actualStartTime || ''),
+            actualEndTime: record.actualEndTime instanceof Date
+              ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
+              : (record.actualEndTime || ''),
+            serviceCode: record.serviceCode?.serviceCode || '', // 実際の9桁サービスコードを取得
+            managementServiceCode,
+            visitLocationCode: record.visitLocationCode || '01', // デフォルトは'01'（自宅、別表16）
+            visitLocationCustom: record.visitLocationCustom || null,
+            staffQualificationCode: record.staffQualificationCode || '00',
+            calculatedPoints: record.calculatedPoints || 0,
+            observations: record.observations || '', // 観察事項（JSレコードの心身の状態用）
+            isServiceEnd: record.isServiceEnd || false,
+            serviceEndReasonCode: record.serviceEndReasonCode || null,
+            serviceEndReasonText: record.serviceEndReasonText || null,
+            appliedBonuses: (record.appliedBonuses as any[]) || [],
+          };
         })),
         bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],
         bonusHistory: bonusHistoryData
@@ -10010,6 +10076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ),
           with: {
             serviceCode: true,
+            managementServiceCode: true,
           },
         }),
         db.query.doctorOrders.findMany({
@@ -10255,7 +10322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           instructionType: validOrder.instructionType as any,
           diseasePresenceCode: validOrder.diseasePresenceCode || '03', // 基準告示第2の1に規定する疾病等の有無コード（別表13）
         },
-        nursingRecords: targetRecords.map(record => {
+        nursingRecords: await Promise.all(targetRecords.map(async (record) => {
           // actualStartTimeとactualEndTimeを文字列に変換
           let actualStartTimeStr = '';
           let actualEndTimeStr = '';
@@ -10278,6 +10345,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             actualEndTimeStr = `${hours}:${minutes}`;
           }
           
+          // 管理療養費のサービスコードを取得
+          let managementServiceCode: string | undefined = undefined;
+          if ((record as any).managementServiceCode?.serviceCode) {
+            managementServiceCode = (record as any).managementServiceCode.serviceCode;
+          } else if (record.managementServiceCodeId) {
+            // リレーションが読み込まれていない場合、直接取得
+            const managementServiceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+              where: eq(nursingServiceCodes.id, record.managementServiceCodeId),
+            });
+            if (managementServiceCodeRecord) {
+              managementServiceCode = managementServiceCodeRecord.serviceCode;
+            }
+          }
+          
           return {
             id: record.id,
             visitDate: record.visitDate,
@@ -10285,6 +10366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             actualStartTime: actualStartTimeStr,
             actualEndTime: actualEndTimeStr,
             serviceCode: record.serviceCode?.serviceCode || '',
+            managementServiceCode,
             visitLocationCode: record.visitLocationCode || '',
             visitLocationCustom: record.visitLocationCustom || null,
             staffQualificationCode: record.staffQualificationCode || '',
@@ -10295,7 +10377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             serviceEndReasonText: record.serviceEndReasonText || null,
             appliedBonuses: [],
           };
-        }),
+        })),
         bonusBreakdown: [],
         bonusHistory: bonusHistoryData
           .filter(item => item.serviceCode !== null) // サービスコードが選択されていない加算は除外
@@ -10606,26 +10688,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
               icd10Code: validOrder.icd10Code || '',
               instructionType: validOrder.instructionType,
             },
-            nursingRecords: targetRecords.map(record => ({
-              id: record.id,
-              visitDate: record.visitDate,
-              publicExpenseId: record.publicExpenseId || null,
-              actualStartTime: record.actualStartTime instanceof Date
-                ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
-                : (record.actualStartTime || ''),
-              actualEndTime: record.actualEndTime instanceof Date
-                ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
-                : (record.actualEndTime || ''),
-              serviceCode: record.serviceCode?.serviceCode || '',
-              visitLocationCode: record.visitLocationCode || '01',
-              visitLocationCustom: record.visitLocationCustom || null,
-              staffQualificationCode: record.staffQualificationCode || '00',
-              calculatedPoints: record.calculatedPoints || 0,
-              observations: record.observations || '',
-              isServiceEnd: record.isServiceEnd || false,
-              serviceEndReasonCode: record.serviceEndReasonCode || null,
-              serviceEndReasonText: record.serviceEndReasonText || null,
-              appliedBonuses: (record.appliedBonuses as any[]) || [],
+            nursingRecords: await Promise.all(targetRecords.map(async (record) => {
+              // 管理療養費のサービスコードを取得
+              let managementServiceCode: string | undefined = undefined;
+              if ((record as any).managementServiceCode?.serviceCode) {
+                managementServiceCode = (record as any).managementServiceCode.serviceCode;
+              } else if (record.managementServiceCodeId) {
+                // リレーションが読み込まれていない場合、直接取得
+                const managementServiceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+                  where: eq(nursingServiceCodes.id, record.managementServiceCodeId),
+                });
+                if (managementServiceCodeRecord) {
+                  managementServiceCode = managementServiceCodeRecord.serviceCode;
+                }
+              }
+              
+              return {
+                id: record.id,
+                visitDate: record.visitDate,
+                publicExpenseId: record.publicExpenseId || null,
+                actualStartTime: record.actualStartTime instanceof Date
+                  ? record.actualStartTime.toISOString().split('T')[1].substring(0, 5)
+                  : (record.actualStartTime || ''),
+                actualEndTime: record.actualEndTime instanceof Date
+                  ? record.actualEndTime.toISOString().split('T')[1].substring(0, 5)
+                  : (record.actualEndTime || ''),
+                serviceCode: record.serviceCode?.serviceCode || '',
+                managementServiceCode,
+                visitLocationCode: record.visitLocationCode || '01',
+                visitLocationCustom: record.visitLocationCustom || null,
+                staffQualificationCode: record.staffQualificationCode || '00',
+                calculatedPoints: record.calculatedPoints || 0,
+                observations: record.observations || '',
+                isServiceEnd: record.isServiceEnd || false,
+                serviceEndReasonCode: record.serviceEndReasonCode || null,
+                serviceEndReasonText: record.serviceEndReasonText || null,
+                appliedBonuses: (record.appliedBonuses as any[]) || [],
+              };
             })),
             bonusBreakdown: (receipt.bonusBreakdown as any[]) || [],
             bonusHistory: bonusHistoryData

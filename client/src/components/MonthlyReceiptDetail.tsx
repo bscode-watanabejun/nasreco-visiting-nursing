@@ -69,6 +69,7 @@ interface MonthlyReceiptDetail {
   insuranceType: 'medical' | 'care'
   visitCount: number
   totalVisitPoints: number
+  totalManagementPoints: number | null
   specialManagementPoints: number | null
   emergencyPoints: number | null
   longDurationPoints: number | null
@@ -1372,7 +1373,7 @@ export default function MonthlyReceiptDetail() {
               }
               
               return (
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                   <div>
                     <div className="text-sm text-muted-foreground">訪問回数</div>
                     <div className="text-2xl font-bold">{receipt.visitCount}回</div>
@@ -1381,6 +1382,12 @@ export default function MonthlyReceiptDetail() {
                     <div className="text-sm text-muted-foreground">基本点数</div>
                     <div className="text-2xl font-bold">{receipt.totalVisitPoints.toLocaleString()}点</div>
                   </div>
+                  {receipt.insuranceType === 'medical' && (
+                    <div>
+                      <div className="text-sm text-muted-foreground">管理点数</div>
+                      <div className="text-2xl font-bold">{(receipt.totalManagementPoints || 0).toLocaleString()}点</div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm text-muted-foreground">加算点数</div>
                     <div className="text-2xl font-bold">{totalBonusPoints.toLocaleString()}点</div>

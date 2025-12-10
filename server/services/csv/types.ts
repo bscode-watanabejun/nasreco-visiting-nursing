@@ -122,7 +122,8 @@ export interface ReceiptCsvData {
     publicExpenseId?: string | null; // 公費ID（公費併用時のみ）
     actualStartTime: string;
     actualEndTime: string;
-    serviceCode: string; // 9桁
+    serviceCode: string; // 9桁（基本療養費）
+    managementServiceCode?: string; // 9桁（管理療養費、任意）
     visitLocationCode: string; // 2桁
     visitLocationCustom?: string | null; // 訪問場所詳細（場所コード99の場合のみ、RJレコード用）
     staffQualificationCode: string; // 2桁

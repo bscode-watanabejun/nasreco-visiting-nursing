@@ -138,7 +138,8 @@ interface FormData {
   demoStaffNameOverride: string
   purposeOverride: string
   // Phase 3: レセプトCSV対応
-  nursingServiceCode: string // 訪問看護サービスコード
+  nursingServiceCode: string // 訪問看護サービスコード（基本療養費）
+  managementServiceCode: string // 訪問看護サービスコード（管理療養費）
   visitLocation: string // 訪問場所コード
   visitLocationCustom: string // 訪問場所詳細（場所コード99の場合のみ）
   staffQualification: string // 職員資格コード
@@ -206,6 +207,15 @@ const convertFormDataToApiFormat = (
     }
   }
 
+  // 管理療養費のサービスコード（9桁文字列）からサービスコードID（UUID）に変換
+  let managementServiceCodeId: string | undefined = undefined
+  if (formData.managementServiceCode) {
+    const managementServiceCode = nursingServiceCodes.find(code => code.serviceCode === formData.managementServiceCode)
+    if (managementServiceCode) {
+      managementServiceCodeId = managementServiceCode.id
+    }
+  }
+
   const apiData: any = {
     patientId: formData.patientId,
     recordType: formData.recordType,
@@ -264,6 +274,8 @@ const convertFormDataToApiFormat = (
     // Phase 3: レセプトCSV対応フィールド（サーバー側のスキーマに合わせてフィールド名を修正）
     // サービスコードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
     serviceCodeId: serviceCodeId || null,
+    // 管理療養費のサービスコードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
+    managementServiceCodeId: managementServiceCodeId || null,
     // 訪問場所コードが未選択の場合は明示的にnullを送信（編集時に既存の値をクリアするため）
     visitLocationCode: formData.visitLocation || null,
     ...(formData.visitLocation === '99' && formData.visitLocationCustom && { visitLocationCustom: formData.visitLocationCustom }),
@@ -391,6 +403,7 @@ const getInitialFormData = (): FormData => {
     purposeOverride: '',
     // Phase 3: レセプトCSV対応
     nursingServiceCode: '',
+    managementServiceCode: '',
     visitLocation: '',
     visitLocationCustom: '',
     staffQualification: '',
@@ -1040,6 +1053,9 @@ export function NursingRecords() {
       nursingServiceCode: (record as any).serviceCodeId 
         ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
         : '',
+      managementServiceCode: (record as any).managementServiceCodeId 
+        ? (nursingServiceCodes.find(code => code.id === (record as any).managementServiceCodeId)?.serviceCode || '')
+        : '',
       visitLocation: (record as any).visitLocationCode || '',
       visitLocationCustom: (record as any).visitLocationCustom || '',
       staffQualification: (record as any).staffQualificationCode || '',
@@ -1112,6 +1128,9 @@ export function NursingRecords() {
       nursingServiceCode: (record as any).serviceCodeId && nursingServiceCodes.length > 0
         ? (nursingServiceCodes.find(code => code.id === (record as any).serviceCodeId)?.serviceCode || '')
         : '',
+      managementServiceCode: (record as any).managementServiceCodeId && nursingServiceCodes.length > 0
+        ? (nursingServiceCodes.find(code => code.id === (record as any).managementServiceCodeId)?.serviceCode || '')
+        : '',
       visitLocation: (record as any).visitLocationCode || '',
       visitLocationCustom: (record as any).visitLocationCustom || '',
       staffQualification: (record as any).staffQualificationCode || '',
@@ -1141,6 +1160,30 @@ export function NursingRecords() {
             };
           });
         }
+      }
+
+      // 管理療養費のサービスコードも読み込む
+      const managementServiceCodeId = (selectedRecord as any).managementServiceCodeId;
+      if (managementServiceCodeId) {
+        const managementServiceCode = nursingServiceCodes.find(code => code.id === managementServiceCodeId);
+        if (managementServiceCode) {
+          setFormData(prev => {
+            // 既に正しいサービスコードが設定されている場合は更新しない
+            if (prev.managementServiceCode === managementServiceCode.serviceCode) {
+              return prev;
+            }
+            return {
+              ...prev,
+              managementServiceCode: managementServiceCode.serviceCode
+            };
+          });
+        }
+      } else {
+        // managementServiceCodeIdがnullの場合は空文字列に設定
+        setFormData(prev => ({
+          ...prev,
+          managementServiceCode: ''
+        }));
       }
     }
   }, [isEditing, selectedRecord, nursingServiceCodes])
@@ -2343,7 +2386,7 @@ export function NursingRecords() {
             })()}
 
             {/* Receipt and Billing Information Card */}
-            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || (selectedRecord as any).publicExpenseId || (selectedRecord.calculatedPoints !== null && selectedRecord.calculatedPoints !== undefined) || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
+            {((selectedRecord as any).serviceCodeId || (selectedRecord as any).managementServiceCodeId || (selectedRecord as any).visitLocationCode || (selectedRecord as any).visitLocationCustom || (selectedRecord as any).staffQualificationCode || (selectedRecord as any).publicExpenseId || (selectedRecord.calculatedPoints !== null && selectedRecord.calculatedPoints !== undefined) || selectedRecord.multipleVisitReason || selectedRecord.emergencyVisitReason || selectedRecord.longVisitReason || selectedRecord.appliedBonuses || selectedRecord.specialistCareType || selectedRecord.hasAdditionalPaymentAlert || (selectedRecord as any).isServiceEnd) && (
               <Card>
                 <CardHeader>
                   <CardTitle>レセプト・加算情報</CardTitle>
@@ -2370,6 +2413,35 @@ export function NursingRecords() {
                           );
                         })()}
                       </div>
+
+                      {/* サービスコード（管理療養費） - 医療保険の場合のみ表示 */}
+                      {(() => {
+                        const selectedPatient = patientsData?.data?.find((p: Patient) => p.id === selectedRecord.patientId);
+                        const patientInsuranceType = selectedPatient?.insuranceType || null;
+                        
+                        if (patientInsuranceType !== 'medical') {
+                          return null;
+                        }
+
+                        return (
+                          <div>
+                            <p className="text-sm font-medium text-muted-foreground mb-1">サービスコード（管理療養費）</p>
+                            {(() => {
+                              const managementServiceCodeId = (selectedRecord as any).managementServiceCodeId;
+                              const managementServiceCode = managementServiceCodeId 
+                                ? nursingServiceCodes.find(code => code.id === managementServiceCodeId)
+                                : null;
+                              return managementServiceCode ? (
+                                <p className="text-base font-semibold">
+                                  {managementServiceCode.serviceCode} - {managementServiceCode.serviceName} ({managementServiceCode.points.toLocaleString()}点)
+                                </p>
+                              ) : (
+                                <p className="text-base text-muted-foreground">未設定</p>
+                              );
+                            })()}
+                          </div>
+                        );
+                      })()}
 
                       {/* 訪問場所と職員資格（2行目） */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2444,7 +2516,28 @@ export function NursingRecords() {
                     <div>
                       <p className="text-sm font-medium text-muted-foreground mb-2">算定点数</p>
                       <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                        <p className="text-2xl font-bold text-blue-700">{selectedRecord.calculatedPoints} 点</p>
+                        {(() => {
+                          // 管理療養費の点数を取得
+                          const managementServiceCodeId = (selectedRecord as any).managementServiceCodeId;
+                          const managementServiceCode = managementServiceCodeId 
+                            ? nursingServiceCodes.find(code => code.id === managementServiceCodeId)
+                            : null;
+                          const managementPoints = managementServiceCode ? managementServiceCode.points : 0;
+                          
+                          // 算定点数に管理療養費の点数を追加
+                          const totalPoints = selectedRecord.calculatedPoints + managementPoints;
+                          
+                          return (
+                            <div>
+                              <p className="text-2xl font-bold text-blue-700">{totalPoints.toLocaleString()} 点</p>
+                              {managementPoints > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  （基本療養費・加算: {selectedRecord.calculatedPoints.toLocaleString()}点 + 管理療養費: {managementPoints.toLocaleString()}点）
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -3273,6 +3366,67 @@ export function NursingRecords() {
                       基本療養費のサービスコードを選択してください。加算のサービスコードは訪問記録の内容に基づいて自動選択されます。自動選択されなかった加算は、月次レセプト詳細画面で手動選択できます。
                     </p>
                   </div>
+
+                  {/* サービスコード（管理療養費） - 医療保険の場合のみ表示 */}
+                  {(() => {
+                    const selectedPatient = patientsData?.data?.find((p: Patient) => p.id === formData.patientId);
+                    const patientInsuranceType = selectedPatient?.insuranceType || null;
+                    
+                    if (patientInsuranceType !== 'medical') {
+                      return null;
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        <Label htmlFor="management-service-code">サービスコード（管理療養費）</Label>
+                        <Combobox
+                          options={[
+                            { value: "", label: "未選択" },
+                            ...(() => {
+                              // 管理療養費のサービスコードをフィルタリング
+                              let filteredCodes = nursingServiceCodes
+                                .filter(code => {
+                                  // 医療保険かつサービス名に「管理療養費」が含まれるもの
+                                  return code.insuranceType === 'medical' && code.serviceName.includes('管理療養費');
+                                })
+                                .map((code) => ({
+                                  value: code.serviceCode,
+                                  label: `${code.serviceCode} - ${code.serviceName} (${code.points.toLocaleString()}点)`,
+                                }));
+                              
+                              // 編集時：現在選択されているサービスコードがフィルタリングで除外されている場合、選択肢に追加
+                              if (formData.managementServiceCode) {
+                                const currentCodeInFiltered = filteredCodes.find(c => c.value === formData.managementServiceCode);
+                                if (!currentCodeInFiltered) {
+                                  // フィルタリングで除外されている場合、全サービスコードから検索
+                                  const currentCode = nursingServiceCodes.find(code => code.serviceCode === formData.managementServiceCode);
+                                  if (currentCode) {
+                                    filteredCodes.unshift({
+                                      value: currentCode.serviceCode,
+                                      label: `${currentCode.serviceCode} - ${currentCode.serviceName} (${currentCode.points.toLocaleString()}点)`,
+                                    });
+                                  }
+                                }
+                              }
+                              
+                              return filteredCodes;
+                            })(),
+                          ]}
+                          value={formData.managementServiceCode || ""}
+                          onValueChange={(value) => {
+                            setFormData(prev => ({ ...prev, managementServiceCode: value }))
+                          }}
+                          placeholder="選択してください"
+                          searchPlaceholder="サービスコードまたは名称で検索..."
+                          emptyText="該当するサービスコードが見つかりませんでした"
+                          maxHeight="300px"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          管理療養費のサービスコードを選択してください（任意）。
+                        </p>
+                      </div>
+                    );
+                  })()}
 
                   {/* 訪問場所と職員資格を横並びに配置 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -307,7 +307,8 @@ export const nursingRecords = pgTable("nursing_records", {
   specialistCareType: text("specialist_care_type"), // 専門的ケアの種類（palliative_care, pressure_ulcer, stoma_care, specific_procedures）
 
   // レセプトCSV出力用フィールド（新規訪問記録のみ必須）
-  serviceCodeId: varchar("service_code_id").references(() => nursingServiceCodes.id), // サービスコードマスタへの参照
+  serviceCodeId: varchar("service_code_id").references(() => nursingServiceCodes.id), // サービスコードマスタへの参照（基本療養費）
+  managementServiceCodeId: varchar("management_service_code_id").references(() => nursingServiceCodes.id), // サービスコードマスタへの参照（管理療養費）
   visitLocationCode: varchar("visit_location_code", { length: 2 }), // 訪問場所コード
   visitLocationCustom: text("visit_location_custom"), // 訪問場所詳細（場所コード99の場合のみ、RJレコード用）
   staffQualificationCode: varchar("staff_qualification_code", { length: 2 }), // 職員資格コード
@@ -822,7 +823,8 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
 
   // 訪問実績
   visitCount: integer("visit_count").notNull().default(0), // 訪問回数
-  totalVisitPoints: integer("total_visit_points").notNull().default(0), // 訪問点数合計
+  totalVisitPoints: integer("total_visit_points").notNull().default(0), // 訪問点数合計（基本療養費）
+  totalManagementPoints: integer("total_management_points").notNull().default(0), // 管理療養費点数合計
 
   // 特管点数
   specialManagementPoints: integer("special_management_points").default(0), // 特管点数
@@ -1684,6 +1686,10 @@ export const nursingRecordsRelations = relations(nursingRecords, ({ one, many })
   }),
   serviceCode: one(nursingServiceCodes, {
     fields: [nursingRecords.serviceCodeId],
+    references: [nursingServiceCodes.id],
+  }),
+  managementServiceCode: one(nursingServiceCodes, {
+    fields: [nursingRecords.managementServiceCodeId],
     references: [nursingServiceCodes.id],
   }),
   lastEditor: one(users, {
