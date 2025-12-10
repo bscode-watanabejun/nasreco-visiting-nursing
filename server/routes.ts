@@ -10834,9 +10834,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const receiptsData = await db.select({
         receipt: monthlyReceipts,
         patient: patients,
+        facility: facilities,
       })
         .from(monthlyReceipts)
         .leftJoin(patients, eq(monthlyReceipts.patientId, patients.id))
+        .leftJoin(facilities, eq(monthlyReceipts.facilityId, facilities.id))
         .where(and(
           eq(monthlyReceipts.facilityId, facilityId),
           inArray(monthlyReceipts.id, receiptIds)
@@ -10877,6 +10879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return {
             ...receipt,
             patient: r.patient,
+            facility: r.facility,
             insuranceCard: insuranceCard ? {
               reviewOrganizationCode: insuranceCard.reviewOrganizationCode,
               insurerNumber: insuranceCard.insurerNumber,
@@ -10971,20 +10974,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // 2. 空行
       csvData.push([]);
 
+      // 日付フォーマット用のヘルパー関数
+      const formatDate = (dateValue: string | Date | null | undefined): string => {
+        if (!dateValue) return '';
+        try {
+          const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+          if (isNaN(date.getTime())) return '';
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}/${month}/${day}`;
+        } catch {
+          return '';
+        }
+      };
+
+      // 性別を日本語に変換する関数
+      const formatGender = (gender: string | null | undefined): string => {
+        if (!gender) return '';
+        if (gender === 'male') return '男性';
+        if (gender === 'female') return '女性';
+        if (gender === 'other') return 'その他';
+        return '';
+      };
+
       // 3. 利用者ごとのデータセクション
-      csvData.push(['対象月', '利用者', '保険種別', '訪問回数', '合計点数', '合計金額', 'ステータス']);
+      csvData.push(['対象月', '患者番号', '氏名', 'カナ', '性別', '生年月日', '登録年月日', '施設名', '費用区分', '訪問回数', '合計点数', '合計金額', '入金予定', 'ステータス']);
       receiptsWithInsuranceCards.forEach(receipt => {
         const targetMonth = `${receipt.targetYear}年${receipt.targetMonth}月`;
+        const patientNumber = receipt.patient?.patientNumber || '';
         const patientName = receipt.patient 
           ? `${receipt.patient.lastName} ${receipt.patient.firstName}`
           : '不明';
-        const insuranceTypeText = receipt.insuranceType === 'medical' ? '医療保険' : '介護保険';
+        const kanaName = receipt.patient?.kanaName || '';
+        const gender = formatGender(receipt.patient?.gender);
+        const dateOfBirth = formatDate(receipt.patient?.dateOfBirth);
+        const registeredDate = formatDate(receipt.patient?.createdAt);
+        const facilityName = receipt.facility?.name || '';
+        const costCategory = receipt.insuranceType === 'medical' ? '医療費' : '介護費';
         const visitCount = `${receipt.visitCount}回`;
         const totalPoints = receipt.totalPoints.toLocaleString();
         const totalAmount = `¥${receipt.totalAmount.toLocaleString()}`;
+        const expectedPayment = ''; // 入金予定は常に空白
         const status = getStatusText(receipt);
 
-        csvData.push([targetMonth, patientName, insuranceTypeText, visitCount, totalPoints, totalAmount, status]);
+        csvData.push([
+          targetMonth,
+          patientNumber,
+          patientName,
+          kanaName,
+          gender,
+          dateOfBirth,
+          registeredDate,
+          facilityName,
+          costCategory,
+          visitCount,
+          totalPoints,
+          totalAmount,
+          expectedPayment,
+          status
+        ]);
       });
 
       // CSVを生成（Shift_JISエンコード）
