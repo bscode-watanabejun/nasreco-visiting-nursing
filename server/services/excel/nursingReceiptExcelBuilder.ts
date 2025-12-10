@@ -1004,6 +1004,7 @@ export class NursingReceiptExcelBuilder {
       amount: number;
       count: number;
       burdenClassification: string;
+      unitPrice?: number; // 単価（AG列に出力）
     }>();
 
     // 負担区分を取得（REレコードから）
@@ -1026,6 +1027,7 @@ export class NursingReceiptExcelBuilder {
         
         // 基本療養費の金額のみ（加算は含めない）
         const amount = serviceCodeRecord.points * 10;
+        const unitPrice = serviceCodeRecord.points * 10; // 単価
         const key = record.serviceCode;
         
         if (serviceCodeMap.has(key)) {
@@ -1038,6 +1040,39 @@ export class NursingReceiptExcelBuilder {
             amount,
             count: 1,
             burdenClassification,
+            unitPrice, // 単価を保存
+          });
+        }
+      }
+
+      // 管理療養費を集計
+      if (record.managementServiceCode) {
+        // サービスコードマスタから管理療養費の点数を取得
+        const managementServiceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+          where: eq(nursingServiceCodes.serviceCode, record.managementServiceCode),
+        });
+        
+        if (!managementServiceCodeRecord) {
+          console.warn(`管理療養費サービスコード ${record.managementServiceCode} が見つかりません。スキップします。`);
+          continue;
+        }
+        
+        // 管理療養費の金額
+        const amount = managementServiceCodeRecord.points * 10;
+        const unitPrice = managementServiceCodeRecord.points * 10; // 単価
+        const key = record.managementServiceCode;
+        
+        if (serviceCodeMap.has(key)) {
+          const existing = serviceCodeMap.get(key)!;
+          existing.amount += amount;
+          existing.count += 1;
+        } else {
+          serviceCodeMap.set(key, {
+            serviceCode: key,
+            amount,
+            count: 1,
+            burdenClassification,
+            unitPrice, // 単価を保存
           });
         }
       }
@@ -1047,6 +1082,7 @@ export class NursingReceiptExcelBuilder {
     for (const bonus of data.bonusHistory) {
       if (bonus.serviceCode) {
         const amount = bonus.points * 10;
+        const unitPrice = bonus.points * 10; // 単価
         const key = bonus.serviceCode;
         
         if (serviceCodeMap.has(key)) {
@@ -1059,6 +1095,7 @@ export class NursingReceiptExcelBuilder {
             amount,
             count: 1,
             burdenClassification,
+            unitPrice, // 単価を保存
           });
         }
       }
@@ -1103,6 +1140,10 @@ export class NursingReceiptExcelBuilder {
       const showDisplayColumn = displayColumn !== prevDisplayColumn;
       const showDisplayItem = displayItem !== prevDisplayItem;
 
+      // AG列には単価を出力（基本療養費も加算も単価）
+      // AL列に日数が出力されているので、単価×日数で合計金額が計算できる
+      const outputAmount = info.unitPrice !== undefined ? info.unitPrice : (info.count > 0 ? info.amount / info.count : info.amount);
+
       rows.push({
         type: 'abstract',
         content: serviceName,
@@ -1111,7 +1152,7 @@ export class NursingReceiptExcelBuilder {
           displayItem: showDisplayItem ? displayItem : '',
           burden: info.burdenClassification,
           name: serviceName,
-          amount: info.amount,
+          amount: outputAmount, // 単価を出力
           days: info.count,
         },
       });
