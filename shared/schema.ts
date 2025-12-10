@@ -885,6 +885,22 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// ========== Invoice Numbers Table (請求書番号管理) ==========
+export const invoiceNumbers = pgTable("invoice_numbers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  facilityId: varchar("facility_id").notNull().references(() => facilities.id),
+  datePrefix: varchar("date_prefix", { length: 6 }).notNull(), // yyyymm形式（6桁）
+  sequenceNumber: integer("sequence_number").notNull(), // 連番（0001から開始）
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  // 施設ごと、日付プレフィックスごとに連番が重複しないようにユニーク制約
+  uniqueFacilityDateSequence: uniqueIndex("unique_facility_date_sequence").on(
+    table.facilityId,
+    table.datePrefix,
+    table.sequenceNumber
+  ),
+}));
+
 // ========== Receipt CSV Export Master Tables (レセプトCSV出力用マスタ) ==========
 
 // 都道府県コードマスタ

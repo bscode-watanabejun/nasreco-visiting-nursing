@@ -47,6 +47,7 @@ import {
   Edit,
   Download,
   FileSpreadsheet,
+  ChevronDown,
 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { Label } from "@/components/ui/label"
@@ -59,6 +60,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { masterDataApi, type NursingServiceCode } from "@/lib/api"
 
 interface MonthlyReceiptDetail {
@@ -738,6 +745,64 @@ export default function MonthlyReceiptDetail() {
     }
   }
 
+  // 領収書・請求書出力関数
+  const handleDownloadInvoiceReceipt = async (type: 'invoice' | 'receipt') => {
+    try {
+      const typeName = type === 'invoice' ? '請求書' : '領収書'
+      toast({
+        title: "Excel生成中",
+        description: `${typeName}Excelを生成しています...`,
+      })
+
+      const response = await fetch(`/api/receipts/${receiptId}/export-invoice-receipt?type=${type}`)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Excelの生成に失敗しました' }))
+
+        // バリデーション詳細がある場合はダイアログで表示（エラートーストは不要）
+        if (errorData.validation) {
+          const { errors, warnings } = errorData.validation
+
+          setValidationErrors(errors || [])
+          setValidationWarnings(warnings || [])
+          setValidationDialogOpen(true)
+          return
+        }
+
+        throw new Error(errorData.error || 'Excelの生成に失敗しました')
+      }
+
+      // Excelファイルとしてダウンロード
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      // Content-Dispositionヘッダーからファイル名を取得、なければデフォルト名を使用
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const fileName = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || `${typeName}.xlsx`
+        : `${typeName}.xlsx`
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Excel生成完了",
+        description: `${typeName}Excelのダウンロードが完了しました`,
+      })
+    } catch (error) {
+      console.error("Invoice/Receipt Excel generation error:", error)
+      const typeName = type === 'invoice' ? '請求書' : '領収書'
+      toast({
+        title: "Excel生成エラー",
+        description: error instanceof Error ? error.message : `${typeName}Excelの生成に失敗しました`,
+        variant: "destructive",
+      })
+    }
+  }
+
   // PDF生成関数（サーバー側でPDFを生成）
   const handleDownloadPDF = async () => {
     try {
@@ -877,6 +942,27 @@ export default function MonthlyReceiptDetail() {
           {/* Action Buttons */}
           {receipt.insuranceType === 'medical' && (
             <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    領収書・請求書出力
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('invoice')}>
+                    請求書
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('receipt')}>
+                    領収書
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="outline"
                 size="default"
@@ -894,6 +980,40 @@ export default function MonthlyReceiptDetail() {
               >
                 <FileSpreadsheet className="w-4 h-4" />
                 訪問看護療養費明細書Excel出力
+              </Button>
+            </>
+          )}
+          {receipt.insuranceType === 'care' && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    領収書・請求書出力
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('invoice')}>
+                    請求書
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('receipt')}>
+                    領収書
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleDownloadCSV}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                介護保険レセプトCSV出力
               </Button>
             </>
           )}
