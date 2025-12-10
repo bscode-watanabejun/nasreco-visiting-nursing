@@ -7349,6 +7349,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
       }
 
+      // Get service codes for basic and management nursing fees
+      let serviceCodesMap = new Map<string, typeof nursingServiceCodes.$inferSelect | null>();
+      let managementServiceCodesMap = new Map<string, typeof nursingServiceCodes.$inferSelect | null>();
+
+      if (recordIds.length > 0) {
+        // Get basic nursing fee service codes
+        const serviceCodesData = await db.select({
+          recordId: nursingRecords.id,
+          serviceCode: nursingServiceCodes,
+        })
+          .from(nursingRecords)
+          .leftJoin(nursingServiceCodes, eq(nursingRecords.serviceCodeId, nursingServiceCodes.id))
+          .where(inArray(nursingRecords.id, recordIds));
+
+        // Get management nursing fee service codes
+        const managementServiceCodesData = await db.select({
+          recordId: nursingRecords.id,
+          managementServiceCode: nursingServiceCodes,
+        })
+          .from(nursingRecords)
+          .leftJoin(nursingServiceCodes, eq(nursingRecords.managementServiceCodeId, nursingServiceCodes.id))
+          .where(inArray(nursingRecords.id, recordIds));
+
+        // Build maps for quick lookup
+        serviceCodesData.forEach(item => {
+          serviceCodesMap.set(item.recordId, item.serviceCode);
+        });
+
+        managementServiceCodesData.forEach(item => {
+          managementServiceCodesMap.set(item.recordId, item.managementServiceCode);
+        });
+      }
+
       // Get insurance card information
       const insuranceCardData = await db.select()
         .from(insuranceCards)
@@ -7496,6 +7529,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...r.record,
           nurse: r.nurse,
           schedule: r.schedule,
+          serviceCode: serviceCodesMap.get(r.record.id) || null,
+          managementServiceCode: managementServiceCodesMap.get(r.record.id) || null,
         })),
         bonusHistory,
       });

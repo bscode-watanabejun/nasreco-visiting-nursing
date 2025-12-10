@@ -172,6 +172,18 @@ interface MonthlyReceiptDetail {
       startTime: string
       endTime: string
     } | null
+    serviceCode: {
+      id: string
+      serviceCode: string
+      serviceName: string
+      points: number
+    } | null
+    managementServiceCode: {
+      id: string
+      serviceCode: string
+      serviceName: string
+      points: number
+    } | null
   }>
   bonusHistory: Array<{
     history: {
@@ -1709,11 +1721,10 @@ export default function MonthlyReceiptDetail() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>訪問日</TableHead>
-                    <TableHead>訪問時間</TableHead>
+                    <TableHead>訪問日時</TableHead>
                     <TableHead>担当看護師</TableHead>
                     <TableHead>ステータス</TableHead>
-                    <TableHead>適用加算</TableHead>
+                    <TableHead>適用サービス</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1736,6 +1747,10 @@ export default function MonthlyReceiptDetail() {
                       (b) => b.history.nursingRecordId === record.id
                     )
 
+                    // Separate bonuses by service code selection status
+                    const bonusWithServiceCode = recordBonuses.filter(b => !!b.history.serviceCodeId)
+                    const bonusWithoutServiceCode = recordBonuses.filter(b => !b.history.serviceCodeId)
+
                     // Format time from timestamp or use schedule time as fallback
                     const formatTime = (timestamp: string | null) => {
                       if (!timestamp) return null
@@ -1750,6 +1765,11 @@ export default function MonthlyReceiptDetail() {
                       ? formatTime(record.actualEndTime)
                       : record.schedule?.endTime || '-'
 
+                    // Check if there are any services to display
+                    const hasBasicService = !!record.serviceCode
+                    const hasManagementService = !!record.managementServiceCode
+                    const hasAnyServices = hasBasicService || hasManagementService || bonusWithServiceCode.length > 0 || bonusWithoutServiceCode.length > 0
+
                     return (
                       <TableRow
                         key={record.id}
@@ -1760,9 +1780,8 @@ export default function MonthlyReceiptDetail() {
                         }}
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
                       >
-                        <TableCell>{record.visitDate}</TableCell>
                         <TableCell>
-                          {startTime} - {endTime}
+                          {record.visitDate} {startTime}〜{endTime}
                         </TableCell>
                         <TableCell>{record.nurse?.fullName || '-'}</TableCell>
                         <TableCell>
@@ -1783,10 +1802,48 @@ export default function MonthlyReceiptDetail() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {recordBonuses.length > 0 ? (
+                          {hasAnyServices ? (
                             <div className="flex flex-wrap gap-1">
-                              {recordBonuses.map((b) => (
-                                <Badge key={b.history.id} variant="outline" className="text-xs">
+                              {/* 基本療養費 */}
+                              {record.serviceCode && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="text-xs bg-blue-50 text-blue-700 border-blue-200"
+                                  title="基本療養費"
+                                >
+                                  {record.serviceCode.serviceName} ({record.serviceCode.points}{receipt.insuranceType === "medical" ? "点" : "単位"})
+                                </Badge>
+                              )}
+                              {/* 管理療養費 */}
+                              {record.managementServiceCode && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="text-xs bg-purple-50 text-purple-700 border-purple-200"
+                                  title="管理療養費"
+                                >
+                                  {record.managementServiceCode.serviceName} ({record.managementServiceCode.points}{receipt.insuranceType === "medical" ? "点" : "単位"})
+                                </Badge>
+                              )}
+                              {/* 加算療養費（サービスコード選択済み） */}
+                              {bonusWithServiceCode.map((b) => (
+                                <Badge 
+                                  key={b.history.id} 
+                                  variant="outline" 
+                                  className="text-xs bg-green-50 text-green-700 border-green-200"
+                                  title="加算療養費（サービスコード選択済み）"
+                                >
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  {b.bonus?.bonusName} ({b.history.calculatedPoints}{receipt.insuranceType === "medical" ? "点" : "単位"})
+                                </Badge>
+                              ))}
+                              {/* 適用加算（サービスコード未選択） */}
+                              {bonusWithoutServiceCode.map((b) => (
+                                <Badge 
+                                  key={b.history.id} 
+                                  variant="outline" 
+                                  className="text-xs bg-gray-50 text-gray-600 border-gray-200"
+                                  title="適用加算（サービスコード未選択）"
+                                >
                                   {b.bonus?.bonusName} ({b.history.calculatedPoints}{receipt.insuranceType === "medical" ? "点" : "単位"})
                                 </Badge>
                               ))}
