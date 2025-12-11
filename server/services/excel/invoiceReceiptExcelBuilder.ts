@@ -95,18 +95,26 @@ export class InvoiceReceiptExcelBuilder {
 
     // B2: 対象年月（和暦）
     const targetYearMonth = formatJapaneseYearMonth(year, month);
-    sheet.getCell('B2').value = targetYearMonth;
+    const b2Cell = sheet.getCell('B2');
+    b2Cell.value = targetYearMonth;
+    b2Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // L2: 「請求書」または「領収書」
-    sheet.getCell('L2').value = this.type === 'invoice' ? '請求書' : '領収書';
+    const l2Cell = sheet.getCell('L2');
+    l2Cell.value = this.type === 'invoice' ? '請求書' : '領収書';
+    l2Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U2: 出力年月日（和暦）
     const outputDateStr = formatJapaneseDateForInvoice(this.outputDate);
-    sheet.getCell('U2').value = outputDateStr;
+    const u2Cell = sheet.getCell('U2');
+    u2Cell.value = outputDateStr;
+    u2Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // E4: 請求書No（10桁）
     const invoiceNumber = await generateInvoiceNumber(this.facilityId, this.outputDate);
-    sheet.getCell('E4').value = invoiceNumber;
+    const e4Cell = sheet.getCell('E4');
+    e4Cell.value = invoiceNumber;
+    e4Cell.fill = { type: 'pattern', pattern: 'none' };
   }
 
   /**
@@ -114,14 +122,20 @@ export class InvoiceReceiptExcelBuilder {
    */
   private async fillPatientCells(sheet: ExcelJS.Worksheet, data: ReceiptCsvData): Promise<void> {
     // E5: 患者番号
-    sheet.getCell('E5').value = data.patient.patientNumber || '';
+    const e5Cell = sheet.getCell('E5');
+    e5Cell.value = data.patient.patientNumber || '';
+    e5Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // E6: カナ氏名
-    sheet.getCell('E6').value = data.patient.kanaName || '';
+    const e6Cell = sheet.getCell('E6');
+    e6Cell.value = data.patient.kanaName || '';
+    e6Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // E7: 氏名（姓 + 名）
     const fullName = `${data.patient.lastName || ''}${data.patient.firstName || ''}`.trim();
-    sheet.getCell('E7').value = fullName;
+    const e7Cell = sheet.getCell('E7');
+    e7Cell.value = fullName;
+    e7Cell.fill = { type: 'pattern', pattern: 'none' };
   }
 
   /**
@@ -134,8 +148,10 @@ export class InvoiceReceiptExcelBuilder {
       data.facility.name || '',
       data.facility.phone ? `TEL：${data.facility.phone}` : ''
     ].filter(Boolean).join('\n');
-    sheet.getCell('N4').value = facilityInfo;
-    sheet.getCell('N4').alignment = { vertical: 'top', wrapText: true };
+    const n4Cell = sheet.getCell('N4');
+    n4Cell.value = facilityInfo;
+    n4Cell.alignment = { vertical: 'top', wrapText: true };
+    n4Cell.fill = { type: 'pattern', pattern: 'none' };
   }
 
   /**
@@ -144,20 +160,23 @@ export class InvoiceReceiptExcelBuilder {
    */
   private async fillAmountCells(sheet: ExcelJS.Worksheet, data: ReceiptCsvData): Promise<void> {
     // C9: 請求書/領収書の文言
+    const c9Cell = sheet.getCell('C9');
     if (this.type === 'invoice') {
-      sheet.getCell('C9').value = '下記の通り医療費及び介護費をご請求申し上げます';
+      c9Cell.value = '下記の通り医療費及び介護費をご請求申し上げます';
     } else {
-      sheet.getCell('C9').value = '下記の通り医療費及び介護費を領収いたしました';
+      c9Cell.value = '下記の通り医療費及び介護費を領収いたしました';
     }
+    c9Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // E11とM11は負担額の合計を出力するため、fillMedicalInsuranceCellsまたはfillCareInsuranceCellsで設定される
     // ここでは初期値として0を設定
-    sheet.getCell('E11').value = 0;
-    if (this.type === 'receipt') {
-      sheet.getCell('M11').value = 0;
-    } else {
-      sheet.getCell('M11').value = 0;
-    }
+    const e11Cell = sheet.getCell('E11');
+    e11Cell.value = 0;
+    e11Cell.fill = { type: 'pattern', pattern: 'none' };
+
+    const m11Cell = sheet.getCell('M11');
+    m11Cell.value = 0;
+    m11Cell.fill = { type: 'pattern', pattern: 'none' };
   }
 
   /**
@@ -168,7 +187,9 @@ export class InvoiceReceiptExcelBuilder {
     const copaymentRate = data.insuranceCard.copaymentRate;
     if (copaymentRate) {
       const rate = parseInt(copaymentRate, 10) / 10;
-      sheet.getCell('W13').value = `${rate}割`;
+      const w13Cell = sheet.getCell('W13');
+      w13Cell.value = `${rate}割`;
+      w13Cell.fill = { type: 'pattern', pattern: 'none' };
     }
 
     // サービス名、点数、回数、単価、負担額を集計
@@ -184,33 +205,61 @@ export class InvoiceReceiptExcelBuilder {
       const row = serviceRows[i];
       const rowIndex = 18 + i;
 
-      sheet.getCell(`D${rowIndex}`).value = row.serviceName;
-      sheet.getCell(`Q${rowIndex}`).value = `${row.points}点`;
-      sheet.getCell(`S${rowIndex}`).value = row.count;
-      sheet.getCell(`U${rowIndex}`).value = row.unitPrice;
-      sheet.getCell(`W${rowIndex}`).value = row.burdenAmount;
+      const dCell = sheet.getCell(`D${rowIndex}`);
+      dCell.value = row.serviceName;
+      dCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const qCell = sheet.getCell(`Q${rowIndex}`);
+      qCell.value = `${row.points}点`;
+      qCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const sCell = sheet.getCell(`S${rowIndex}`);
+      sCell.value = row.count;
+      sCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const uCell = sheet.getCell(`U${rowIndex}`);
+      uCell.value = row.unitPrice;
+      uCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const wCell = sheet.getCell(`W${rowIndex}`);
+      wCell.value = row.burdenAmount;
+      wCell.fill = { type: 'pattern', pattern: 'none' };
     }
+
+    // D27セルも無色にする（データが10個未満の場合でもテンプレートの色をクリア）
+    const d27Cell = sheet.getCell('D27');
+    d27Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U30: 点数の合計
     const totalPoints = serviceRows.reduce((sum, row) => sum + row.points, 0);
-    sheet.getCell('U30').value = totalPoints;
+    const u30Cell = sheet.getCell('U30');
+    u30Cell.value = totalPoints;
+    u30Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U31: 負担額の合計
     const totalBurdenAmount = serviceRows.reduce((sum, row) => sum + row.burdenAmount, 0);
-    sheet.getCell('U31').value = totalBurdenAmount;
+    const u31Cell = sheet.getCell('U31');
+    u31Cell.value = totalBurdenAmount;
+    u31Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U33: 負担額の合計（U31と同じ）
-    sheet.getCell('U33').value = totalBurdenAmount;
+    const u33Cell = sheet.getCell('U33');
+    u33Cell.value = totalBurdenAmount;
+    u33Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // E11: 負担額の合計（U33と同じ）
-    sheet.getCell('E11').value = totalBurdenAmount;
+    const e11Cell = sheet.getCell('E11');
+    e11Cell.value = totalBurdenAmount;
+    e11Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // M11: 領収書の場合は負担額の合計、請求書の場合は0
+    const m11Cell = sheet.getCell('M11');
     if (this.type === 'receipt') {
-      sheet.getCell('M11').value = totalBurdenAmount;
+      m11Cell.value = totalBurdenAmount;
     } else {
-      sheet.getCell('M11').value = 0;
+      m11Cell.value = 0;
     }
+    m11Cell.fill = { type: 'pattern', pattern: 'none' };
   }
 
   /**
@@ -221,7 +270,9 @@ export class InvoiceReceiptExcelBuilder {
     const copaymentRate = data.insuranceCard.copaymentRate;
     if (copaymentRate) {
       const rate = parseInt(copaymentRate, 10) / 10;
-      sheet.getCell('W35').value = `${rate}割`;
+      const w35Cell = sheet.getCell('W35');
+      w35Cell.value = `${rate}割`;
+      w35Cell.fill = { type: 'pattern', pattern: 'none' };
     }
 
     // サービス名、点数、回数、単価、負担額を集計
@@ -237,29 +288,55 @@ export class InvoiceReceiptExcelBuilder {
       const row = serviceRows[i];
       const rowIndex = 38 + i;
 
-      sheet.getCell(`D${rowIndex}`).value = row.serviceName;
-      sheet.getCell(`Q${rowIndex}`).value = `${row.points}点`;
-      sheet.getCell(`S${rowIndex}`).value = row.count;
-      sheet.getCell(`U${rowIndex}`).value = row.unitPrice;
-      sheet.getCell(`W${rowIndex}`).value = row.burdenAmount;
+      const dCell = sheet.getCell(`D${rowIndex}`);
+      dCell.value = row.serviceName;
+      dCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const qCell = sheet.getCell(`Q${rowIndex}`);
+      qCell.value = `${row.points}点`;
+      qCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const sCell = sheet.getCell(`S${rowIndex}`);
+      sCell.value = row.count;
+      sCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const uCell = sheet.getCell(`U${rowIndex}`);
+      uCell.value = row.unitPrice;
+      uCell.fill = { type: 'pattern', pattern: 'none' };
+
+      const wCell = sheet.getCell(`W${rowIndex}`);
+      wCell.value = row.burdenAmount;
+      wCell.fill = { type: 'pattern', pattern: 'none' };
     }
+
+    // D47セルも無色にする（データが10個未満の場合でもテンプレートの色をクリア）
+    const d47Cell = sheet.getCell('D47');
+    d47Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U51: 負担額の合計
     const totalBurdenAmount = serviceRows.reduce((sum, row) => sum + row.burdenAmount, 0);
-    sheet.getCell('U51').value = totalBurdenAmount;
+    const u51Cell = sheet.getCell('U51');
+    u51Cell.value = totalBurdenAmount;
+    u51Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U53: 負担額の合計（U51と同じ）
-    sheet.getCell('U53').value = totalBurdenAmount;
+    const u53Cell = sheet.getCell('U53');
+    u53Cell.value = totalBurdenAmount;
+    u53Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // E11: 負担額の合計（U53と同じ）
-    sheet.getCell('E11').value = totalBurdenAmount;
+    const e11Cell = sheet.getCell('E11');
+    e11Cell.value = totalBurdenAmount;
+    e11Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // M11: 領収書の場合は負担額の合計、請求書の場合は0
+    const m11Cell = sheet.getCell('M11');
     if (this.type === 'receipt') {
-      sheet.getCell('M11').value = totalBurdenAmount;
+      m11Cell.value = totalBurdenAmount;
     } else {
-      sheet.getCell('M11').value = 0;
+      m11Cell.value = 0;
     }
+    m11Cell.fill = { type: 'pattern', pattern: 'none' };
   }
 
   /**
