@@ -79,3 +79,90 @@ export function formatBenefitRatio(ratio: string | null | undefined): string {
   return String(result);
 }
 
+/**
+ * 年月を和暦形式に変換（領収書・請求書用）
+ * 出力形式: 「令和7年11月分」
+ * @param year - 年（例: 2025）
+ * @param month - 月（例: 11）
+ * @returns 和暦形式の文字列（例: "令和7年11月分"）
+ */
+export function formatJapaneseYearMonth(year: number, month: number): string {
+  let eraName: string;
+  let eraYear: number;
+
+  // 年月から元号を判定（1月1日を基準に判定）
+  const date = new Date(year, month - 1, 1);
+
+  if (year >= 2019 && (year > 2019 || month >= 5)) {
+    // 令和（2019年5月1日〜）
+    eraName = '令和';
+    eraYear = year - 2018;
+  } else if (year >= 1989) {
+    // 平成（1989年1月8日〜2019年4月30日）
+    eraName = '平成';
+    eraYear = year - 1988;
+  } else if (year >= 1926) {
+    // 昭和（1926年12月25日〜1989年1月7日）
+    eraName = '昭和';
+    eraYear = year - 1925;
+  } else if (year >= 1912) {
+    // 大正（1912年7月30日〜1926年12月24日）
+    eraName = '大正';
+    eraYear = year - 1911;
+  } else if (year >= 1868) {
+    // 明治（1868年1月25日〜1912年7月29日）
+    eraName = '明治';
+    eraYear = year - 1867;
+  } else {
+    return '';
+  }
+
+  return `${eraName}${eraYear}年${month}月分`;
+}
+
+/**
+ * 日付を和暦形式に変換（領収書・請求書用）
+ * 出力形式: 「令和7年12月10日」
+ * @param date - 日付
+ * @returns 和暦形式の文字列（例: "令和7年12月10日"）
+ */
+export function formatJapaneseDateForInvoice(date: Date | string | null | undefined): string {
+  if (!date) return '';
+
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+
+  let eraName: string;
+  let eraYear: number;
+
+  if (year >= 2019 && (year > 2019 || d.getMonth() >= 4)) {
+    // 令和（2019年5月1日〜）
+    eraName = '令和';
+    eraYear = year - 2018;
+  } else if (year >= 1989) {
+    // 平成（1989年1月8日〜2019年4月30日）
+    eraName = '平成';
+    eraYear = year - 1988;
+  } else if (year >= 1926) {
+    // 昭和（1926年12月25日〜1989年1月7日）
+    eraName = '昭和';
+    eraYear = year - 1925;
+  } else if (year >= 1912) {
+    // 大正（1912年7月30日〜1926年12月24日）
+    eraName = '大正';
+    eraYear = year - 1911;
+  } else if (year >= 1868) {
+    // 明治（1868年1月25日〜1912年7月29日）
+    eraName = '明治';
+    eraYear = year - 1867;
+  } else {
+    return '';
+  }
+
+  return `${eraName}${eraYear}年${month}月${day}日`;
+}
+
