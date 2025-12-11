@@ -553,9 +553,13 @@ export default function MonthlyReceiptsManagement() {
 
   // 領収書・請求書一括出力関数
   const handleDownloadInvoiceReceiptBatch = async (type: 'invoice' | 'receipt') => {
-    // 表示されているレセプトのうち、確定済みのレセプトIDを収集
+    // 表示されているレセプトのうち、確定済みかつ現在の保険種別フィルタに一致するレセプトIDを収集
     const targetReceiptIds = receipts
-      .filter(receipt => receipt.isConfirmed && !receipt.hasErrors)
+      .filter(receipt => 
+        receipt.isConfirmed && 
+        !receipt.hasErrors &&
+        receipt.insuranceType === filterInsuranceType
+      )
       .map(receipt => receipt.id)
 
     if (targetReceiptIds.length === 0) {

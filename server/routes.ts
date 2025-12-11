@@ -10885,9 +10885,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const excelBuilder = new InvoiceReceiptExcelBuilder(type, receipt.facilityId);
     const excelBuffer = await excelBuilder.build(excelData);
 
-    // ファイル名を生成
+    // ファイル名を生成（患者氏名を使用）
     const typeName = type === 'invoice' ? '請求書' : '領収書';
-    const fileName = `${typeName}_${receipt.targetYear}${String(receipt.targetMonth).padStart(2, '0')}_${patient.patientNumber}.xlsx`;
+    // Windowsで使えない文字を除去（/ \ : * ? " < > |）
+    const sanitizeFileName = (name: string): string => {
+      return name.replace(/[\/\\:\*\?"<>\|]/g, '');
+    };
+    const patientName = sanitizeFileName(`${patient.lastName}${patient.firstName}`);
+    const fileName = `${typeName}_${receipt.targetYear}${String(receipt.targetMonth).padStart(2, '0')}_${patientName}.xlsx`;
 
     return { buffer: excelBuffer, fileName };
   }
@@ -10909,12 +10914,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "typeパラメータは'invoice'または'receipt'である必要があります" });
       }
 
-      // レセプト情報を取得（確定済みのみ）
+      // レセプト情報を取得（確定済みかつエラーなしのみ）
       const receipts = await db.query.monthlyReceipts.findMany({
         where: and(
           eq(monthlyReceipts.facilityId, facilityId),
           inArray(monthlyReceipts.id, receiptIds),
-          eq(monthlyReceipts.isConfirmed, true)
+          eq(monthlyReceipts.isConfirmed, true),
+          eq(monthlyReceipts.hasErrors, false)
         ),
       });
 
@@ -10952,6 +10958,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         zlib: { level: 9 } // 最高圧縮率
       });
 
+      // zipアーカイバのエラーハンドリング
+      archive.on('error', (err) => {
+        console.error('Archive error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "ZIPファイルの生成に失敗しました" });
+        } else {
+          // ヘッダー送信後は接続を切断
+          res.destroy();
+        }
+      });
+
+      // 警告ハンドリング
+      archive.on('warning', (err) => {
+        if (err.code === 'ENOENT') {
+          console.warn('Archive warning:', err);
+        } else {
+          console.error('Archive warning (non-ENOENT):', err);
+          // ENOENT以外の警告はエラーとして扱う
+          if (!res.headersSent) {
+            res.status(500).json({ error: "ZIPファイルの生成中にエラーが発生しました" });
+          } else {
+            res.destroy();
+          }
+        }
+      });
+
       // レスポンスヘッダー設定
       const typeName = type === 'invoice' ? '請求書' : '領収書';
       const zipFileName = `${typeName}一括_${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}.zip`;
@@ -10982,10 +11014,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
       });
-      res.status(500).json({ 
-        error: "Excel一括出力に失敗しました",
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
-      });
+      
+      // レスポンスヘッダーが送信されていない場合のみJSONエラーレスポンスを返す
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: "Excel一括出力に失敗しました",
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+        });
+      } else {
+        // ヘッダー送信後は接続を切断
+        res.destroy();
+      }
     }
   });
 
