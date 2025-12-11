@@ -942,27 +942,29 @@ export default function MonthlyReceiptDetail() {
           {/* Action Buttons */}
           {receipt.insuranceType === 'medical' && (
             <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="default"
-                    className="gap-2"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    領収書・請求書出力
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('invoice')}>
-                    請求書
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('receipt')}>
-                    領収書
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {receipt.isConfirmed && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="default"
+                      className="gap-2"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      領収書・請求書出力
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('invoice')}>
+                      請求書
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('receipt')}>
+                      領収書
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Button
                 variant="outline"
                 size="default"
@@ -985,27 +987,29 @@ export default function MonthlyReceiptDetail() {
           )}
           {receipt.insuranceType === 'care' && (
             <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="default"
-                    className="gap-2"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    領収書・請求書出力
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('invoice')}>
-                    請求書
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('receipt')}>
-                    領収書
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {receipt.isConfirmed && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="default"
+                      className="gap-2"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      領収書・請求書出力
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('invoice')}>
+                      請求書
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDownloadInvoiceReceipt('receipt')}>
+                      領収書
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Button
                 variant="outline"
                 size="default"

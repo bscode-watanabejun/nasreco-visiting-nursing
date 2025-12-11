@@ -10480,6 +10480,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "レセプトが見つかりません" });
       }
 
+      // レセプトが確定済みかチェック
+      if (!receipt.isConfirmed) {
+        return res.status(400).json({ error: "レセプトが確定済みである必要があります" });
+      }
+
       // 事前バリデーション
       const validationResult = await validateMonthlyReceiptData(
         receipt.facilityId,
