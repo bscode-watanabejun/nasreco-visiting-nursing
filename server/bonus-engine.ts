@@ -2122,7 +2122,7 @@ export async function recalculateBonusesForReceipt(
     insuranceType: 'medical' | 'care'
   }
 ): Promise<void> {
-  // 対象月の訪問記録を取得（completedのみ、削除されていない記録のみ）
+  // 対象月の訪問記録を取得（completed または reviewed、削除されていない記録のみ）
   const startDate = new Date(receipt.targetYear, receipt.targetMonth - 1, 1);
   const endDate = new Date(receipt.targetYear, receipt.targetMonth, 0);
 
@@ -2132,7 +2132,7 @@ export async function recalculateBonusesForReceipt(
       eq(nursingRecords.facilityId, receipt.facilityId),
       gte(nursingRecords.visitDate, startDate.toISOString().split('T')[0]),
       lte(nursingRecords.visitDate, endDate.toISOString().split('T')[0]),
-      eq(nursingRecords.status, 'completed'),
+      inArray(nursingRecords.status, ['completed', 'reviewed']),
       isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
     ),
   });
