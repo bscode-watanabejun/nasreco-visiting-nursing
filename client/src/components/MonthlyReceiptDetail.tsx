@@ -745,7 +745,7 @@ export default function MonthlyReceiptDetail() {
     }
   }
 
-  // 領収書・請求書出力関数
+  // 領収書・請求書出力関数（Excel出力のみ）
   const handleDownloadInvoiceReceipt = async (type: 'invoice' | 'receipt') => {
     try {
       const typeName = type === 'invoice' ? '請求書' : '領収書'
@@ -757,7 +757,7 @@ export default function MonthlyReceiptDetail() {
       const response = await fetch(`/api/receipts/${receiptId}/export-invoice-receipt?type=${type}`)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Excelの生成に失敗しました' }))
+        const errorData = await response.json().catch(() => ({ error: "Excelの生成に失敗しました" }))
 
         // バリデーション詳細がある場合はダイアログで表示（エラートーストは不要）
         if (errorData.validation) {
@@ -769,10 +769,10 @@ export default function MonthlyReceiptDetail() {
           return
         }
 
-        throw new Error(errorData.error || 'Excelの生成に失敗しました')
+        throw new Error(errorData.error || "Excelの生成に失敗しました")
       }
 
-      // Excelファイルとしてダウンロード
+      // ファイルとしてダウンロード
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -780,7 +780,7 @@ export default function MonthlyReceiptDetail() {
       // Content-Dispositionヘッダーからファイル名を取得、なければデフォルト名を使用
       const contentDisposition = response.headers.get('Content-Disposition')
       const fileName = contentDisposition
-        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || `${typeName}.xlsx`
+        ? decodeURIComponent(contentDisposition.split("filename*=UTF-8''")[1] || contentDisposition.split('filename=')[1]?.replace(/"/g, '') || `${typeName}.xlsx`)
         : `${typeName}.xlsx`
       link.download = fileName
       document.body.appendChild(link)

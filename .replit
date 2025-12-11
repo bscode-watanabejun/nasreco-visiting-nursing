@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web", "postgresql-16", "libreoffice"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
@@ -56,24 +56,6 @@ exposeLocalhost = true
 [[ports]]
 localPort = 29583
 externalPort = 8099
-exposeLocalhost = true
-
-[[ports]]
-localPort = 42815
-externalPort = 3000
-
-[[ports]]
-localPort = 44293
-externalPort = 3001
-
-[[ports]]
-localPort = 54410
-externalPort = 8080
-exposeLocalhost = true
-
-[[ports]]
-localPort = 56089
-externalPort = 8000
 exposeLocalhost = true
 
 [[ports]]

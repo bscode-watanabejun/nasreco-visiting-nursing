@@ -10458,6 +10458,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * GET /api/receipts/:id/export-invoice-receipt
    * 領収書・請求書Excel出力
+   * 
+   * クエリパラメータ:
+   * - type: 'invoice' | 'receipt' (必須)
    */
   app.get("/api/receipts/:id/export-invoice-receipt", requireAuth, async (req, res) => {
     try {
