@@ -12,6 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -57,7 +63,8 @@ import {
   Eye,
   Printer,
   FileSpreadsheet,
-  Info
+  Info,
+  ChevronDown
 } from "lucide-react"
 import { useLocation } from "wouter"
 import { useBasePath } from "@/hooks/useBasePath"
@@ -544,6 +551,98 @@ export default function MonthlyReceiptsManagement() {
     }
   }
 
+  // 領収書・請求書一括出力関数
+  const handleDownloadInvoiceReceiptBatch = async (type: 'invoice' | 'receipt') => {
+    // 表示されているレセプトのうち、確定済みのレセプトIDを収集
+    const targetReceiptIds = receipts
+      .filter(receipt => receipt.isConfirmed && !receipt.hasErrors)
+      .map(receipt => receipt.id)
+
+    if (targetReceiptIds.length === 0) {
+      toast({
+        title: "エラー",
+        description: "出力可能なレセプトがありません（確定済みのレセプトが必要です）",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const typeName = type === 'invoice' ? '請求書' : '領収書'
+      toast({
+        title: "Excel生成中",
+        description: `${typeName}Excelを生成しています...`,
+      })
+
+      const response = await fetch('/api/monthly-receipts/export/invoice-receipt-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ receiptIds: targetReceiptIds, type }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast({
+            title: "データなし",
+            description: "該当するレセプトがありません",
+            variant: "destructive",
+          })
+          return
+        }
+        const error = await response.json()
+        throw new Error(error.error || "Excel出力に失敗しました")
+      }
+
+      // レスポンスからファイル名を取得（Content-Dispositionヘッダーから）
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let fileName = `${typeName}一括.zip`
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
+        if (fileNameMatch) {
+          fileName = decodeURIComponent(fileNameMatch[1])
+        } else {
+          const fileNameMatch2 = contentDisposition.match(/filename="(.+)"/)
+          if (fileNameMatch2) {
+            fileName = fileNameMatch2[1]
+          }
+        }
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      // スキップされたレセプトがある場合は警告を表示
+      const skippedReceiptsHeader = response.headers.get('X-Skipped-Receipts')
+      if (skippedReceiptsHeader) {
+        const skippedCount = skippedReceiptsHeader.split(',').length
+        toast({
+          title: "ダウンロード完了",
+          description: `${typeName}Excelファイル（zip）をダウンロードしました（${skippedCount}件のレセプトはデータ不足のためスキップされました）`,
+        })
+      } else {
+        toast({
+          title: "ダウンロード完了",
+          description: `${typeName}Excelファイル（zip）をダウンロードしました`,
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "Excel出力に失敗しました",
+        variant: "destructive",
+      })
+    }
+  }
+
   // PDF生成関数
   const handleDownloadPDF = async (receiptId: string) => {
     try {
@@ -1024,6 +1123,30 @@ export default function MonthlyReceiptsManagement() {
                 <FileSpreadsheet className="w-4 h-4" />
                 一覧CSV出力
               </Button>
+              {/* 確定済みレセプトがある場合のみ表示 */}
+              {receipts.some(r => r.isConfirmed && !r.hasErrors) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      領収書・請求書一括出力
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleDownloadInvoiceReceiptBatch('invoice')}>
+                      請求書
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDownloadInvoiceReceiptBatch('receipt')}>
+                      領収書
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {filterInsuranceType === 'medical' && (
                 <Button 
                   variant="outline" 
