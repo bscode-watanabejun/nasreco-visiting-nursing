@@ -489,6 +489,9 @@ export const publicExpenseCards = pgTable("public_expense_cards", {
   // 給付率（百分率、0-100、NULL許可）
   benefitRate: integer("benefit_rate"), // 公費給付率（例：100, 80, 70）
 
+  // 月額上限（円、NULL許可 = 上限なし）
+  monthlyLimit: integer("monthly_limit"), // 患者が負担する月額上限
+
   // 有効期間
   validFrom: date("valid_from").notNull(),
   validUntil: date("valid_until"),
@@ -874,6 +877,10 @@ export const monthlyReceipts = pgTable("monthly_receipts", {
   // ⭐ 追加: 公費一部負担情報（KOレコード用）
   // JSONB形式で公費IDをキーとしたマップ: { "公費ID": { partialBurdenAmount: number | null, publicExpenseBurdenAmount: number | null } }
   publicExpenseBurdenInfo: jsonb("public_expense_burden_info"),
+
+  // ⭐ 追加: 公費月額上限適用情報
+  // JSONB形式で公費IDをキーとしたマップ: { "公費ID": { originalAmount: number, adjustedAmount: number, limitAmount: number } }
+  publicExpenseLimitInfo: jsonb("public_expense_limit_info"),
 
   // 高額療養費適用状況（MFレコード用）
   highCostCategory: varchar("high_cost_category", { length: 20 }), // 'high_cost' | 'high_cost_multiple' | null

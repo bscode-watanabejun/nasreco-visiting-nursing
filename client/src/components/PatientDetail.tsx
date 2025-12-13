@@ -47,6 +47,7 @@ interface PublicExpenseCard {
   legalCategoryNumber: string
   priority: number
   benefitRate: number | null
+  monthlyLimit: number | null
   validFrom: string
   validUntil: string | null
   notes: string | null

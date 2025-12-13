@@ -11,8 +11,8 @@ import { fileURLToPath } from 'url';
 import type { ReceiptCsvData } from '../csv/types';
 import { formatJapaneseYearMonth, formatJapaneseDateForInvoice } from './japaneseDateUtils';
 import { db } from '../../db';
-import { visitingNursingMasterBasic, nursingServiceCodes } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { visitingNursingMasterBasic, nursingServiceCodes, bonusMaster } from '@shared/schema';
+import { eq, and, gte, lte } from 'drizzle-orm';
 import { generateInvoiceNumber } from '../invoiceNumberService';
 
 /**
@@ -237,7 +237,33 @@ export class InvoiceReceiptExcelBuilder {
     u30Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U31: 負担額の合計
-    const totalBurdenAmount = serviceRows.reduce((sum, row) => sum + row.burdenAmount, 0);
+    let totalBurdenAmount = serviceRows.reduce((sum, row) => sum + row.burdenAmount, 0);
+    
+    // 公費利用者で上限適用がある場合、上限適用後の患者負担額を使用
+    if (data.receipt.publicExpenseLimitInfo && Object.keys(data.receipt.publicExpenseLimitInfo).length > 0) {
+      // 上限適用情報から上限適用後の患者負担額の合計を計算
+      const limitInfoMap = data.receipt.publicExpenseLimitInfo;
+      const adjustedAmounts = Object.values(limitInfoMap).map(info => info.adjustedAmount);
+      const totalAdjustedAmount = adjustedAmounts.reduce((sum, amount) => sum + amount, 0);
+      
+      // 上限適用がない公費の負担額も考慮
+      // 通常の負担額計算
+      const copaymentRate = data.insuranceCard.copaymentRate
+        ? parseInt(data.insuranceCard.copaymentRate, 10) / 100
+        : 0.1;
+      const normalTotalBurdenAmount = Math.round((data.receipt.totalAmount * copaymentRate) / 10) * 10;
+      
+      // 上限適用がある公費の負担額の合計を計算
+      const originalAmounts = Object.values(limitInfoMap).map(info => info.originalAmount);
+      const totalOriginalAmount = originalAmounts.reduce((sum, amount) => sum + amount, 0);
+      
+      // 上限適用がない公費の負担額を計算
+      const burdenAmountWithoutLimit = normalTotalBurdenAmount - totalOriginalAmount;
+      
+      // 上限適用後の患者負担額の合計
+      totalBurdenAmount = totalAdjustedAmount + burdenAmountWithoutLimit;
+    }
+    
     const u31Cell = sheet.getCell('U31');
     u31Cell.value = totalBurdenAmount;
     u31Cell.fill = { type: 'pattern', pattern: 'none' };
@@ -314,7 +340,33 @@ export class InvoiceReceiptExcelBuilder {
     d47Cell.fill = { type: 'pattern', pattern: 'none' };
 
     // U51: 負担額の合計
-    const totalBurdenAmount = serviceRows.reduce((sum, row) => sum + row.burdenAmount, 0);
+    let totalBurdenAmount = serviceRows.reduce((sum, row) => sum + row.burdenAmount, 0);
+    
+    // 公費利用者で上限適用がある場合、上限適用後の患者負担額を使用
+    if (data.receipt.publicExpenseLimitInfo && Object.keys(data.receipt.publicExpenseLimitInfo).length > 0) {
+      // 上限適用情報から上限適用後の患者負担額の合計を計算
+      const limitInfoMap = data.receipt.publicExpenseLimitInfo;
+      const adjustedAmounts = Object.values(limitInfoMap).map(info => info.adjustedAmount);
+      const totalAdjustedAmount = adjustedAmounts.reduce((sum, amount) => sum + amount, 0);
+      
+      // 上限適用がない公費の負担額も考慮
+      // 通常の負担額計算
+      const copaymentRate = data.insuranceCard.copaymentRate
+        ? parseInt(data.insuranceCard.copaymentRate, 10) / 100
+        : 0.1;
+      const normalTotalBurdenAmount = Math.round((data.receipt.totalAmount * copaymentRate) / 10) * 10;
+      
+      // 上限適用がある公費の負担額の合計を計算
+      const originalAmounts = Object.values(limitInfoMap).map(info => info.originalAmount);
+      const totalOriginalAmount = originalAmounts.reduce((sum, amount) => sum + amount, 0);
+      
+      // 上限適用がない公費の負担額を計算
+      const burdenAmountWithoutLimit = normalTotalBurdenAmount - totalOriginalAmount;
+      
+      // 上限適用後の患者負担額の合計
+      totalBurdenAmount = totalAdjustedAmount + burdenAmountWithoutLimit;
+    }
+    
     const u51Cell = sheet.getCell('U51');
     u51Cell.value = totalBurdenAmount;
     u51Cell.fill = { type: 'pattern', pattern: 'none' };
@@ -418,22 +470,65 @@ export class InvoiceReceiptExcelBuilder {
       }
     }
 
-    // 加算履歴を集計
+    // 加算履歴を集計（frequencyLimitを考慮）
+    // 加算マスタのfrequencyLimitを取得するためのキャッシュ
+    const bonusMasterCache = new Map<string, { frequencyLimit: string | null }>();
+    
+    // 対象年月の開始日と終了日を計算（frequencyLimit判定用）
+    const targetYear = data.receipt.targetYear;
+    const targetMonth = data.receipt.targetMonth;
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0);
+    
     for (const bonus of data.bonusHistory) {
       if (bonus.serviceCode) {
+        // 加算マスタのfrequencyLimitを取得（キャッシュから）
+        let bonusMasterInfo = bonusMasterCache.get(bonus.bonusCode);
+        if (!bonusMasterInfo) {
+          const whereConditions = [
+            eq(bonusMaster.bonusCode, bonus.bonusCode),
+            eq(bonusMaster.insuranceType, data.receipt.insuranceType),
+            lte(bonusMaster.validFrom, endDate.toISOString().split('T')[0]),
+          ];
+          
+          // validToがnullでない場合は、有効期限の終了日もチェック
+          const bonusMasterRecords = await db.query.bonusMaster.findMany({
+            where: and(...whereConditions),
+            orderBy: (bonusMaster, { desc }) => [desc(bonusMaster.validFrom)],
+          });
+          
+          // 対象年月の期間内に有効な加算マスタを探す
+          const bonusMasterRecord = bonusMasterRecords.find(record => {
+            const validFromDate = new Date(record.validFrom);
+            const validToDate = record.validTo ? new Date(record.validTo) : null;
+            return validFromDate <= endDate && (!validToDate || validToDate >= startDate);
+          });
+          
+          bonusMasterInfo = {
+            frequencyLimit: bonusMasterRecord?.frequencyLimit || null,
+          };
+          bonusMasterCache.set(bonus.bonusCode, bonusMasterInfo);
+        }
+        
         const points = bonus.points;
         const unitPrice = points * 10;
         const key = bonus.serviceCode;
         
+        // frequencyLimitが"monthly_1"の場合は、同じserviceCodeの加算を1回のみカウント
+        const isMonthlyOnce = bonusMasterInfo.frequencyLimit === 'monthly_1';
+        
         if (serviceCodeMap.has(key)) {
           const existing = serviceCodeMap.get(key)!;
-          existing.points += points;
-          existing.count += 1;
+          // frequencyLimitが"monthly_1"の場合は、点数とカウントを増やさない（既に1回カウント済み）
+          if (!isMonthlyOnce) {
+            existing.points += points;
+            existing.count += 1;
+          }
         } else {
           serviceCodeMap.set(key, {
             serviceCode: key,
             points,
-            count: 1,
+            count: 1, // 最初の1回は常にカウント
             unitPrice,
           });
         }

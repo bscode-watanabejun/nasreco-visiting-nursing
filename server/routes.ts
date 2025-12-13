@@ -94,6 +94,7 @@ import { db } from "./db";
 import { eq, and, or, gte, lte, sql, isNotNull, inArray, isNull, not, lt, asc, desc, ne, type SQL } from "drizzle-orm";
 import { stringify } from "csv-stringify/sync";
 import { validateReceipt, detectMissingBonuses } from "./validators/receipt-validator";
+import { applyPublicExpenseLimits, type PublicExpenseLimitInfo } from "./services/publicExpenseLimitService";
 import archiver from "archiver";
 
 // Extend Express session data
@@ -7902,7 +7903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const insuranceType = existing[0].insuranceType;
 
       // Fetch all required data for validation
-      const [patientData, records, orders, cards] = await Promise.all([
+      const [patientData, records, orders, cards, publicExpenseCardsData] = await Promise.all([
         db.select()
           .from(patients)
           .where(eq(patients.id, patientId))
@@ -7914,7 +7915,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(nursingRecords.facilityId, facilityId),
             sql`EXTRACT(YEAR FROM ${nursingRecords.visitDate}) = ${targetYear}`,
             sql`EXTRACT(MONTH FROM ${nursingRecords.visitDate}) = ${targetMonth}`,
-            inArray(nursingRecords.status, ['completed', 'reviewed'])
+            inArray(nursingRecords.status, ['completed', 'reviewed']),
+            isNull(nursingRecords.deletedAt) // 削除フラグが設定されていない記録のみ取得
           )),
         db.select()
           .from(doctorOrders)
@@ -7927,6 +7929,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(and(
             eq(insuranceCards.patientId, patientId),
             eq(insuranceCards.facilityId, facilityId)
+          )),
+        db.select()
+          .from(publicExpenseCards)
+          .where(and(
+            eq(publicExpenseCards.patientId, patientId),
+            eq(publicExpenseCards.facilityId, facilityId),
+            eq(publicExpenseCards.isActive, true)
           ))
       ]);
 
@@ -7935,7 +7944,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const patient = patientData[0];
 
-      // Get bonus calculations
+      // Get bonus calculations (サービスコードが選択されているもののみ)
       const recordIds = records.map(r => r.id);
       let bonusCalcs: any[] = [];
 
@@ -7943,10 +7952,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusCalcs = await db.select({
           history: bonusCalculationHistory,
           bonus: bonusMaster,
+          serviceCode: nursingServiceCodes,
         })
           .from(bonusCalculationHistory)
           .leftJoin(bonusMaster, eq(bonusCalculationHistory.bonusMasterId, bonusMaster.id))
-          .where(inArray(bonusCalculationHistory.nursingRecordId, recordIds));
+          .leftJoin(nursingServiceCodes, eq(bonusCalculationHistory.serviceCodeId, nursingServiceCodes.id))
+          .where(
+            and(
+              inArray(bonusCalculationHistory.nursingRecordId, recordIds),
+              isNotNull(bonusCalculationHistory.serviceCodeId) // サービスコードが選択されているもののみ
+            )
+          );
       }
 
       const bonusCalculations = bonusCalcs.map(bc => ({
@@ -8032,6 +8048,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Continue with finalization even if CSV validation fails
       }
 
+      // 月額上限を適用（公費利用者の場合）
+      let publicExpenseLimitInfo: PublicExpenseLimitInfo | null = null;
+
+      if (publicExpenseCardsData.length > 0) {
+        // 保険証から負担割合を取得
+        const targetInsuranceCard = cards.find(card => 
+          (insuranceType === 'medical' && card.cardType === 'medical') ||
+          (insuranceType === 'care' && card.cardType === 'long_term_care')
+        );
+
+        if (targetInsuranceCard) {
+          const copaymentRate = targetInsuranceCard.copaymentRate
+            ? parseInt(targetInsuranceCard.copaymentRate, 10) / 100
+            : 0.1; // デフォルトは1割
+
+          // 訪問記録の詳細情報を取得（サービスコードごとに負担額を計算するため）
+          const recordsWithDetails = await Promise.all(
+            records.map(async (record) => {
+              let serviceCode: string | undefined;
+              let managementServiceCode: string | undefined;
+              const bonusHistory: Array<{ bonusCode: string; serviceCode: string; points: number }> = [];
+
+              if (record.serviceCodeId) {
+                const serviceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+                  where: eq(nursingServiceCodes.id, record.serviceCodeId),
+                });
+                if (serviceCodeRecord) {
+                  serviceCode = serviceCodeRecord.serviceCode;
+                }
+              }
+              if (record.managementServiceCodeId) {
+                const managementServiceCodeRecord = await db.query.nursingServiceCodes.findFirst({
+                  where: eq(nursingServiceCodes.id, record.managementServiceCodeId),
+                });
+                if (managementServiceCodeRecord) {
+                  managementServiceCode = managementServiceCodeRecord.serviceCode;
+                }
+              }
+              // 加算履歴を取得（サービスコードが選択されているもののみ）
+              const recordBonusCalcs = bonusCalcs.filter(bc => bc.history.nursingRecordId === record.id);
+              for (const bc of recordBonusCalcs) {
+                if (bc.serviceCode && bc.bonus) {
+                  bonusHistory.push({
+                    bonusCode: bc.bonus.bonusCode,
+                    serviceCode: bc.serviceCode.serviceCode,
+                    points: bc.serviceCode.points,
+                  });
+                }
+              }
+
+              // デバッグログ（開発環境のみ）
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`[レセプト確定] 訪問記録ID: ${record.id}, 公費ID: ${record.publicExpenseId}, 基本療養費: ${serviceCode}, 管理療養費: ${managementServiceCode}, 加算数: ${bonusHistory.length}`);
+              }
+
+              return {
+                publicExpenseId: record.publicExpenseId,
+                serviceCode,
+                managementServiceCode,
+                bonusHistory,
+              };
+            })
+          );
+
+          // 公費情報を準備
+          const publicExpenses = publicExpenseCardsData.map(card => ({
+            id: card.id,
+            monthlyLimit: card.monthlyLimit,
+          }));
+
+          // 月額上限を適用（患者負担額に対して適用、サービスコードごとに負担額を計算）
+          const limitResult = await applyPublicExpenseLimits(
+            copaymentRate,
+            publicExpenses,
+            recordsWithDetails,
+            insuranceType,
+            targetYear,
+            targetMonth
+          );
+
+          // 上限適用情報を保存（totalAmountは変更しない）
+          publicExpenseLimitInfo = Object.keys(limitResult.limitInfoMap).length > 0
+            ? limitResult.limitInfoMap
+            : null;
+        }
+      }
+
       // Update validation status and finalize
       const [updated] = await db.update(monthlyReceipts)
         .set({
@@ -8043,6 +8146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           csvExportReady,
           csvExportWarnings,
           lastCsvExportCheck,
+          publicExpenseLimitInfo, // 上限適用情報を保存（totalAmountは変更しない）
           updatedAt: new Date(),
         })
         .where(eq(monthlyReceipts.id, id))
@@ -10726,6 +10830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reductionAmount: receipt.reductionAmount || null,
         certificateNumber: receipt.certificateNumber || null,
         publicExpenseBurdenInfo: (receipt.publicExpenseBurdenInfo as any) || null,
+        publicExpenseLimitInfo: (receipt.publicExpenseLimitInfo as any) || null,
         highCostCategory: (receipt.highCostCategory === 'high_cost' || receipt.highCostCategory === 'high_cost_multiple')
           ? receipt.highCostCategory
           : null,

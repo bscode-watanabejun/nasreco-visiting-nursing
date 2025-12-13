@@ -39,6 +39,7 @@ interface PublicExpenseCard {
   legalCategoryNumber: string
   priority: number
   benefitRate: number | null
+  monthlyLimit: number | null
   validFrom: string
   validUntil: string | null
   notes: string | null
@@ -53,6 +54,7 @@ interface PublicExpenseCardFormData {
   legalCategoryNumber: string
   priority: string
   benefitRate?: string
+  monthlyLimit?: string
   validFrom: string
   validUntil?: string
   notes?: string
@@ -112,6 +114,7 @@ export function PublicExpenseCardDialog({
       legalCategoryNumber: "",
       priority: "1",
       benefitRate: "",
+      monthlyLimit: "",
       validFrom: "",
       validUntil: "",
       notes: "",
@@ -135,6 +138,7 @@ export function PublicExpenseCardDialog({
           legalCategoryNumber: editingCard.legalCategoryNumber,
           priority: editingCard.priority.toString(),
           benefitRate: editingCard.benefitRate?.toString() || "",
+          monthlyLimit: editingCard.monthlyLimit?.toString() || "",
           validFrom: editingCard.validFrom,
           validUntil: editingCard.validUntil || "",
           notes: editingCard.notes || "",
@@ -151,6 +155,7 @@ export function PublicExpenseCardDialog({
           legalCategoryNumber: "",
           priority: defaultPriority,
           benefitRate: "",
+          monthlyLimit: "",
           validFrom: "",
           validUntil: "",
           notes: "",
@@ -169,6 +174,7 @@ export function PublicExpenseCardDialog({
         legalCategoryNumber: data.legalCategoryNumber,
         priority: parseInt(data.priority),
         benefitRate: data.benefitRate ? parseInt(data.benefitRate) : null,
+        monthlyLimit: data.monthlyLimit ? parseInt(data.monthlyLimit, 10) : null,
         validFrom: data.validFrom,
         validUntil: data.validUntil || null,
         notes: data.notes || null,
@@ -196,7 +202,11 @@ export function PublicExpenseCardDialog({
         description: `公費情報を${editingCard ? "更新" : "登録"}しました`,
       })
 
+      // クエリを無効化して再取得を促す
       queryClient.invalidateQueries({ queryKey: ["public-expense-cards", patientId] })
+      queryClient.invalidateQueries({ queryKey: ["/api/public-expense-cards", patientId] })
+      // レセプトデータも無効化（レセプト詳細画面で使用している場合）
+      queryClient.invalidateQueries({ queryKey: ["/api/monthly-receipts"] })
 
       // フォームをクリアしてダイアログを閉じる
       form.reset({
@@ -205,6 +215,7 @@ export function PublicExpenseCardDialog({
         legalCategoryNumber: "",
         priority: "1",
         benefitRate: "",
+        monthlyLimit: "",
         validFrom: "",
         validUntil: "",
         notes: "",
@@ -399,6 +410,40 @@ export function PublicExpenseCardDialog({
                   </FormControl>
                   <FormDescription>
                     公費給付率を百分率で入力してください（0-100）。未入力の場合は0が出力されます。
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="monthlyLimit"
+              rules={{
+                min: {
+                  value: 0,
+                  message: "0以上の値を入力してください",
+                },
+              }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>月額上限（円）</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="上限なしの場合は空欄"
+                      {...field}
+                      value={field.value || ""}
+                      onChange={(e) => {
+                        const value = e.target.value === "" ? "" : e.target.value;
+                        field.onChange(value);
+                      }}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    月額上限を設定すると、請求金額が上限額を超える場合に自動的に調整されます。
+                    上限なしの場合は空欄のままにしてください。
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

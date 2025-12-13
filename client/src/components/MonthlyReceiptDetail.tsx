@@ -34,6 +34,7 @@ import {
 import {
   ArrowLeft,
   AlertTriangle,
+  AlertCircle,
   CheckCircle,
   FileText,
   Calendar,
@@ -105,6 +106,14 @@ interface MonthlyReceiptDetail {
       publicExpenseBurdenAmount: number | null
     }
   } | null
+  // ⭐ 追加: 公費月額上限適用情報
+  publicExpenseLimitInfo: {
+    [publicExpenseCardId: string]: {
+      originalAmount: number
+      adjustedAmount: number
+      limitAmount: number
+    }
+  } | null
   // 高額療養費適用状況（MFレコード用）
   highCostCategory: 'high_cost' | 'high_cost_multiple' | null
   // 心身の状態（JSレコード用）
@@ -155,6 +164,7 @@ interface MonthlyReceiptDetail {
     beneficiaryNumber: string
     recipientNumber: string
     priority: number
+    monthlyLimit: number | null
     validFrom: string
     validUntil: string | null
     notes: string | null
@@ -250,6 +260,7 @@ export default function MonthlyReceiptDetail() {
     legalCategoryNumber: string
     priority: number
     benefitRate: number | null
+    monthlyLimit: number | null
     validFrom: string
     validUntil: string | null
     notes: string | null
@@ -349,7 +360,7 @@ export default function MonthlyReceiptDetail() {
   }, [doctorOrderDialogOpen, receipt?.patientId, receipt?.doctorOrder?.order?.id, refetchDoctorOrderData])
 
   // Fetch public expense cards for editing
-  const { data: publicExpenseCards = [] } = useQuery<Array<{
+  const { data: publicExpenseCards = [], refetch: refetchPublicExpenseCards } = useQuery<Array<{
     id: string
     patientId: string
     facilityId: string
@@ -358,6 +369,7 @@ export default function MonthlyReceiptDetail() {
     legalCategoryNumber: string
     priority: number
     benefitRate: number | null
+    monthlyLimit: number | null
     validFrom: string
     validUntil: string | null
     notes: string | null
@@ -375,6 +387,13 @@ export default function MonthlyReceiptDetail() {
     },
     enabled: !!receipt?.patientId,
   })
+
+  // 公費カードダイアログを開くときにデータを再取得
+  useEffect(() => {
+    if (publicExpenseCardDialogOpen && receipt?.patientId) {
+      refetchPublicExpenseCards()
+    }
+  }, [publicExpenseCardDialogOpen, receipt?.patientId, refetchPublicExpenseCards])
 
   // ローカル状態（一部負担金額・減免情報用）
   const [localPartialBurdenAmount, setLocalPartialBurdenAmount] = useState<number | null>(null);
@@ -1473,6 +1492,52 @@ export default function MonthlyReceiptDetail() {
                   </div>
                 </div>
                 )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Public Expense Limit Information */}
+      {receipt.publicExpenseLimitInfo && Object.keys(receipt.publicExpenseLimitInfo).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              月額上限適用情報
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {Object.entries(receipt.publicExpenseLimitInfo).map(([publicExpenseId, limitInfo]) => {
+                const publicExpense = receipt.publicExpenseCards?.find(c => c.id === publicExpenseId);
+                const priorityLabel = publicExpense 
+                  ? ['第一公費', '第二公費', '第三公費', '第四公費'][publicExpense.priority - 1]
+                  : '公費';
+                
+                return (
+                  <div key={publicExpenseId} className="space-y-2 p-4 border rounded-lg">
+                    <div className="font-semibold">
+                      {publicExpense?.legalCategoryNumber} - {priorityLabel}
+                    </div>
+                    <div className="text-sm space-y-1">
+                      <div className="text-muted-foreground">
+                        上限適用前: <span className="font-medium">¥{limitInfo.originalAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        上限適用後: <span className="font-medium text-primary">¥{limitInfo.adjustedAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        適用上限額: ¥{limitInfo.limitAmount.toLocaleString()}
+                      </div>
+                      {limitInfo.originalAmount > limitInfo.adjustedAmount && (
+                        <div className="text-orange-600 font-medium mt-2">
+                          上限額超過分: ¥{(limitInfo.originalAmount - limitInfo.adjustedAmount).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
               })}
             </div>
           </CardContent>

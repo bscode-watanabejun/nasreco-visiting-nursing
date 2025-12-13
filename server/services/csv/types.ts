@@ -28,6 +28,14 @@ export interface ReceiptCsvData {
         publicExpenseBurdenAmount?: number | null;  // 公費給付対象一部負担金（6桁可変、単位: 円）
       };
     } | null;
+    // ⭐ 追加: 公費月額上限適用情報
+    publicExpenseLimitInfo?: {
+      [publicExpenseCardId: string]: {
+        originalAmount: number;      // 上限適用前の金額
+        adjustedAmount: number;       // 上限適用後の金額
+        limitAmount: number;          // 適用された上限額
+      };
+    } | null;
     // 高額療養費適用状況（MFレコード用）
     highCostCategory?: 'high_cost' | 'high_cost_multiple' | null; // 'high_cost'=01, 'high_cost_multiple'=02
     // ⭐ 追加: 給付割合（REレコード用、Excel出力用）
